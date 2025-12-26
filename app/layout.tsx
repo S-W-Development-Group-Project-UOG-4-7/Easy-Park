@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "./components/ThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,11 +24,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark scroll-smooth">
+    <html lang="en" suppressHydrationWarning className="scroll-smooth">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-gradient-to-br from-[#0F172A] to-[#020617] text-slate-100`}
+        className={`
+          ${geistSans.variable} 
+          ${geistMono.variable} 
+          antialiased
+          min-h-screen
+          bg-white text-slate-900
+          dark:bg-gradient-to-br dark:from-[#0F172A] dark:to-[#020617] dark:text-slate-100
+          transition-colors duration-300
+        `}
       >
-        {children}
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
