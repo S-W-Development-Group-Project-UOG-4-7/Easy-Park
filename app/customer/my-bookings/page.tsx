@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PaymentForm from '../../components/PaymentForm';
 
 interface BookingSlot {
@@ -14,7 +14,7 @@ interface Booking {
   date: string;
   location: string;
   time: string;
-  duration: number; // <-- NEW
+  duration: number;
   slots: BookingSlot[];
   slotType: 'ev' | 'car-wash' | 'normal' | 'mixed';
   status: 'pending' | 'paid' | 'completed' | 'cancelled';
@@ -22,70 +22,25 @@ interface Booking {
   paymentId?: string;
 }
 
-type FilterType = 'all' | 'pending' | 'paid' | 'completed';
+type Filter = 'all' | 'pending' | 'paid' | 'completed' | 'cancelled';
 
 export default function MyBookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [expandedBooking, setExpandedBooking] = useState<string | null>(null);
-
+  const [filter, setFilter] = useState<Filter>('all');
+  const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem('bookings') || '[]');
-    stored.sort(
-      (a: Booking, b: Booking) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const stored = JSON.parse(localStorage.getItem('bookings') || '[]') as Booking[];
+    stored.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     setBookings(stored);
   }, []);
 
-  // --------------------------------------------------
-  // ONLINE FEE
-  // --------------------------------------------------
-
-  const getOnlineFee = () => 150;
-
-  // --------------------------------------------------
-  // HOURLY COUNTER FEE LOGIC
-  // --------------------------------------------------
-
-  const getHourlyRate = (slotType: string) => {
-    if (slotType === 'normal') return 300;
-    if (slotType === 'ev' || slotType === 'car-wash') return 350;
-    if (slotType === 'mixed') return 350; // highest rate rule
-    return 300;
-  };
-
-  const getTotalCounterFee = (booking: Booking) => {
-    const hourlyRate = getHourlyRate(booking.slotType);
-    return hourlyRate * booking.duration;
-  };
-
-  // --------------------------------------------------
-  // End Time Calculation Using Duration
-  // --------------------------------------------------
-
-  const getEndTime = (start: string, duration: number) => {
-    const [t, p] = start.split(" ");
-    const [h, m] = t.split(":");
-
-    let hour = Number(h);
-
-    if (p === "PM" && hour !== 12) hour += 12;
-    if (p === "AM" && hour === 12) hour = 0;
-
-    let end = (hour + duration) % 24;
-
-    const disp = end === 0 ? 12 : end > 12 ? end - 12 : end;
-    return `${disp}:${m} ${end >= 12 ? "PM" : "AM"}`;
-  };
-
-  // --------------------------------------------------
-  // PAYMENT HANDLERS
-  // --------------------------------------------------
+  const ONLINE_FEE = 150;
+  const getTotal = (b: Booking) => 150 * b.duration;
+  const getRemaining = (b: Booking) => Math.max(0, getTotal(b) - ONLINE_FEE);
 
   const handlePayNow = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -93,29 +48,32 @@ export default function MyBookingsPage() {
   };
 
   const handlePaymentSuccess = (paymentId: string) => {
-    if (selectedBooking) {
-      const updated = bookings.map((b) =>
-        b.bookingId === selectedBooking.bookingId
-          ? { ...b, status: 'paid' as const, paymentId }
-          : b
-      );
-      setBookings(updated);
-      localStorage.setItem('bookings', JSON.stringify(updated));
-    }
+    if (!selectedBooking) return;
+
+    const updated: Booking[] = bookings.map((b) =>
+      b.bookingId === selectedBooking.bookingId
+        ? { ...b, status: 'paid' as Booking['status'], paymentId }
+        : b
+    );
+
+    setBookings(updated);
+    localStorage.setItem('bookings', JSON.stringify(updated));
     setSelectedBooking(null);
     setShowPaymentForm(false);
   };
 
-  // --------------------------------------------------
-  // CANCEL LOGIC
-  // --------------------------------------------------
+  const handleDelete = (bookingId: string) => {
+    const updated: Booking[] = bookings.filter((b) => b.bookingId !== bookingId);
+    setBookings(updated);
+    localStorage.setItem('bookings', JSON.stringify(updated));
+  };
 
   const confirmCancelBooking = () => {
     if (!cancelTarget) return;
 
-    const updated = bookings.map((b) =>
+    const updated: Booking[] = bookings.map((b) =>
       b.bookingId === cancelTarget.bookingId
-        ? { ...b, status: 'cancelled' as const }
+        ? { ...b, status: 'cancelled' as Booking['status'] }
         : b
     );
 
@@ -124,222 +82,238 @@ export default function MyBookingsPage() {
     setCancelTarget(null);
   };
 
-  // --------------------------------------------------
-  // DELETE BOOKING
-  // --------------------------------------------------
+  const filtered = useMemo(
+    () => bookings.filter((b) => filter === 'all' || b.status === filter),
+    [bookings, filter]
+  );
 
-  const handleDeleteBooking = (bookingId: string) => {
-    const updated = bookings.filter((b) => b.bookingId !== bookingId);
-    setBookings(updated);
-    localStorage.setItem('bookings', JSON.stringify(updated));
-  };
-
-  // --------------------------------------------------
-  // STYLING HELPERS
-  // --------------------------------------------------
-
-  const getSlotTypeLabel = (type: string) => {
-    switch (type) {
-      case 'ev': return 'EV Charging';
-      case 'car-wash': return 'Car Wash';
-      case 'mixed': return 'Mixed';
-      default: return 'Standard';
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      pending: { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200 dark:border-amber-800', icon: '⏳' },
-      paid: { bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-400', border: 'border-green-200 dark:border-green-800', icon: '✓' },
-      completed: { bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-800', icon: '✓' },
-      cancelled: { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-400', border: 'border-red-200 dark:border-red-800', icon: '✕' },
+  const statusMeta = (status: Booking['status']) => {
+    if (status === 'paid')
+      return {
+        label: 'Paid',
+        pill: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/20',
+        dot: 'bg-emerald-400',
+      };
+    if (status === 'pending')
+      return {
+        label: 'Pending',
+        pill: 'bg-amber-500/12 text-amber-300 border-amber-500/20',
+        dot: 'bg-amber-400',
+      };
+    if (status === 'cancelled')
+      return {
+        label: 'Cancelled',
+        pill: 'bg-rose-500/12 text-rose-300 border-rose-500/20',
+        dot: 'bg-rose-400',
+      };
+    return {
+      label: 'Completed',
+      pill: 'bg-sky-500/12 text-sky-300 border-sky-500/20',
+      dot: 'bg-sky-400',
     };
-
-    const s = styles[status as keyof typeof styles];
-
-    return (
-      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-full text-xs font-semibold ${s.bg} ${s.text} ${s.border}`}>
-        {s.icon} {status}
-      </span>
-    );
   };
 
-  const filtered = bookings.filter((b) => filter === "all" || b.status === filter);
-
-  // --------------------------------------------------
-  // EMPTY STATE
-  // --------------------------------------------------
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  };
 
   if (bookings.length === 0) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-lime-500 to-lime-400 bg-clip-text text-transparent">
-          My Bookings
-        </h1>
+      <div className="rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-slate-800 p-10 sm:p-12 text-center shadow-lg">
+        <h1 className="text-2xl sm:text-3xl font-bold text-lime-400">My Bookings</h1>
+        <p className="text-slate-400 mt-2 text-sm sm:text-base">You have no bookings yet.</p>
 
-        <div className="p-12 text-center rounded-2xl bg-gradient-to-br from-white via-slate-50 to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border">
-          <h2 className="text-xl font-semibold text-slate-600 dark:text-slate-300">
-            No Bookings Yet
-          </h2>
-
-          <a href="/customer/view-bookings"
-            className="px-6 py-3 mt-5 inline-block bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 rounded-lg font-semibold hover:scale-105 hover:shadow-lg transition">
-            Book Now
-          </a>
-        </div>
+        <a
+          href="/customer/view-bookings"
+          className="inline-flex items-center justify-center mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 font-semibold hover:scale-105 hover:shadow-lg transition"
+        >
+          Book a Slot →
+        </a>
       </div>
     );
   }
 
-  // --------------------------------------------------
-  // MAIN UI
-  // --------------------------------------------------
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-5">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3 sm:gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-lime-400 to-lime-300 bg-clip-text text-transparent">
+            My Bookings
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Online fee (Rs.{ONLINE_FEE}) is <span className="text-rose-300 font-semibold">non-refundable</span> if you cancel.
+          </p>
+        </div>
 
-      <h1 className="text-3xl font-bold bg-gradient-to-r from-lime-500 to-lime-400 bg-clip-text text-transparent">
-        My Bookings
-      </h1>
+        {/* Mobile-friendly filters: horizontal scroll */}
+        <div className="-mx-2 px-2 overflow-x-auto">
+          <div className="flex gap-2 w-max pb-1">
+            {(['all', 'pending', 'paid', 'cancelled'] as Filter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold border transition
+                  ${
+                    filter === f
+                      ? 'bg-lime-500 text-slate-900 border-lime-400'
+                      : 'bg-slate-950/40 text-slate-300 border-slate-800 hover:bg-slate-900/60'
+                  }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      <div className="grid gap-4">
-        {filtered.map((booking) => {
-
-          const onlineFee = getOnlineFee();
-          const counterFee = getTotalCounterFee(booking);
-
-          const isExpanded = expandedBooking === booking.bookingId;
+      {/* Booking list */}
+      <div className="grid gap-3">
+        {filtered.map((b) => {
+          const total = getTotal(b);
+          const remaining = getRemaining(b);
+          const expanded = expandedBookingId === b.bookingId;
+          const s = statusMeta(b.status);
+          const canCancel = b.status === 'pending' || b.status === 'paid';
 
           return (
             <div
-              key={booking.bookingId}
-              className="bg-gradient-to-br from-white to-slate-50 dark:from-[#1E293B] dark:to-[#0F172A] rounded-xl border p-6 shadow-lg"
+              key={b.bookingId}
+              className="rounded-xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden"
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-xl font-bold dark:text-white">{booking.location}</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                    Booking ID: {booking.bookingId}
-                  </p>
-                </div>
+              {/* Top bar */}
+              <div className="px-4 py-3 border-b border-slate-800/70 bg-slate-950/30">
+                {/* Mobile stacks; desktop aligns */}
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-lime-400 to-lime-300 text-slate-900 flex items-center justify-center ring-1 ring-lime-200/30">
+                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7">
+                          <path d="M5 16h14l-1.5-7H6.5L5 16Z" />
+                          <path d="M7 16v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" />
+                          <path d="M9 11h6" />
+                        </svg>
+                      </div>
 
-                {getStatusBadge(booking.status)}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-base font-bold text-white truncate">{b.location}</h2>
+                          <span
+                            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${s.pill}`}
+                          >
+                            <span className={`h-2 w-2 rounded-full ${s.dot}`} />
+                            {s.label}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-mono truncate">{b.bookingId}</p>
+                      </div>
+                    </div>
+
+                    {/* Compact facts */}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Chip label={`📅 ${formatDate(b.date)}`} />
+                      <Chip label={`🕒 ${b.time}`} />
+                      <Chip label={`⏱ ${b.duration}h`} />
+                    </div>
+                  </div>
+
+                  {/* Price badge: full width on mobile, compact on desktop */}
+                  <div className="w-full sm:w-auto">
+                    <div className="rounded-xl border border-lime-400/15 bg-slate-950/35 px-3 py-2 sm:text-right">
+                      <p className="text-[10px] uppercase tracking-[0.22em] text-slate-400">Remaining</p>
+                      <p className="text-lg font-extrabold text-lime-300 leading-tight">Rs.{remaining}</p>
+                      <p className="text-[11px] text-slate-400">Total Rs.{total}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* INFO ROW */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                
-                <Detail label="Date" value={new Date(booking.date).toLocaleDateString()} />
-
-                <Detail 
-                  label="Time" 
-                  value={`${booking.time} → ${getEndTime(booking.time, booking.duration)}`} 
-                />
-
-                <Detail 
-                  label="Duration" 
-                  value={`${booking.duration} hour${booking.duration > 1 ? "s" : ""}`} 
-                />
-
-                <Detail label="Slot Type" value={getSlotTypeLabel(booking.slotType)} />
-
-                {/* FEES BOX */}
+              {/* Body */}
+              <div className="px-4 py-3">
                 <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Online Fee</p>
-                  <p className="font-bold text-lime-600 dark:text-lime-400">
-                    Rs. {onlineFee}
-                  </p>
-
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                    Counter Fee (Hourly × Duration)
-                  </p>
-
-                  <p className="font-semibold text-slate-700 dark:text-slate-300">
-                    Rs. {counterFee}
-                  </p>
+                  <p className="text-[11px] text-slate-400 mb-1.5">Selected slots</p>
+                  <div className="flex flex-wrap gap-2">
+                    {b.slots.map((slot) => (
+                      <span
+                        key={slot.id}
+                        className="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900/40 text-xs text-slate-200"
+                      >
+                        {slot.number}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
-              </div>
+                {/* Stats: 1 col on tiny screens, 3 cols otherwise */}
+                <div className="mt-3 grid grid-cols-1 xs:grid-cols-3 sm:grid-cols-3 gap-2">
+                  <TinyStat label="Total" value={`Rs.${total}`} />
+                  <TinyStat label="Paid" value={`Rs.${ONLINE_FEE}`} />
+                  <TinyStat label="Remaining" value={`Rs.${remaining}`} highlight />
+                </div>
 
-              {/* SLOTS */}
-              <div className="mt-4 pt-4 border-t border-slate-300 dark:border-slate-700">
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                  Selected Slots
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {booking.slots.map((slot) => (
-                    <span
-                      key={slot.id}
-                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border rounded-lg text-sm"
+                {/* Actions: full width buttons on mobile */}
+                <div className="mt-3 grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
+                  {b.status === 'pending' && (
+                    <button
+                      onClick={() => handlePayNow(b)}
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 text-sm font-semibold hover:shadow-lg transition"
                     >
-                      {slot.number}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* ACTION BUTTONS */}
-              <div className="mt-6 pt-4 border-t flex gap-3 border-slate-200 dark:border-slate-700">
-
-                {booking.status === "pending" && (
-                  <button
-                    onClick={() => handlePayNow(booking)}
-                    className="px-6 py-2.5 bg-gradient-to-r from-lime-500 to-lime-400 rounded-lg text-slate-900 font-semibold hover:scale-105 hover:shadow-lg transition"
-                  >
-                    Pay Now
-                  </button>
-                )}
-
-                {(booking.status === "pending" || booking.status === "paid") && (
-                  <button
-                    onClick={() => setCancelTarget(booking)}
-                    className="px-6 py-2.5 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition"
-                  >
-                    Cancel Booking
-                  </button>
-                )}
-
-                <button
-                  onClick={() => handleDeleteBooking(booking.bookingId)}
-                  className="px-6 py-2.5 bg-slate-200 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-200 font-semibold hover:bg-slate-300 dark:hover:bg-slate-700 transition"
-                >
-                  Delete
-                </button>
-
-                <button
-                  onClick={() =>
-                    setExpandedBooking(isExpanded ? null : booking.bookingId)
-                  }
-                  className="px-6 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-                >
-                  {isExpanded ? "Hide" : "View"} Details
-                </button>
-              </div>
-
-              {/* EXPANDED DETAILS */}
-              {isExpanded && (
-                <div className="mt-4 pt-4 border-t text-sm text-slate-600 dark:text-slate-300">
-                  <p>
-                    <strong>Created:</strong>{" "}
-                    {new Date(booking.createdAt).toLocaleString()}
-                  </p>
-                  {booking.paymentId && (
-                    <p>
-                      <strong>Payment ID:</strong> {booking.paymentId}
-                    </p>
+                      Pay Rs.{ONLINE_FEE}
+                    </button>
                   )}
+
+                  {canCancel && (
+                    <button
+                      onClick={() => setCancelTarget(b)}
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 transition"
+                    >
+                      Cancel Booking
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => setExpandedBookingId(expanded ? null : b.bookingId)}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-200 text-sm font-semibold hover:bg-slate-800/60 transition"
+                  >
+                    {expanded ? 'Hide' : 'Details'}
+                  </button>
+
+                  <button
+                    onClick={() => handleDelete(b.bookingId)}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-300 text-sm font-semibold hover:text-rose-300 hover:border-rose-500/30 transition"
+                  >
+                    Delete
+                  </button>
                 </div>
-              )}
+
+                {expanded && (
+                  <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3 text-xs text-slate-300">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div>
+                        <span className="text-slate-400">Created:</span>{' '}
+                        <span className="font-semibold text-slate-100">{new Date(b.createdAt).toLocaleString()}</span>
+                      </div>
+
+                      {b.paymentId && (
+                        <div className="font-mono text-[11px] text-slate-400">
+                          Payment ID: <span className="text-slate-200">{b.paymentId}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
       </div>
 
-      {/* PAYMENT FORM */}
+      {/* Payment Form */}
       {showPaymentForm && selectedBooking && (
         <PaymentForm
           booking={selectedBooking}
-          total={getOnlineFee()}
+          total={ONLINE_FEE}
           onSuccess={handlePaymentSuccess}
           onClose={() => {
             setSelectedBooking(null);
@@ -348,32 +322,27 @@ export default function MyBookingsPage() {
         />
       )}
 
-      {/* CANCELLATION MODAL */}
+      {/* Cancel Modal */}
       {cancelTarget && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow-xl max-w-sm w-full border dark:border-slate-700 animate-fadeIn">
-
-            <h2 className="text-xl font-bold text-red-600 dark:text-red-400 mb-3">
-              ⚠️ Cancellation Notice
-            </h2>
-
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
-              This booking includes a <strong>non-refundable</strong> online fee of{" "}
-              <strong>Rs.150</strong>.  
-              If you cancel now, this amount will not be refunded.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200/20 bg-slate-950 p-5 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">Cancel Booking?</h3>
+            <p className="text-sm text-slate-300 mt-2">
+              You can cancel this booking, but the online fee of{' '}
+              <span className="font-bold text-rose-300">Rs.{ONLINE_FEE}</span> is{' '}
+              <span className="font-bold">not refundable</span>.
             </p>
 
-            <div className="flex justify-end gap-3">
+            <div className="mt-4 grid grid-cols-1 sm:flex sm:justify-end gap-2">
               <button
                 onClick={() => setCancelTarget(null)}
-                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-200 font-semibold hover:bg-slate-800/60 transition"
               >
                 Keep Booking
               </button>
-
               <button
                 onClick={confirmCancelBooking}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-600 text-white font-semibold hover:bg-rose-700 transition"
               >
                 Confirm Cancel
               </button>
@@ -381,20 +350,33 @@ export default function MyBookingsPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
-/* ---------------------------------------------
-   SMALL UI COMPONENT
---------------------------------------------- */
+/* --------- tiny UI helpers --------- */
 
-function Detail({ label, value }: any) {
+function Chip({ label }: { label: string }) {
   return (
-    <div>
-      <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{label}</p>
-      <p className="font-semibold text-slate-800 dark:text-slate-200">{value}</p>
+    <span className="px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-950/30 text-[11px] text-slate-300">
+      {label}
+    </span>
+  );
+}
+
+function TinyStat({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/30 px-3 py-2">
+      <p className="text-[11px] text-slate-400">{label}</p>
+      <p className={`text-sm font-bold ${highlight ? 'text-lime-300' : 'text-white'}`}>{value}</p>
     </div>
   );
 }
