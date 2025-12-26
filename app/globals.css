@@ -1,4 +1,5 @@
 @import "tailwindcss";
+<<<<<<< HEAD
 
 :root {
   --background: #ffffff;
@@ -31,3 +32,5 @@ body {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 300ms;
 }
+=======
+>>>>>>> d9e2d7111374b6e76e3dbc20add936cf18c5bf86
