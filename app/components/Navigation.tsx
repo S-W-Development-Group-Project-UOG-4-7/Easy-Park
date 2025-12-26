@@ -81,12 +81,16 @@ export function Navigation() {
         {renderLinks("row")}
 
         <div className="hidden items-center gap-3 lg:flex">
+          <Link href="/sign-in">
             <button className="rounded-full border border-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:border-lime-300 focus:outline-none focus:ring-2 focus:ring-lime-400">
               Login
             </button>
-          <button className="rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264] px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-lime-200/60 transition hover:-translate-y-0.5 hover:shadow-lime-300/70 focus:outline-none focus:ring-2 focus:ring-lime-300">
-            Sign Up
-          </button>
+          </Link>
+          <Link href="/sign-up">
+            <button className="rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264] px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-lime-200/60 transition hover:-translate-y-0.5 hover:shadow-lime-300/70 focus:outline-none focus:ring-2 focus:ring-lime-300">
+              Sign Up
+            </button>
+          </Link>
         </div>
 
         <button

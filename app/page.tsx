@@ -314,7 +314,7 @@ export default function Home() {
             <div className="space-y-3">
               <p className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-300">
                 About EasyPark
-              </p>xl
+              </p>
               <h2 className="text-3xl font-bold text-white">
                 Built for drivers, powered by technology.
               </h2>
