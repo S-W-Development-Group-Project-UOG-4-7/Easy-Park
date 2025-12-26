@@ -86,7 +86,6 @@ export default function MyBookingsPage() {
     () => bookings.filter((b) => filter === 'all' || b.status === filter),
     [bookings, filter]
   );
-  {/*pending*/}
 
   const statusMeta = (status: Booking['status']) => {
     if (status === 'paid')
