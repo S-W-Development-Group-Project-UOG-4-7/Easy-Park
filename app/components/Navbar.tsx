@@ -2,61 +2,121 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import ThemeToggle from './ThemeToggle';
+import { useState } from 'react';
 
 export default function Navbar() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   const navLinks = [
-    { href: '/customer/view-bookings', label: 'Bookings' },
-    { href: '/customer/my-bookings', label: 'History' },
-    { href: '/customer/profile', label: 'User Profile' },
-   
+    { href: '/customer/view-bookings', label: 'Book Now' },
+    { href: '/customer/my-bookings', label: 'Bookings' },
+    // { href: '/customer/profile', label: 'User Profile' },
   ];
 
+  const linkClasses =
+    'relative px-3 py-2 text-sm font-semibold transition-colors duration-300 text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white';
+
+  const activePillClasses =
+    'absolute inset-x-2 -bottom-0.5 h-1 rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]';
+
+  const renderLinks = (direction: 'row' | 'col') => (
+    <div
+      className={
+        direction === 'row'
+          ? 'hidden items-center gap-1 md:flex'
+          : 'mt-4 flex flex-col gap-2 md:hidden'
+      }
+    >
+      {navLinks.filter(Boolean).map((link) => {
+        const isActive = pathname === link.href;
+
+        return (
+          <Link
+            key={`${link.href}-${link.label}`}
+            href={link.href}
+            onClick={() => setOpen(false)}
+            className={linkClasses}
+          >
+            <span className="relative flex items-center justify-center">
+              {link.label}
+              {isActive && <span className={activePillClasses} />}
+            </span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <nav className="w-full bg-gradient-to-br from-slate-700 via-slate-600 to-slate-800 dark:from-slate-900 dark:via-slate-800 dark:to-slate-950 border-b border-slate-300 dark:border-slate-700/50 transition-colors duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+    <nav className="sticky top-0 z-40 w-full border-b border-slate-800/60 bg-gradient-to-br from-[#1E293B]/90 to-[#0F172A]/90 backdrop-blur-lg">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="text-2xl font-bold bg-gradient-to-r from-lime-500 to-lime-400 dark:from-lime-400 dark:to-lime-300 bg-clip-text text-transparent hover:opacity-80 transition-opacity duration-300">
-            EasyPark
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#BEF264] text-slate-900 shadow-lg shadow-lime-200/40 ring-1 ring-lime-200/60 dark:shadow-lime-900/30">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-6 w-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+              >
+                <path d="M5 16h14l-1.5-7H6.5L5 16Z" />
+                <path d="M7 16v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" />
+                <path d="M9 11h6" />
+              </svg>
+            </div>
+
+            <div className="flex flex-col">
+              <span className="text-lg font-bold leading-tight text-slate-900 dark:text-white">
+                EasyPark
+              </span>
+              <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                Smart Parking
+              </span>
+            </div>
           </Link>
 
-          {/* Nav Links - Center */}
-          <div className="hidden md:flex items-center space-x-8">
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`
-                    relative px-4 py-2 text-sm font-medium transition-all duration-300
-                    ${
-                      isActive
-                        ? 'text-lime-600 dark:text-lime-400'
-                        : 'text-slate-700 dark:text-slate-300 hover:text-lime-600 dark:hover:text-lime-400'
-                    }
-                    hover:scale-105
-                  `}
-                >
-                  {link.label}
-                  {isActive && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-lime-500 to-lime-400"></span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+          {/* Nav Links - Desktop */}
+          {renderLinks('row')}
 
-          {/* Right Side - Theme Toggle */}
-          <div className="flex items-center space-x-4">
-            <ThemeToggle />
+          {/* Mobile Toggle */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setOpen((prev) => !prev)}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 bg-[#111827]/70 text-slate-100 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-lime-400 md:hidden"
+              aria-expanded={open}
+              aria-label="Toggle navigation"
+            >
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              >
+                {open ? (
+                  <path d="M6 6l12 12M18 6 6 18" />
+                ) : (
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                )}
+              </svg>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Mobile Menu */}
+      {open && (
+        <div className="mx-auto max-w-7xl px-4 pb-4 sm:px-6 lg:px-8 md:hidden">
+          <div className="rounded-3xl border border-slate-800/70 bg-gradient-to-br from-[#1E293B]/90 to-[#0F172A]/90 p-4 shadow-lg ring-1 ring-slate-900/60 backdrop-blur-md transition">
+            {renderLinks('col')}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
-
