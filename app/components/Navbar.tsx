@@ -75,7 +75,7 @@ export default function Navbar() {
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo - Left */}
-          <Link href="/" className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#BEF264] text-slate-900 shadow-lg shadow-lime-200/40 ring-1 ring-lime-200/60 dark:shadow-lime-900/30">
               <svg
                 viewBox="0 0 24 24"
@@ -98,7 +98,10 @@ export default function Navbar() {
                 Smart Parking
               </span>
             </div>
-          </Link>
+
+          </div>
+
+
 
           {/* Centered Nav Links */}
           <div className="absolute left-1/2 -translate-x-1/2">
