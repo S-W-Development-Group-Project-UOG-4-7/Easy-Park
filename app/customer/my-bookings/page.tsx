@@ -367,7 +367,7 @@ export default function MyBookingsPage() {
   );
 }
 
-/* --------- tiny UI helpers --------- */
+/* --------- tiny UI helpers ------------- */
 
 function Chip({ label }: { label: string }) {
   return (
