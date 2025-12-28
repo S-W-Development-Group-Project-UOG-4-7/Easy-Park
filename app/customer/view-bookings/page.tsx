@@ -237,6 +237,7 @@ export default function ViewBookingsPage() {
           </div>
         </div>
 
+        {/* Selection Controls (2 columns on mobile for nicer fit) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-5">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Date</label>
