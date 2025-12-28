@@ -38,16 +38,16 @@ export default function MyBookingsPage() {
     setBookings(stored);
   }, []);
 
-  // ✅ Pricing rules (based on your example):
+  // ✅ Pricing rules:
   // Full fee per slot per hour = 300
-  // Online fee (advance / half) per slot = 150
+  // Online fee (advance) per slot = 150 (paid once, NOT per hour)
   const FULL_FEE_PER_SLOT_PER_HOUR = 300;
   const ONLINE_FEE_PER_SLOT = 150;
 
   // ✅ Total = 300 * duration(hours) * number of slots
   const getTotal = (b: Booking) => FULL_FEE_PER_SLOT_PER_HOUR * b.duration * b.slots.length;
 
-  // ✅ Pay now = 150 * number of slots
+  // ✅ Pay now = 150 * number of slots (one time)
   const getPaidNow = (b: Booking) => ONLINE_FEE_PER_SLOT * b.slots.length;
 
   // ✅ Remaining = Total - PaidNow
@@ -342,7 +342,7 @@ export default function MyBookingsPage() {
             <h3 className="text-lg font-bold text-white">Cancel Booking?</h3>
             <p className="text-sm text-slate-300 mt-2">
               You can cancel this booking, but the online fee of{' '}
-              <span className="font-bold text-rose-300">Rs.{ONLINE_FEE_PER_SLOT}</span> is{' '}
+              <span className="font-bold text-rose-300">Rs.{getPaidNow(cancelTarget)}</span> is{' '}
               <span className="font-bold">not refundable</span>.
             </p>
 
