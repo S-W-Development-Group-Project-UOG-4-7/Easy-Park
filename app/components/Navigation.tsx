@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useAuthModal } from "./AuthModalProvider";
 
 const navItems = [
   { name: "Home", href: "#home" },
@@ -14,6 +15,7 @@ const navItems = [
 export function Navigation() {
   const [active, setActive] = useState("Home");
   const [open, setOpen] = useState(false);
+  const { openAuthModal } = useAuthModal();
 
   const linkClasses = useMemo(
     () =>
@@ -52,10 +54,10 @@ export function Navigation() {
   );
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800/60 bg-gradient-to-br from-[#1E293B]/90 to-[#0F172A]/90 backdrop-blur-lg">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-800/60 bg-linear-to-br from-[#1E293B]/90 to-[#0F172A]/90 backdrop-blur-lg">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#BEF264] text-slate-900 shadow-lg shadow-lime-200/40 ring-1 ring-lime-200/60 dark:shadow-lime-900/30">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-[#84CC16] to-[#BEF264] text-slate-900 shadow-lg shadow-lime-200/40 ring-1 ring-lime-200/60 dark:shadow-lime-900/30">
             <svg
               viewBox="0 0 24 24"
               className="h-6 w-6"
@@ -81,16 +83,20 @@ export function Navigation() {
         {renderLinks("row")}
 
         <div className="hidden items-center gap-3 lg:flex">
-          <Link href="/sign-in">
-            <button className="rounded-full border border-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:border-lime-300 focus:outline-none focus:ring-2 focus:ring-lime-400">
-              Login
-            </button>
-          </Link>
-          <Link href="/sign-up">
-            <button className="rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264] px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-lime-200/60 transition hover:-translate-y-0.5 hover:shadow-lime-300/70 focus:outline-none focus:ring-2 focus:ring-lime-300">
-              Sign Up
-            </button>
-          </Link>
+          <button
+            type="button"
+            onClick={() => openAuthModal("sign-in")}
+            className="rounded-full border border-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:border-lime-300 focus:outline-none focus:ring-2 focus:ring-lime-400"
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            onClick={() => openAuthModal("sign-up")}
+            className="rounded-full bg-linear-to-r from-[#84CC16] to-[#BEF264] px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-lime-200/60 transition hover:-translate-y-0.5 hover:shadow-lime-300/70 focus:outline-none focus:ring-2 focus:ring-lime-300"
+          >
+            Sign Up
+          </button>
         </div>
 
         <button
@@ -119,13 +125,27 @@ export function Navigation() {
 
       {open && (
         <div className="mx-auto max-w-6xl px-4 pb-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl border border-slate-800/70 bg-gradient-to-br from-[#1E293B]/90 to-[#0F172A]/90 p-4 shadow-lg ring-1 ring-slate-900/60 backdrop-blur-md transition">
+          <div className="rounded-3xl border border-slate-800/70 bg-linear-to-br from-[#1E293B]/90 to-[#0F172A]/90 p-4 shadow-lg ring-1 ring-slate-900/60 backdrop-blur-md transition">
             {renderLinks("col")}
             <div className="mt-4 flex flex-col gap-3">
-              <button className="w-full rounded-full border border-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:border-lime-300 focus:outline-none focus:ring-2 focus:ring-lime-400">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  openAuthModal("sign-in");
+                }}
+                className="w-full rounded-full border border-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:border-lime-300 focus:outline-none focus:ring-2 focus:ring-lime-400"
+              >
                 Login
               </button>
-              <button className="w-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264] px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-lime-200/60 transition hover:-translate-y-0.5 hover:shadow-lime-300/70 focus:outline-none focus:ring-2 focus:ring-lime-300">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  openAuthModal("sign-up");
+                }}
+                className="w-full rounded-full bg-linear-to-r from-[#84CC16] to-[#BEF264] px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-lime-200/60 transition hover:-translate-y-0.5 hover:shadow-lime-300/70 focus:outline-none focus:ring-2 focus:ring-lime-300"
+              >
                 Sign Up
               </button>
             </div>
