@@ -38,9 +38,20 @@ export default function MyBookingsPage() {
     setBookings(stored);
   }, []);
 
-  const ONLINE_FEE = 150;
-  const getTotal = (b: Booking) => 150 * b.duration;
-  const getRemaining = (b: Booking) => Math.max(0, getTotal(b) - ONLINE_FEE);
+  // ✅ Pricing rules (based on your example):
+  // Full fee per slot per hour = 300
+  // Online fee (advance / half) per slot = 150
+  const FULL_FEE_PER_SLOT_PER_HOUR = 300;
+  const ONLINE_FEE_PER_SLOT = 150;
+
+  // ✅ Total = 300 * duration(hours) * number of slots
+  const getTotal = (b: Booking) => FULL_FEE_PER_SLOT_PER_HOUR * b.duration * b.slots.length;
+
+  // ✅ Pay now = 150 * number of slots
+  const getPaidNow = (b: Booking) => ONLINE_FEE_PER_SLOT * b.slots.length;
+
+  // ✅ Remaining = Total - PaidNow
+  const getRemaining = (b: Booking) => Math.max(0, getTotal(b) - getPaidNow(b));
 
   const handlePayNow = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -143,7 +154,8 @@ export default function MyBookingsPage() {
             My Bookings
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Online fee (Rs.{ONLINE_FEE}) is <span className="text-rose-300 font-semibold">non-refundable</span> if you cancel.
+            Online fee (Rs.{ONLINE_FEE_PER_SLOT} per slot) is{' '}
+            <span className="text-rose-300 font-semibold">non-refundable</span> if you cancel.
           </p>
         </div>
 
@@ -172,6 +184,7 @@ export default function MyBookingsPage() {
       <div className="grid gap-3">
         {filtered.map((b) => {
           const total = getTotal(b);
+          const paidNow = getPaidNow(b);
           const remaining = getRemaining(b);
           const expanded = expandedBookingId === b.bookingId;
           const s = statusMeta(b.status);
@@ -248,7 +261,7 @@ export default function MyBookingsPage() {
                 {/* Stats: 1 col on tiny screens, 3 cols otherwise */}
                 <div className="mt-3 grid grid-cols-1 xs:grid-cols-3 sm:grid-cols-3 gap-2">
                   <TinyStat label="Total" value={`Rs.${total}`} />
-                  <TinyStat label="Paid" value={`Rs.${ONLINE_FEE}`} />
+                  <TinyStat label="Paid" value={`Rs.${paidNow}`} />
                   <TinyStat label="Remaining" value={`Rs.${remaining}`} highlight />
                 </div>
 
@@ -259,7 +272,7 @@ export default function MyBookingsPage() {
                       onClick={() => handlePayNow(b)}
                       className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 text-sm font-semibold hover:shadow-lg transition"
                     >
-                      Pay Rs.{ONLINE_FEE}
+                      Pay Rs.{paidNow}
                     </button>
                   )}
 
@@ -313,7 +326,7 @@ export default function MyBookingsPage() {
       {showPaymentForm && selectedBooking && (
         <PaymentForm
           booking={selectedBooking}
-          total={ONLINE_FEE}
+          total={getPaidNow(selectedBooking)}
           onSuccess={handlePaymentSuccess}
           onClose={() => {
             setSelectedBooking(null);
@@ -329,7 +342,7 @@ export default function MyBookingsPage() {
             <h3 className="text-lg font-bold text-white">Cancel Booking?</h3>
             <p className="text-sm text-slate-300 mt-2">
               You can cancel this booking, but the online fee of{' '}
-              <span className="font-bold text-rose-300">Rs.{ONLINE_FEE}</span> is{' '}
+              <span className="font-bold text-rose-300">Rs.{ONLINE_FEE_PER_SLOT}</span> is{' '}
               <span className="font-bold">not refundable</span>.
             </p>
 
