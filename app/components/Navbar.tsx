@@ -1,12 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useAuth } from './AuthProvider';
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { user, signOut, isLoading } = useAuth();
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
+  const handleSignOut = async () => {
+    setShowSignOutConfirm(false);
+    await signOut();
+    router.push('/');
+  };
 
   const navLinks = [
     { href: '/customer/view-bookings', label: 'Book Now' },
@@ -71,6 +81,7 @@ export default function Navbar() {
   );
 
   return (
+    <>
     <nav className="sticky top-0 z-40 w-full border-b border-slate-800/60 bg-gradient-to-br from-[#1E293B]/90 to-[#0F172A]/90 backdrop-blur-lg">
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
@@ -142,6 +153,30 @@ export default function Navbar() {
                 <circle cx="12" cy="7" r="4" />
               </svg>
             </div>
+
+            {/* Sign Out Button */}
+            <button
+              type="button"
+              onClick={() => setShowSignOutConfirm(true)}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 font-medium text-sm transition hover:bg-red-500/20 hover:border-red-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Sign Out"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              Sign Out
+            </button>
           </div>
 
           {/* Mobile Toggle */}
@@ -185,10 +220,89 @@ export default function Navbar() {
           <div className="relative z-40 mx-auto max-w-7xl px-4 pb-4 sm:px-6 lg:px-8">
             <div className="mt-3 rounded-3xl border border-slate-800/70 bg-gradient-to-br from-[#1E293B]/95 to-[#0F172A]/95 p-4 shadow-2xl ring-1 ring-slate-900/60 backdrop-blur-md">
               {renderLinks('col')}
+              
+              {/* Mobile Sign Out Button */}
+              <button
+                type="button"
+                onClick={() => setShowSignOutConfirm(true)}
+                disabled={isLoading}
+                className="mt-3 w-full flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-semibold border border-red-500/50 bg-red-500/10 text-red-400 transition hover:bg-red-500/20 disabled:opacity-50"
+              >
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                Sign Out
+              </button>
             </div>
           </div>
         </div>
       )}
+
     </nav>
+
+    {/* Sign Out Confirmation Modal - Outside nav for proper centering */}
+    {showSignOutConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        {/* Backdrop */}
+        <div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowSignOutConfirm(false)}
+        />
+        
+        {/* Modal */}
+        <div className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-slate-700 bg-gradient-to-br from-[#1E293B] to-[#0F172A] p-6 shadow-2xl">
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 border border-red-500/30">
+              <svg
+                className="h-7 w-7 text-red-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </div>
+            
+            <h3 className="text-xl font-bold text-white mb-2">Sign Out</h3>
+            <p className="text-slate-400 mb-6">
+              Are you sure you want to sign out? You will need to sign in again to access your account.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSignOutConfirm(false)}
+                className="flex-1 px-4 py-3 rounded-xl border border-slate-600 bg-slate-800/50 text-slate-300 font-medium transition hover:bg-slate-800 hover:border-slate-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="flex-1 px-4 py-3 rounded-xl border border-red-500 bg-red-500/20 text-red-400 font-medium transition hover:bg-red-500/30"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }
