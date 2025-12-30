@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
   Home, 
@@ -15,15 +15,54 @@ import {
   ChevronRight,
   Eye,
   Car,
-  XCircle
+  XCircle,
+  Menu,
+  X,
+  Loader2
 } from "lucide-react";
+
+interface BookingData {
+  id: string;
+  bookingNumber: string;
+  vehicleNumber: string;
+  startTime: string;
+  duration: string;
+  amount: number;
+  status: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+  };
+  slot: {
+    slotNumber: string;
+    parkingLot: {
+      name: string;
+      address: string;
+    };
+  };
+}
+
+interface UserData {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  totalBookings: number;
+}
 
 export default function ViewBookings() {
   const [activeItem, setActiveItem] = useState("bookings");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [selectedUserData, setSelectedUserData] = useState<UserData | null>(null);
+  const [bookings, setBookings] = useState<BookingData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const menuItems = [
     { id: "home", label: "Home", icon: Home, href: "/land_owner" },
@@ -31,30 +70,70 @@ export default function ViewBookings() {
     { id: "slots", label: "Add Slots", icon: PlusSquare, href: "/land_owner/add_slots" },
   ];
 
-  // Mock users data
-  const usersData: Record<string, { name: string; email: string; phone: string; totalBookings: number }> = {
-    "USR-001": { name: "Alice Johnson", email: "alice@email.com", phone: "+94 77 123 4567", totalBookings: 12 },
-    "USR-002": { name: "Bob Smith", email: "bob@email.com", phone: "+94 77 234 5678", totalBookings: 8 },
-    "USR-003": { name: "Carol White", email: "carol@email.com", phone: "+94 77 345 6789", totalBookings: 15 },
-    "USR-004": { name: "David Brown", email: "david@email.com", phone: "+94 77 456 7890", totalBookings: 5 },
-    "USR-005": { name: "Eva Green", email: "eva@email.com", phone: "+94 77 567 8901", totalBookings: 20 },
-    "USR-006": { name: "Frank Miller", email: "frank@email.com", phone: "+94 77 678 9012", totalBookings: 3 },
-  };
+  // Fetch bookings from API
+  useEffect(() => {
+    async function fetchBookings() {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/bookings');
+        if (!response.ok) throw new Error('Failed to fetch bookings');
+        const data = await response.json();
+        setBookings(data.bookings || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchBookings();
+  }, []);
 
-  const allBookings = [
-    { id: "BK-001", userId: "USR-001", vehicle: "ABC-1234", spot: "A-12", date: "2025-12-28", time: "09:30 AM", duration: "2h", amount: "$30", status: "active" },
-    { id: "BK-002", userId: "USR-002", vehicle: "XYZ-5678", spot: "B-05", date: "2025-12-28", time: "10:15 AM", duration: "1h 30m", amount: "$22.50", status: "active" },
-    { id: "BK-003", userId: "USR-003", vehicle: "DEF-9012", spot: "C-08", date: "2025-12-28", time: "08:00 AM", duration: "4h", amount: "$60", status: "completed" },
-    { id: "BK-004", userId: "USR-004", vehicle: "GHI-3456", spot: "A-03", date: "2025-12-28", time: "11:00 AM", duration: "3h", amount: "$45", status: "active" },
-    { id: "BK-005", userId: "USR-005", vehicle: "JKL-7890", spot: "B-08", date: "2025-12-28", time: "01:30 PM", duration: "2h", amount: "$30", status: "active" },
-    { id: "BK-006", userId: "USR-006", vehicle: "MNO-1234", spot: "C-01", date: "2025-12-27", time: "03:45 PM", duration: "1h 30m", amount: "$22.50", status: "completed" },
-    { id: "BK-007", userId: "USR-001", vehicle: "PQR-5678", spot: "A-07", date: "2025-12-27", time: "06:00 PM", duration: "2h", amount: "$30", status: "completed" },
-    { id: "BK-008", userId: "USR-002", vehicle: "STU-9012", spot: "B-11", date: "2025-12-27", time: "07:30 PM", duration: "1h", amount: "$15", status: "cancelled" },
-    { id: "BK-009", userId: "USR-003", vehicle: "VWX-3456", spot: "C-05", date: "2025-12-26", time: "09:00 AM", duration: "5h", amount: "$75", status: "completed" },
-    { id: "BK-010", userId: "USR-004", vehicle: "YZA-7890", spot: "A-10", date: "2025-12-26", time: "02:00 PM", duration: "2h 30m", amount: "$37.50", status: "completed" },
-    { id: "BK-011", userId: "USR-005", vehicle: "BCD-1234", spot: "B-03", date: "2025-12-25", time: "10:00 AM", duration: "3h", amount: "$45", status: "completed" },
-    { id: "BK-012", userId: "USR-006", vehicle: "EFG-5678", spot: "C-09", date: "2025-12-25", time: "04:00 PM", duration: "2h", amount: "$30", status: "cancelled" },
-  ];
+  // Fetch user details when selected
+  useEffect(() => {
+    async function fetchUserDetails() {
+      if (!selectedUser) {
+        setSelectedUserData(null);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/users/${selectedUser}`);
+        if (!response.ok) throw new Error('Failed to fetch user');
+        const data = await response.json();
+        setSelectedUserData(data.user);
+      } catch (err) {
+        console.error('Error fetching user:', err);
+        // Fallback to booking data if user API fails
+        const booking = bookings.find(b => b.user.id === selectedUser);
+        if (booking) {
+          const userBookingsCount = bookings.filter(b => b.user.id === selectedUser).length;
+          setSelectedUserData({
+            id: booking.user.id,
+            name: booking.user.name,
+            email: booking.user.email,
+            phone: booking.user.phone,
+            totalBookings: userBookingsCount,
+          });
+        }
+      }
+    }
+    fetchUserDetails();
+  }, [selectedUser, bookings]);
+
+  // Transform bookings for display
+  const allBookings = bookings.map(booking => ({
+    id: booking.bookingNumber,
+    odId: booking.id,
+    odUserId: booking.user.id,
+    userId: booking.user.id.slice(0, 8),
+    userName: booking.user.name,
+    vehicle: booking.vehicleNumber,
+    spot: booking.slot.slotNumber,
+    date: new Date(booking.startTime).toISOString().split('T')[0],
+    time: new Date(booking.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    duration: booking.duration,
+    amount: `$${booking.amount.toFixed(2)}`,
+    status: booking.status.toLowerCase(),
+  }));
 
   // Filter bookings based on search and status
   const filteredBookings = allBookings.filter((booking) => {
@@ -62,7 +141,8 @@ export default function ViewBookings() {
       booking.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.vehicle.toLowerCase().includes(searchTerm.toLowerCase()) ||
       booking.spot.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.userId.toLowerCase().includes(searchTerm.toLowerCase());
+      booking.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      booking.userName.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === "all" || booking.status === statusFilter;
     
@@ -92,8 +172,26 @@ export default function ViewBookings() {
 
   return (
     <div className="flex min-h-screen">
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-[#0F172A] to-[#020617] border-r border-white/10 flex flex-col fixed h-full">
+      <aside className={`w-64 bg-gradient-to-b from-[#0F172A] to-[#020617] border-r border-white/10 flex flex-col fixed h-full z-50 transition-transform duration-300 lg:translate-x-0 ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
+        {/* Close button for mobile */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-4 right-4 p-2 text-[#94A3B8] hover:text-[#E5E7EB]"
+        >
+          <X className="w-6 h-6" />
+        </button>
+
         {/* Owner Profile Section */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
@@ -149,29 +247,37 @@ export default function ViewBookings() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 ml-64 bg-gradient-to-b from-[#0F172A] to-[#020617] min-h-screen p-8">
+      <main className="flex-1 lg:ml-64 bg-gradient-to-b from-[#0F172A] to-[#020617] min-h-screen p-4 sm:p-6 lg:p-8">
         <div className="max-w-6xl mx-auto">
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden fixed top-4 left-4 z-30 p-2 rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 text-[#E5E7EB]"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-[#E5E7EB]">Booking Details</h1>
-            <p className="text-[#94A3B8] mt-1">View and manage all parking bookings</p>
+          <div className="mb-6 sm:mb-8 mt-14 lg:mt-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#E5E7EB]">Booking Details</h1>
+            <p className="text-[#94A3B8] mt-1 text-sm sm:text-base">View and manage all parking bookings</p>
           </div>
 
           {/* Filters Section */}
-          <div className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-6 mb-6">
-            <div className="flex flex-col md:flex-row gap-4">
+          <div className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4 sm:p-6 mb-4 sm:mb-6">
+            <div className="flex flex-col gap-3 sm:gap-4">
               {/* Search */}
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#94A3B8]" />
                 <input
                   type="text"
-                  placeholder="Search by Booking ID, Vehicle, or Spot..."
+                  placeholder="Search by ID, Vehicle, or Spot..."
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full bg-[#0F172A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:border-[#84CC16]"
+                  className="w-full bg-[#0F172A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:border-[#84CC16] text-sm sm:text-base"
                 />
               </div>
 
@@ -184,7 +290,7 @@ export default function ViewBookings() {
                     setStatusFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16] cursor-pointer"
+                  className="flex-1 sm:flex-none bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16] cursor-pointer text-sm sm:text-base"
                 >
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
@@ -196,22 +302,82 @@ export default function ViewBookings() {
           </div>
 
           {/* Bookings Table */}
-          <div className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-[#84CC16]">All Bookings</h2>
-              <span className="text-sm text-[#94A3B8]">
+          <div className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-[#84CC16]">All Bookings</h2>
+              <span className="text-xs sm:text-sm text-[#94A3B8]">
                 Showing {paginatedBookings.length} of {filteredBookings.length} bookings
               </span>
             </div>
 
-            {paginatedBookings.length > 0 ? (
+            {/* Loading State */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="w-12 h-12 text-[#84CC16] animate-spin mb-4" />
+                <p className="text-[#94A3B8]">Loading bookings...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <XCircle className="w-12 h-12 text-red-400 mb-4" />
+                <p className="text-[#E5E7EB] text-lg">Error loading bookings</p>
+                <p className="text-[#94A3B8] text-sm mt-2">{error}</p>
+              </div>
+            ) : paginatedBookings.length > 0 ? (
               <>
-                <div className="overflow-x-auto">
+                {/* Mobile Cards View */}
+                <div className="md:hidden space-y-3">
+                  {paginatedBookings.map((booking) => (
+                    <div key={booking.id} className="bg-[#0F172A] rounded-xl p-4 border border-white/5">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="font-medium text-[#E5E7EB]">{booking.id}</p>
+                          <button
+                            onClick={() => setSelectedUser(booking.odUserId)}
+                            className="flex items-center gap-1 text-[#84CC16] text-sm hover:underline"
+                          >
+                            <User className="w-3 h-3" />
+                            {booking.userName}
+                          </button>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(booking.status)}`}>
+                          {booking.status}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                        <div>
+                          <p className="text-[#94A3B8] text-xs">Vehicle</p>
+                          <p className="text-[#E5E7EB] flex items-center gap-1"><Car className="w-3 h-3" />{booking.vehicle}</p>
+                        </div>
+                        <div>
+                          <p className="text-[#94A3B8] text-xs">Spot</p>
+                          <p className="text-[#E5E7EB]">{booking.spot}</p>
+                        </div>
+                        <div>
+                          <p className="text-[#94A3B8] text-xs">Date</p>
+                          <p className="text-[#E5E7EB]">{new Date(booking.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                        </div>
+                        <div>
+                          <p className="text-[#94A3B8] text-xs">Time</p>
+                          <p className="text-[#E5E7EB]">{booking.time}</p>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center pt-3 border-t border-white/10">
+                        <p className="text-[#84CC16] font-medium">{booking.amount}</p>
+                        <button className="p-2 rounded-lg bg-[#84CC16]/20 text-[#84CC16]">
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="text-left text-[#94A3B8] text-sm border-b border-white/10">
                         <th className="pb-4">Booking ID</th>
-                        <th className="pb-4">User ID</th>
+                        <th className="pb-4">User</th>
                         <th className="pb-4">Vehicle</th>
                         <th className="pb-4">Spot</th>
                         <th className="pb-4">Date</th>
@@ -228,11 +394,11 @@ export default function ViewBookings() {
                           <td className="py-4 font-medium">{booking.id}</td>
                           <td className="py-4">
                             <button
-                              onClick={() => setSelectedUser(booking.userId)}
+                              onClick={() => setSelectedUser(booking.odUserId)}
                               className="flex items-center gap-1 text-[#84CC16] hover:underline"
                             >
                               <User className="w-3 h-3" />
-                              {booking.userId}
+                              {booking.userName}
                             </button>
                           </td>
                           <td className="py-4">
@@ -269,23 +435,23 @@ export default function ViewBookings() {
 
                 {/* Pagination */}
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
-                    <p className="text-sm text-[#94A3B8]">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-4 border-t border-white/10">
+                    <p className="text-xs sm:text-sm text-[#94A3B8]">
                       Page {currentPage} of {totalPages}
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-center">
                       <button
                         onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                         disabled={currentPage === 1}
                         className="p-2 rounded-lg border border-white/10 text-[#E5E7EB] hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
-                        <ChevronLeft className="w-5 h-5" />
+                        <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                         <button
                           key={page}
                           onClick={() => setCurrentPage(page)}
-                          className={`w-10 h-10 rounded-lg font-medium transition-colors ${
+                          className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg font-medium text-sm transition-colors ${
                             currentPage === page
                               ? "bg-gradient-to-r from-[#84CC16] to-[#BEF264] text-[#0F172A]"
                               : "border border-white/10 text-[#E5E7EB] hover:bg-white/5"
@@ -299,7 +465,7 @@ export default function ViewBookings() {
                         disabled={currentPage === totalPages}
                         className="p-2 rounded-lg border border-white/10 text-[#E5E7EB] hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
-                        <ChevronRight className="w-5 h-5" />
+                        <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                     </div>
                   </div>
@@ -317,7 +483,7 @@ export default function ViewBookings() {
       </main>
 
       {/* User Details Modal */}
-      {selectedUser && usersData[selectedUser] && (
+      {selectedUser && selectedUserData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSelectedUser(null)}>
           <div 
             className="bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4"
@@ -338,8 +504,8 @@ export default function ViewBookings() {
                 <User className="w-8 h-8 text-[#0F172A]" />
               </div>
               <div>
-                <h4 className="text-lg font-semibold text-[#E5E7EB]">{usersData[selectedUser].name}</h4>
-                <p className="text-sm text-[#94A3B8]">{selectedUser}</p>
+                <h4 className="text-lg font-semibold text-[#E5E7EB]">{selectedUserData.name}</h4>
+                <p className="text-sm text-[#94A3B8]">{selectedUserData.id.slice(0, 8)}...</p>
               </div>
             </div>
 
@@ -352,7 +518,7 @@ export default function ViewBookings() {
                 </div>
                 <div>
                   <p className="text-xs text-[#94A3B8]">Email</p>
-                  <p className="text-[#E5E7EB]">{usersData[selectedUser].email}</p>
+                  <p className="text-[#E5E7EB]">{selectedUserData.email}</p>
                 </div>
               </div>
 
@@ -364,7 +530,7 @@ export default function ViewBookings() {
                 </div>
                 <div>
                   <p className="text-xs text-[#94A3B8]">Phone</p>
-                  <p className="text-[#E5E7EB]">{usersData[selectedUser].phone}</p>
+                  <p className="text-[#E5E7EB]">{selectedUserData.phone || 'Not provided'}</p>
                 </div>
               </div>
 
@@ -374,7 +540,7 @@ export default function ViewBookings() {
                 </div>
                 <div>
                   <p className="text-xs text-[#94A3B8]">Total Bookings</p>
-                  <p className="text-[#E5E7EB]">{usersData[selectedUser].totalBookings} bookings</p>
+                  <p className="text-[#E5E7EB]">{selectedUserData.totalBookings} bookings</p>
                 </div>
               </div>
             </div>

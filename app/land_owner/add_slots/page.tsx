@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
   Home, 
@@ -11,22 +11,41 @@ import {
   Plus,
   Trash2,
   Save,
-  MapPin
+  MapPin,
+  Menu,
+  X,
+  Loader2,
+  AlertCircle
 } from "lucide-react";
+
+interface Slot {
+  id: string;
+  slotNumber: string;
+  zone: string;
+  status: string;
+  pricePerHour: number;
+  parkingLotId: string;
+}
+
+interface ParkingLot {
+  id: string;
+  name: string;
+  address: string;
+}
 
 export default function AddSlots() {
   const [activeItem, setActiveItem] = useState("slots");
-  const [slots, setSlots] = useState([
-    { id: "A-01", zone: "A", status: "available" },
-    { id: "A-02", zone: "A", status: "available" },
-    { id: "A-03", zone: "A", status: "occupied" },
-    { id: "B-01", zone: "B", status: "available" },
-    { id: "B-02", zone: "B", status: "available" },
-    { id: "C-01", zone: "C", status: "maintenance" },
-  ]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [parkingLots, setParkingLots] = useState<ParkingLot[]>([]);
+  const [selectedParkingLot, setSelectedParkingLot] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   
-  const [newSlot, setNewSlot] = useState({ zone: "A", count: 1 });
+  const [newSlot, setNewSlot] = useState({ zone: "A", count: 1, pricePerHour: 15 });
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedSlotForStatus, setSelectedSlotForStatus] = useState<Slot | null>(null);
 
   const menuItems = [
     { id: "home", label: "Home", icon: Home, href: "/land_owner" },
@@ -36,8 +55,48 @@ export default function AddSlots() {
 
   const zones = ["A", "B", "C", "D"];
 
+  // Fetch parking lots on mount
+  useEffect(() => {
+    async function fetchParkingLots() {
+      try {
+        const response = await fetch('/api/parking-lots');
+        if (!response.ok) throw new Error('Failed to fetch parking lots');
+        const data = await response.json();
+        setParkingLots(data.parkingLots || []);
+        if (data.parkingLots?.length > 0) {
+          setSelectedParkingLot(data.parkingLots[0].id);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      }
+    }
+    fetchParkingLots();
+  }, []);
+
+  // Fetch slots when parking lot changes
+  useEffect(() => {
+    async function fetchSlots() {
+      if (!selectedParkingLot) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
+        if (!response.ok) throw new Error('Failed to fetch slots');
+        const data = await response.json();
+        setSlots(data.slots || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSlots();
+  }, [selectedParkingLot]);
+
   const getStatusStyle = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case "available":
         return "bg-green-500/20 text-green-400 border-green-500/30";
       case "occupied":
@@ -49,39 +108,95 @@ export default function AddSlots() {
     }
   };
 
-  const addSlots = () => {
-    const zone = newSlot.zone;
-    const existingInZone = slots.filter(s => s.zone === zone);
-    const newSlots = [];
-    
-    for (let i = 0; i < newSlot.count; i++) {
-      const num = existingInZone.length + i + 1;
-      newSlots.push({
-        id: `${zone}-${num.toString().padStart(2, '0')}`,
-        zone: zone,
-        status: "available"
-      });
+  const addSlots = async () => {
+    if (!selectedParkingLot) {
+      setError('Please select a parking lot first');
+      return;
     }
     
-    setSlots([...slots, ...newSlots]);
-    setShowAddForm(false);
-    setNewSlot({ zone: "A", count: 1 });
-  };
+    try {
+      setActionLoading('add');
+      const response = await fetch('/api/slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          parkingLotId: selectedParkingLot,
+          zone: newSlot.zone,
+          count: newSlot.count,
+          pricePerHour: newSlot.pricePerHour,
+        }),
+      });
 
-  const deleteSlot = (id: string) => {
-    setSlots(slots.filter(s => s.id !== id));
-  };
-
-  const toggleStatus = (id: string) => {
-    setSlots(slots.map(s => {
-      if (s.id === id) {
-        const statuses = ["available", "occupied", "maintenance"];
-        const currentIndex = statuses.indexOf(s.status);
-        const nextIndex = (currentIndex + 1) % statuses.length;
-        return { ...s, status: statuses[nextIndex] };
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add slots');
       }
-      return s;
-    }));
+
+      // Refresh slots
+      const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
+      const slotsData = await slotsResponse.json();
+      setSlots(slotsData.slots || []);
+      
+      setShowAddForm(false);
+      setNewSlot({ zone: "A", count: 1, pricePerHour: 15 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add slots');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const deleteSlot = async (id: string) => {
+    try {
+      setActionLoading(id);
+      const response = await fetch(`/api/slots?id=${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete slot');
+      }
+
+      setSlots(slots.filter(s => s.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete slot');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const toggleStatus = async (id: string) => {
+    const slot = slots.find(s => s.id === id);
+    if (!slot) return;
+    setSelectedSlotForStatus(slot);
+  };
+
+  const updateSlotStatus = async (newStatus: string) => {
+    if (!selectedSlotForStatus) return;
+
+    try {
+      setActionLoading(selectedSlotForStatus.id);
+      const response = await fetch('/api/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedSlotForStatus.id, status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update slot');
+      }
+
+      setSlots(slots.map(s => 
+        s.id === selectedSlotForStatus.id ? { ...s, status: newStatus } : s
+      ));
+      setSelectedSlotForStatus(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update slot');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const slotsByZone = zones.reduce((acc, zone) => {
@@ -91,8 +206,26 @@ export default function AddSlots() {
 
   return (
     <div className="flex min-h-screen">
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-[#0F172A] to-[#020617] border-r border-white/10 flex flex-col fixed h-full">
+      <aside className={`w-64 bg-gradient-to-b from-[#0F172A] to-[#020617] border-r border-white/10 flex flex-col fixed h-full z-50 transition-transform duration-300 lg:translate-x-0 ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
+        {/* Close button for mobile */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-4 right-4 p-2 text-[#94A3B8] hover:text-[#E5E7EB]"
+        >
+          <X className="w-6 h-6" />
+        </button>
+
         {/* Owner Profile Section */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
@@ -148,96 +281,156 @@ export default function AddSlots() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 ml-64 bg-gradient-to-b from-[#0F172A] to-[#020617] min-h-screen p-8">
+      <main className="flex-1 lg:ml-64 bg-gradient-to-b from-[#0F172A] to-[#020617] min-h-screen p-4 sm:p-6 lg:p-8">
         <div className="max-w-6xl mx-auto">
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden fixed top-4 left-4 z-30 p-2 rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 text-[#E5E7EB]"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+
           {/* Header */}
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8 mt-16 lg:mt-0">
             <div>
-              <h1 className="text-3xl font-bold text-[#E5E7EB]">Manage Parking Slots</h1>
-              <p className="text-[#94A3B8] mt-1">Add, edit, or remove parking slots</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#E5E7EB]">Manage Parking Slots</h1>
+              <p className="text-[#94A3B8] mt-1 text-sm sm:text-base">Add, edit, or remove parking slots</p>
             </div>
             <button 
               onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#84CC16] to-[#BEF264] text-[#0F172A] font-semibold hover:shadow-lg hover:shadow-lime-500/30 transition-all duration-200"
+              disabled={!selectedParkingLot}
+              className="flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-xl bg-gradient-to-r from-[#84CC16] to-[#BEF264] text-[#0F172A] font-semibold hover:shadow-lg hover:shadow-lime-500/30 transition-all duration-200 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-5 h-5" />
               Add Slots
             </button>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-4 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-400" />
+              <p className="text-red-400">{error}</p>
+              <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Parking Lot Selector */}
+          <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4 mb-6">
+            <label className="block text-sm text-[#94A3B8] mb-2">Select Parking Lot</label>
+            <select
+              value={selectedParkingLot}
+              onChange={(e) => setSelectedParkingLot(e.target.value)}
+              className="w-full bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16]"
+            >
+              {parkingLots.length === 0 ? (
+                <option value="">No parking lots available</option>
+              ) : (
+                parkingLots.map(lot => (
+                  <option key={lot.id} value={lot.id}>{lot.name} - {lot.address}</option>
+                ))
+              )}
+            </select>
+          </div>
+
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4">
-              <p className="text-sm text-[#94A3B8]">Total Slots</p>
-              <p className="text-2xl font-bold text-[#E5E7EB]">{slots.length}</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-[#94A3B8]">Total Slots</p>
+              <p className="text-xl sm:text-2xl font-bold text-[#E5E7EB]">{slots.length}</p>
             </div>
-            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4">
-              <p className="text-sm text-[#94A3B8]">Available</p>
-              <p className="text-2xl font-bold text-green-400">{slots.filter(s => s.status === "available").length}</p>
+            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-[#94A3B8]">Available</p>
+              <p className="text-xl sm:text-2xl font-bold text-green-400">{slots.filter(s => s.status.toUpperCase() === "AVAILABLE").length}</p>
             </div>
-            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4">
-              <p className="text-sm text-[#94A3B8]">Occupied</p>
-              <p className="text-2xl font-bold text-red-400">{slots.filter(s => s.status === "occupied").length}</p>
+            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-[#94A3B8]">Occupied</p>
+              <p className="text-xl sm:text-2xl font-bold text-red-400">{slots.filter(s => s.status.toUpperCase() === "OCCUPIED").length}</p>
             </div>
-            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4">
-              <p className="text-sm text-[#94A3B8]">Maintenance</p>
-              <p className="text-2xl font-bold text-yellow-400">{slots.filter(s => s.status === "maintenance").length}</p>
+            <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-[#94A3B8]">Maintenance</p>
+              <p className="text-xl sm:text-2xl font-bold text-yellow-400">{slots.filter(s => s.status.toUpperCase() === "MAINTENANCE").length}</p>
             </div>
           </div>
 
-          {/* Slots by Zone */}
-          <div className="space-y-6">
-            {zones.map(zone => (
-              slotsByZone[zone]?.length > 0 && (
-                <div key={zone} className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <MapPin className="w-5 h-5 text-[#84CC16]" />
-                    <h2 className="text-xl font-semibold text-[#E5E7EB]">Zone {zone}</h2>
-                    <span className="text-sm text-[#94A3B8]">({slotsByZone[zone].length} slots)</span>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                    {slotsByZone[zone].map(slot => (
-                      <div 
-                        key={slot.id}
-                        className={`relative p-3 rounded-xl border text-center cursor-pointer transition-all hover:scale-105 ${getStatusStyle(slot.status)}`}
-                        onClick={() => toggleStatus(slot.id)}
-                      >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteSlot(slot.id);
-                          }}
-                          className="absolute -top-2 -right-2 p-1 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors"
+          {/* Loading State */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-12 h-12 text-[#84CC16] animate-spin mb-4" />
+              <p className="text-[#94A3B8]">Loading slots...</p>
+            </div>
+          ) : slots.length === 0 ? (
+            <div className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-8 text-center">
+              <MapPin className="w-12 h-12 text-[#94A3B8] mx-auto mb-4" />
+              <p className="text-[#E5E7EB] text-lg">No slots found</p>
+              <p className="text-[#94A3B8] text-sm mt-2">Click "Add Slots" to create parking slots</p>
+            </div>
+          ) : (
+            /* Slots by Zone */
+            <div className="space-y-4 sm:space-y-6">
+              {zones.map(zone => (
+                slotsByZone[zone]?.length > 0 && (
+                  <div key={zone} className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4 sm:p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <MapPin className="w-4 h-4 sm:w-5 sm:h-5 text-[#84CC16]" />
+                      <h2 className="text-lg sm:text-xl font-semibold text-[#E5E7EB]">Zone {zone}</h2>
+                      <span className="text-xs sm:text-sm text-[#94A3B8]">({slotsByZone[zone].length} slots)</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-3">
+                      {slotsByZone[zone].map(slot => (
+                        <div 
+                          key={slot.id}
+                          className={`relative p-2 sm:p-3 rounded-xl border text-center cursor-pointer transition-all hover:scale-105 ${getStatusStyle(slot.status)} ${actionLoading === slot.id ? 'opacity-50' : ''}`}
+                          onClick={() => !actionLoading && toggleStatus(slot.id)}
                         >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                        <p className="font-semibold text-sm">{slot.id}</p>
-                        <p className="text-xs mt-1 capitalize">{slot.status}</p>
-                      </div>
-                    ))}
+                          {actionLoading === slot.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                          ) : (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteSlot(slot.id);
+                                }}
+                                className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 p-1 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors"
+                              >
+                                <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                              </button>
+                              <p className="font-semibold text-xs sm:text-sm">{slot.slotNumber}</p>
+                              <p className="text-[10px] sm:text-xs mt-1 capitalize">{slot.status.toLowerCase()}</p>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )
-            ))}
-          </div>
+                )
+              ))}
+            </div>
+          )}
 
           {/* Legend */}
-          <div className="mt-6 flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-green-500/20 border border-green-500/30"></div>
-              <span className="text-[#94A3B8]">Available</span>
+          {!loading && slots.length > 0 && (
+            <div className="mt-6 flex flex-wrap items-center gap-3 sm:gap-6 text-xs sm:text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-green-500/20 border border-green-500/30"></div>
+                <span className="text-[#94A3B8]">Available</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-red-500/20 border border-red-500/30"></div>
+                <span className="text-[#94A3B8]">Occupied</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-yellow-500/20 border border-yellow-500/30"></div>
+                <span className="text-[#94A3B8]">Maintenance</span>
+              </div>
+              <p className="text-[#94A3B8] w-full sm:w-auto sm:ml-auto">Click a slot to change status</p>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-red-500/20 border border-red-500/30"></div>
-              <span className="text-[#94A3B8]">Occupied</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-yellow-500/20 border border-yellow-500/30"></div>
-              <span className="text-[#94A3B8]">Maintenance</span>
-            </div>
-            <p className="text-[#94A3B8] ml-auto">Click a slot to change status</p>
-          </div>
+          )}
         </div>
       </main>
 
@@ -275,23 +468,156 @@ export default function AddSlots() {
                   className="w-full bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16]"
                 />
               </div>
+
+              <div>
+                <label className="block text-sm text-[#94A3B8] mb-2">Price per Hour ($)</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  value={newSlot.pricePerHour}
+                  onChange={(e) => setNewSlot({ ...newSlot, pricePerHour: parseFloat(e.target.value) || 15 })}
+                  className="w-full bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16]"
+                />
+              </div>
             </div>
 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowAddForm(false)}
-                className="flex-1 py-3 rounded-xl border border-white/10 text-[#E5E7EB] hover:bg-white/5 transition-colors"
+                disabled={actionLoading === 'add'}
+                className="flex-1 py-3 rounded-xl border border-white/10 text-[#E5E7EB] hover:bg-white/5 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={addSlots}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#84CC16] to-[#BEF264] text-[#0F172A] font-semibold hover:shadow-lg hover:shadow-lime-500/30 transition-all duration-200 flex items-center justify-center gap-2"
+                disabled={actionLoading === 'add'}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#84CC16] to-[#BEF264] text-[#0F172A] font-semibold hover:shadow-lg hover:shadow-lime-500/30 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Save className="w-5 h-5" />
-                Add Slots
+                {actionLoading === 'add' ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="w-5 h-5" />
+                    Add Slots
+                  </>
+                )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Slot Status Modal */}
+      {selectedSlotForStatus && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSelectedSlotForStatus(null)}>
+          <div 
+            className="bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-[#84CC16]">Change Slot Status</h3>
+              <button 
+                onClick={() => setSelectedSlotForStatus(null)}
+                className="text-[#94A3B8] hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Slot Info */}
+            <div className="bg-[#0F172A] rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[#94A3B8] text-sm">Slot Number</p>
+                  <p className="text-[#E5E7EB] text-lg font-semibold">{selectedSlotForStatus.slotNumber}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[#94A3B8] text-sm">Current Status</p>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusStyle(selectedSlotForStatus.status)}`}>
+                    {selectedSlotForStatus.status.toLowerCase()}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Status Options */}
+            <div className="space-y-3">
+              <p className="text-sm text-[#94A3B8] mb-2">Select New Status</p>
+              
+              <button
+                onClick={() => updateSlotStatus('AVAILABLE')}
+                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toUpperCase() === 'AVAILABLE'}
+                className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
+                  selectedSlotForStatus.status.toUpperCase() === 'AVAILABLE'
+                    ? 'bg-green-500/30 border-green-500/50 cursor-not-allowed'
+                    : 'bg-green-500/10 border-green-500/30 hover:bg-green-500/20'
+                } ${actionLoading === selectedSlotForStatus.id ? 'opacity-50' : ''}`}
+              >
+                <div className="w-4 h-4 rounded-full bg-green-500"></div>
+                <div className="text-left flex-1">
+                  <p className="text-green-400 font-medium">Available</p>
+                  <p className="text-green-400/60 text-xs">Slot is ready for booking</p>
+                </div>
+                {selectedSlotForStatus.status.toUpperCase() === 'AVAILABLE' && (
+                  <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded">Current</span>
+                )}
+              </button>
+
+              <button
+                onClick={() => updateSlotStatus('OCCUPIED')}
+                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toUpperCase() === 'OCCUPIED'}
+                className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
+                  selectedSlotForStatus.status.toUpperCase() === 'OCCUPIED'
+                    ? 'bg-red-500/30 border-red-500/50 cursor-not-allowed'
+                    : 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
+                } ${actionLoading === selectedSlotForStatus.id ? 'opacity-50' : ''}`}
+              >
+                <div className="w-4 h-4 rounded-full bg-red-500"></div>
+                <div className="text-left flex-1">
+                  <p className="text-red-400 font-medium">Occupied</p>
+                  <p className="text-red-400/60 text-xs">Slot is currently in use</p>
+                </div>
+                {selectedSlotForStatus.status.toUpperCase() === 'OCCUPIED' && (
+                  <span className="text-xs text-red-400 bg-red-500/20 px-2 py-1 rounded">Current</span>
+                )}
+              </button>
+
+              <button
+                onClick={() => updateSlotStatus('MAINTENANCE')}
+                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toUpperCase() === 'MAINTENANCE'}
+                className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
+                  selectedSlotForStatus.status.toUpperCase() === 'MAINTENANCE'
+                    ? 'bg-yellow-500/30 border-yellow-500/50 cursor-not-allowed'
+                    : 'bg-yellow-500/10 border-yellow-500/30 hover:bg-yellow-500/20'
+                } ${actionLoading === selectedSlotForStatus.id ? 'opacity-50' : ''}`}
+              >
+                <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
+                <div className="text-left flex-1">
+                  <p className="text-yellow-400 font-medium">Maintenance</p>
+                  <p className="text-yellow-400/60 text-xs">Slot is under maintenance</p>
+                </div>
+                {selectedSlotForStatus.status.toUpperCase() === 'MAINTENANCE' && (
+                  <span className="text-xs text-yellow-400 bg-yellow-500/20 px-2 py-1 rounded">Current</span>
+                )}
+              </button>
+            </div>
+
+            {/* Loading indicator */}
+            {actionLoading === selectedSlotForStatus.id && (
+              <div className="flex items-center justify-center gap-2 mt-4 text-[#94A3B8]">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Updating status...</span>
+              </div>
+            )}
+
+            <button
+              onClick={() => setSelectedSlotForStatus(null)}
+              className="w-full mt-6 py-3 rounded-xl border border-white/10 text-[#E5E7EB] hover:bg-white/5 transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

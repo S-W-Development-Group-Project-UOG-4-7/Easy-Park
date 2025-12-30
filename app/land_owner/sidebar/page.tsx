@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Home, CalendarDays, PlusSquare, LogOut, User } from "lucide-react";
+import { Home, CalendarDays, PlusSquare, LogOut, User, Menu, X } from "lucide-react";
 
 export default function OwnerSidebar() {
   const [activeItem, setActiveItem] = useState("home");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const menuItems = [
     { id: "home", label: "Home", icon: Home, href: "/land_owner" },
@@ -15,8 +16,26 @@ export default function OwnerSidebar() {
 
   return (
     <div className="flex min-h-screen">
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-[#0F172A] to-[#020617] border-r border-white/10 flex flex-col">
+      <aside className={`w-64 bg-gradient-to-b from-[#0F172A] to-[#020617] border-r border-white/10 flex flex-col fixed h-full z-50 transition-transform duration-300 lg:translate-x-0 ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
+        {/* Close button for mobile */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden absolute top-4 right-4 p-2 text-[#94A3B8] hover:text-[#E5E7EB]"
+        >
+          <X className="w-6 h-6" />
+        </button>
+
         {/* Owner Profile Section */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
@@ -74,22 +93,30 @@ export default function OwnerSidebar() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 bg-gradient-to-b from-[#0F172A] to-[#020617] p-8">
-        <div className="max-w-6xl mx-auto flex flex-col items-center justify-center min-h-[60vh]">
-          <h1 className="text-3xl font-bold text-[#E5E7EB] mb-4">Sidebar Navigation</h1>
-          <p className="text-[#94A3B8] text-center mb-8">Use the sidebar to navigate between pages</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link href="/land_owner" className="p-6 rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 hover:border-[#84CC16]/50 transition-all text-center">
-              <Home className="w-8 h-8 text-[#84CC16] mx-auto mb-3" />
-              <p className="text-[#E5E7EB] font-medium">Home</p>
+      <main className="flex-1 lg:ml-64 bg-gradient-to-b from-[#0F172A] to-[#020617] p-4 sm:p-6 lg:p-8">
+        {/* Mobile Menu Button */}
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="lg:hidden fixed top-4 left-4 z-30 p-2 rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 text-[#E5E7EB]"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+
+        <div className="max-w-6xl mx-auto flex flex-col items-center justify-center min-h-[60vh] mt-14 lg:mt-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#E5E7EB] mb-4 text-center">Sidebar Navigation</h1>
+          <p className="text-[#94A3B8] text-center mb-8 text-sm sm:text-base">Use the sidebar to navigate between pages</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
+            <Link href="/land_owner" className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 hover:border-[#84CC16]/50 transition-all text-center">
+              <Home className="w-6 h-6 sm:w-8 sm:h-8 text-[#84CC16] mx-auto mb-3" />
+              <p className="text-[#E5E7EB] font-medium text-sm sm:text-base">Home</p>
             </Link>
-            <Link href="/land_owner/view_booking" className="p-6 rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 hover:border-[#84CC16]/50 transition-all text-center">
-              <CalendarDays className="w-8 h-8 text-[#84CC16] mx-auto mb-3" />
-              <p className="text-[#E5E7EB] font-medium">View Bookings</p>
+            <Link href="/land_owner/view_booking" className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 hover:border-[#84CC16]/50 transition-all text-center">
+              <CalendarDays className="w-6 h-6 sm:w-8 sm:h-8 text-[#84CC16] mx-auto mb-3" />
+              <p className="text-[#E5E7EB] font-medium text-sm sm:text-base">View Bookings</p>
             </Link>
-            <Link href="/land_owner/add_slots" className="p-6 rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 hover:border-[#84CC16]/50 transition-all text-center">
-              <PlusSquare className="w-8 h-8 text-[#84CC16] mx-auto mb-3" />
-              <p className="text-[#E5E7EB] font-medium">Add Slots</p>
+            <Link href="/land_owner/add_slots" className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 hover:border-[#84CC16]/50 transition-all text-center">
+              <PlusSquare className="w-6 h-6 sm:w-8 sm:h-8 text-[#84CC16] mx-auto mb-3" />
+              <p className="text-[#E5E7EB] font-medium text-sm sm:text-base">Add Slots</p>
             </Link>
           </div>
         </div>
