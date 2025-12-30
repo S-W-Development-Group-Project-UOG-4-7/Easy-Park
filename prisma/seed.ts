@@ -6,23 +6,22 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting seed...');
 
-  // Create a test customer user
+  // Create a test user
   const hashedPassword = await bcrypt.hash('password123', 12);
   
   const user = await prisma.user.upsert({
-    where: { email: 'customer@easypark.com' },
-    update: { role: 'CUSTOMER' },
+    where: { email: 'test@easypark.com' },
+    update: {},
     create: {
-      email: 'customer@easypark.com',
+      email: 'test@easypark.com',
       password: hashedPassword,
-      fullName: 'Test Customer',
+      fullName: 'Test User',
       contactNo: '0771234567',
       vehicleNumber: 'ABC-1234',
-      nic: '200012345670',
-      role: 'CUSTOMER',
+      nic: '200012345678',
     },
   });
-  console.log('✅ Created customer user:', user.email);
+  console.log('✅ Created test user:', user.email);
 
   // Create admin user
   const adminPassword = await bcrypt.hash('admin123', 12);
@@ -37,48 +36,6 @@ async function main() {
     },
   });
   console.log('✅ Created admin user:', admin.email);
-
-  // Create counter user
-  const counterPassword = await bcrypt.hash('counter123', 12);
-  const counter = await prisma.user.upsert({
-    where: { email: 'counter@easypark.com' },
-    update: {},
-    create: {
-      email: 'counter@easypark.com',
-      password: counterPassword,
-      fullName: 'Counter Staff',
-      role: 'COUNTER',
-    },
-  });
-  console.log('✅ Created counter user:', counter.email);
-
-  // Create land owner user
-  const landOwnerPassword = await bcrypt.hash('landowner123', 12);
-  const landOwner = await prisma.user.upsert({
-    where: { email: 'landowner@easypark.com' },
-    update: {},
-    create: {
-      email: 'landowner@easypark.com',
-      password: landOwnerPassword,
-      fullName: 'Land Owner',
-      role: 'LAND_OWNER',
-    },
-  });
-  console.log('✅ Created land owner user:', landOwner.email);
-
-  // Create washer user
-  const washerPassword = await bcrypt.hash('washer123', 12);
-  const washer = await prisma.user.upsert({
-    where: { email: 'washer@easypark.com' },
-    update: {},
-    create: {
-      email: 'washer@easypark.com',
-      password: washerPassword,
-      fullName: 'Car Washer',
-      role: 'WASHER',
-    },
-  });
-  console.log('✅ Created washer user:', washer.email);
 
   // Create parking locations
   const location1 = await prisma.parkingLocation.upsert({

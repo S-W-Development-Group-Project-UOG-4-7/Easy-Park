@@ -3,14 +3,10 @@ import prisma from '@/lib/prisma';
 import { hashPassword, generateToken } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
 
-// Valid roles
-const VALID_ROLES = ['ADMIN', 'CUSTOMER', 'COUNTER', 'LAND_OWNER', 'WASHER'] as const;
-type Role = typeof VALID_ROLES[number];
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, fullName, contactNo, vehicleNumber, nic, role } = body;
+    const { email, password, fullName, contactNo, vehicleNumber, nic } = body;
 
     // Validation
     if (!email || !password || !fullName) {
@@ -20,9 +16,6 @@ export async function POST(request: NextRequest) {
     if (password.length < 6) {
       return errorResponse('Password must be at least 6 characters');
     }
-
-    // Validate role if provided
-    const userRole: Role = role && VALID_ROLES.includes(role) ? role : 'CUSTOMER';
 
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
@@ -55,7 +48,6 @@ export async function POST(request: NextRequest) {
         contactNo,
         vehicleNumber,
         nic,
-        role: userRole,
       },
       select: {
         id: true,

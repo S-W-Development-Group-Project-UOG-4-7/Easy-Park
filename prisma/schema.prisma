@@ -28,11 +28,9 @@ model User {
 }
 
 enum Role {
-  ADMIN
   CUSTOMER
-  COUNTER
-  LAND_OWNER
-  WASHER
+  ADMIN
+  STAFF
 }
 
 // Parking Location model - different parking areas
