@@ -1,17 +1,56 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const navLinks = [
     { href: '/customer/view-bookings', label: 'Book Now' },
     { href: '/customer/my-bookings', label: 'Bookings' },
   ];
+
+  // Handle Sign Out
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    
+    setSigningOut(true);
+    setOpen(false);
+
+    try {
+      // Call the sign-out API to clear server-side session/cookies
+      await fetch('/api/auth/sign-out', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Clear any client-side storage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+
+      // Redirect to home page using replace to prevent back navigation
+      router.replace('/');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      // Even if API fails, clear local storage and redirect
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      router.replace('/');
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   // ✅ Close mobile menu when route changes
   useEffect(() => {
@@ -142,6 +181,30 @@ export default function Navbar() {
                 <circle cx="12" cy="7" r="4" />
               </svg>
             </div>
+
+            {/* Sign Out Button */}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 font-medium text-sm transition hover:bg-red-500/20 hover:border-red-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Sign Out"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              {signingOut ? 'Signing Out...' : 'Sign Out'}
+            </button>
           </div>
 
           {/* Mobile Toggle */}
@@ -185,6 +248,31 @@ export default function Navbar() {
           <div className="relative z-40 mx-auto max-w-7xl px-4 pb-4 sm:px-6 lg:px-8">
             <div className="mt-3 rounded-3xl border border-slate-800/70 bg-gradient-to-br from-[#1E293B]/95 to-[#0F172A]/95 p-4 shadow-2xl ring-1 ring-slate-900/60 backdrop-blur-md">
               {renderLinks('col')}
+              
+              {/* Mobile Sign Out Button */}
+              <div className="mt-4 pt-4 border-t border-slate-700/50">
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-red-500/50 bg-red-500/10 text-red-400 font-semibold text-base transition hover:bg-red-500/20 hover:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  {signingOut ? 'Signing Out...' : 'Sign Out'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

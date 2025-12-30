@@ -1,8 +1,74 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+// Map roles to their redirect paths
+const ROLE_REDIRECT_MAP: Record<string, string> = {
+  ADMIN: '/admin',
+  CUSTOMER: '/customer',
+  COUNTER: '/counter',
+  LAND_OWNER: '/land-owner',
+  WASHER: '/washer',
+};
 
 export function SignInCard() {
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!formData.email || !formData.password) {
+      setError('Please enter email and password');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/sign-in', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setError(data.error || 'Invalid email or password');
+        return;
+      }
+
+      // Success! Redirect based on user role
+      const userRole = data.data?.user?.role || 'CUSTOMER';
+      const redirectPath = ROLE_REDIRECT_MAP[userRole] || '/customer';
+      router.push(redirectPath);
+    } catch (err) {
+      setError('Something went wrong. Please try again.');
+      console.error('Sign in error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="w-full">
       <div className="bg-gradient-to-br from-[#1E293B] to-[#0F172A] rounded-2xl shadow-2xl p-8 border border-[#334155]/50">
@@ -11,11 +77,20 @@ export function SignInCard() {
           <p className="text-sm text-[#84CC16] text-center">Use email or service, to sign in</p>
         </div>
 
-        <form className="space-y-4">
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/50 text-red-400 text-sm text-center">
+            {error}
+          </div>
+        )}
+
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <input
               type="email"
-              placeholder="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Email"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
           </div>
@@ -23,16 +98,20 @@ export function SignInCard() {
           <div>
             <input
               type="password"
-              placeholder="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Password"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 rounded-lg bg-black text-white font-medium hover:bg-gradient-to-r hover:from-[#84CC16] hover:to-[#BEF264] hover:text-black transition-all duration-300 shadow-lg hover:shadow-[#84CC16]/50"
+            disabled={loading}
+            className="w-full py-3 rounded-lg bg-black text-white font-medium hover:bg-gradient-to-r hover:from-[#84CC16] hover:to-[#BEF264] hover:text-black transition-all duration-300 shadow-lg hover:shadow-[#84CC16]/50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            continue
+            {loading ? 'Signing in...' : 'Continue'}
           </button>
         </form>
 
