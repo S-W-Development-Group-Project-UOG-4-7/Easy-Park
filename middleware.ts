@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+<<<<<<< HEAD
 // Define protected routes and their required roles
 const protectedRoutes: { path: string; roles: string[] }[] = [
   { path: '/customer', roles: ['CUSTOMER', 'ADMIN'] },
@@ -61,21 +62,70 @@ export function middleware(request: NextRequest) {
       response.cookies.set('token', '', { maxAge: 0, path: '/' });
       return response;
     }
+=======
+// Define protected routes and their allowed roles
+const protectedRoutes: Record<string, string[]> = {
+  '/customer': ['CUSTOMER', 'ADMIN'],
+  '/admin': ['ADMIN'],
+  '/counter': ['COUNTER', 'ADMIN'],
+  '/land-owner': ['LAND_OWNER', 'ADMIN'],
+  '/washer': ['WASHER', 'ADMIN'],
+};
+
+// Public routes that don't require authentication
+const publicRoutes = ['/', '/sign-in', '/sign-up'];
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const token = request.cookies.get('token')?.value;
+
+  // Check if it's a public route
+  if (publicRoutes.some(route => pathname === route)) {
+    return NextResponse.next();
+  }
+
+  // Check if it's a protected route
+  const matchedRoute = Object.keys(protectedRoutes).find(route => 
+    pathname.startsWith(route)
+  );
+
+  if (matchedRoute) {
+    // No token - redirect to sign-in
+    if (!token) {
+      const signInUrl = new URL('/sign-in', request.url);
+      signInUrl.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(signInUrl);
+    }
+
+    // Token exists - let the client-side AuthProvider handle role validation
+    // The token is verified in the API routes
+>>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
   }
 
   return NextResponse.next();
 }
 
+<<<<<<< HEAD
 // Configure which routes the middleware should run on
+=======
+>>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
 export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
+<<<<<<< HEAD
+=======
+     * - api (API routes)
+>>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - public folder
      */
+<<<<<<< HEAD
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+=======
+    '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
+>>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
   ],
 };

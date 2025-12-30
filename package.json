@@ -17,6 +17,13 @@
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+    "jose": "^6.1.3",
+>>>>>>> e199644a47d9c5dcf8e7365e241b056f4998bf09
+>>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.562.0",
     "next": "16.0.10",
