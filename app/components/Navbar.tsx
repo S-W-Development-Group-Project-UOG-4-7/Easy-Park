@@ -3,12 +3,18 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+<<<<<<< HEAD
 import { useAuth } from './AuthProvider';
+=======
+import { useAuth } from '@/lib/auth-context';
+import { LogOut, User } from 'lucide-react';
+>>>>>>> e199644a47d9c5dcf8e7365e241b056f4998bf09
 
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+<<<<<<< HEAD
   const { user, signOut, isLoading } = useAuth();
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
@@ -17,6 +23,10 @@ export default function Navbar() {
     await signOut();
     router.push('/');
   };
+=======
+  const [profileOpen, setProfileOpen] = useState(false);
+  const { user, logout } = useAuth();
+>>>>>>> e199644a47d9c5dcf8e7365e241b056f4998bf09
 
   const navLinks = [
     { href: '/customer/view-bookings', label: 'Book Now' },
@@ -141,17 +151,54 @@ export default function Navbar() {
               <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-lime-400"></span>
             </button>
 
-            <div className="h-10 w-10 rounded-full border border-slate-700 bg-slate-800/70 flex items-center justify-center text-slate-400">
-              <svg
-                className="h-5 w-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
+            {/* Profile Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileOpen(!profileOpen)}
+                className="h-10 w-10 rounded-full border border-slate-700 bg-slate-800/70 flex items-center justify-center text-slate-400 hover:border-lime-400 hover:text-lime-400 transition-colors"
               >
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
+                <User className="h-5 w-5" />
+              </button>
+
+              {profileOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setProfileOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-[#1E293B] rounded-lg shadow-lg border border-slate-700 py-2 z-20">
+                    {user && (
+                      <div className="px-4 py-3 border-b border-slate-700">
+                        <p className="text-sm font-medium text-white">
+                          {user.fullName}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {user.email}
+                        </p>
+                      </div>
+                    )}
+                    <Link
+                      href="/customer/profile"
+                      onClick={() => setProfileOpen(false)}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors"
+                    >
+                      <User className="w-4 h-4" />
+                      Profile
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setProfileOpen(false);
+                        logout();
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-900/20 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Logout
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Sign Out Button */}
@@ -219,8 +266,17 @@ export default function Navbar() {
           {/* dropdown panel */}
           <div className="relative z-40 mx-auto max-w-7xl px-4 pb-4 sm:px-6 lg:px-8">
             <div className="mt-3 rounded-3xl border border-slate-800/70 bg-gradient-to-br from-[#1E293B]/95 to-[#0F172A]/95 p-4 shadow-2xl ring-1 ring-slate-900/60 backdrop-blur-md">
+              {/* User Info */}
+              {user && (
+                <div className="mb-4 p-3 rounded-2xl bg-[#111827]/40 border border-slate-800/70">
+                  <p className="text-sm font-medium text-white">{user.fullName}</p>
+                  <p className="text-xs text-slate-400">{user.email}</p>
+                </div>
+              )}
+              
               {renderLinks('col')}
               
+<<<<<<< HEAD
               {/* Mobile Sign Out Button */}
               <button
                 type="button"
@@ -243,6 +299,29 @@ export default function Navbar() {
                 </svg>
                 Sign Out
               </button>
+=======
+              {/* Profile & Logout */}
+              <div className="mt-4 pt-4 border-t border-slate-800/70 space-y-2">
+                <Link
+                  href="/customer/profile"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-3 w-full rounded-2xl px-4 py-3 text-base font-semibold border border-slate-800/70 bg-[#111827]/40 text-slate-100 hover:bg-[#111827]/60 transition"
+                >
+                  <User className="w-5 h-5" />
+                  Profile
+                </Link>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    logout();
+                  }}
+                  className="flex items-center gap-3 w-full rounded-2xl px-4 py-3 text-base font-semibold border border-red-800/70 bg-red-900/20 text-red-400 hover:bg-red-900/40 transition"
+                >
+                  <LogOut className="w-5 h-5" />
+                  Logout
+                </button>
+              </div>
+>>>>>>> e199644a47d9c5dcf8e7365e241b056f4998bf09
             </div>
           </div>
         </div>
