@@ -1,0 +1,79 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  phone     String?
+  role      String    @default("customer") // customer, washer, landowner
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  bookings  Booking[]
+  parkingLots ParkingLot[]
+}
+
+model ParkingLot {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  slots     Slot[]
+}
+
+model Slot {
+  id           String     @id @default(cuid())
+  slotNumber   String
+  zone         String
+  status       String     @default("available") // available, occupied, maintenance
+  pricePerHour Float      @default(15.0)
+  parkingLotId String
+  parkingLot   ParkingLot @relation(fields: [parkingLotId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  bookings     Booking[]
+
+  @@unique([parkingLotId, slotNumber])
+}
+
+model Booking {
+  id            String   @id @default(cuid())
+  bookingNumber String   @unique @default(cuid())
+  vehicleNumber String
+  startTime     DateTime
+  endTime       DateTime?
+  duration      String
+  amount        Float
+  status        String   @default("active") // active, completed, cancelled
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  slotId        String
+  slot          Slot     @relation(fields: [slotId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Car {
+  id        String   @id @default(cuid())
+  vehicleId String   @unique
+  location  String
+  time      String
+  type      String   // Sedan, SUV, Hatchback
+  status    String   @default("waiting") // waiting, accepted, washing, finished
+  washerId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

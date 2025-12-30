@@ -177,20 +177,26 @@ export default function AddSlots() {
 
     try {
       setActionLoading(selectedSlotForStatus.id);
+      console.log('Updating slot:', selectedSlotForStatus.id, 'to status:', newStatus);
+      
       const response = await fetch('/api/slots', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: selectedSlotForStatus.id, status: newStatus }),
       });
 
+      const data = await response.json();
+      console.log('API Response:', data);
+
       if (!response.ok) {
-        const data = await response.json();
         throw new Error(data.error || 'Failed to update slot');
       }
 
-      setSlots(slots.map(s => 
-        s.id === selectedSlotForStatus.id ? { ...s, status: newStatus } : s
-      ));
+      // Refresh slots from database to ensure sync
+      const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
+      const slotsData = await slotsResponse.json();
+      setSlots(slotsData.slots || []);
+      
       setSelectedSlotForStatus(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update slot');
@@ -344,15 +350,15 @@ export default function AddSlots() {
             </div>
             <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-3 sm:p-4">
               <p className="text-xs sm:text-sm text-[#94A3B8]">Available</p>
-              <p className="text-xl sm:text-2xl font-bold text-green-400">{slots.filter(s => s.status.toUpperCase() === "AVAILABLE").length}</p>
+              <p className="text-xl sm:text-2xl font-bold text-green-400">{slots.filter(s => s.status.toLowerCase() === "available").length}</p>
             </div>
             <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-3 sm:p-4">
               <p className="text-xs sm:text-sm text-[#94A3B8]">Occupied</p>
-              <p className="text-xl sm:text-2xl font-bold text-red-400">{slots.filter(s => s.status.toUpperCase() === "OCCUPIED").length}</p>
+              <p className="text-xl sm:text-2xl font-bold text-red-400">{slots.filter(s => s.status.toLowerCase() === "occupied").length}</p>
             </div>
             <div className="rounded-xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-3 sm:p-4">
               <p className="text-xs sm:text-sm text-[#94A3B8]">Maintenance</p>
-              <p className="text-xl sm:text-2xl font-bold text-yellow-400">{slots.filter(s => s.status.toUpperCase() === "MAINTENANCE").length}</p>
+              <p className="text-xl sm:text-2xl font-bold text-yellow-400">{slots.filter(s => s.status.toLowerCase() === "maintenance").length}</p>
             </div>
           </div>
 
@@ -547,10 +553,10 @@ export default function AddSlots() {
               <p className="text-sm text-[#94A3B8] mb-2">Select New Status</p>
               
               <button
-                onClick={() => updateSlotStatus('AVAILABLE')}
-                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toUpperCase() === 'AVAILABLE'}
+                onClick={() => updateSlotStatus('available')}
+                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toLowerCase() === 'available'}
                 className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
-                  selectedSlotForStatus.status.toUpperCase() === 'AVAILABLE'
+                  selectedSlotForStatus.status.toLowerCase() === 'available'
                     ? 'bg-green-500/30 border-green-500/50 cursor-not-allowed'
                     : 'bg-green-500/10 border-green-500/30 hover:bg-green-500/20'
                 } ${actionLoading === selectedSlotForStatus.id ? 'opacity-50' : ''}`}
@@ -560,16 +566,16 @@ export default function AddSlots() {
                   <p className="text-green-400 font-medium">Available</p>
                   <p className="text-green-400/60 text-xs">Slot is ready for booking</p>
                 </div>
-                {selectedSlotForStatus.status.toUpperCase() === 'AVAILABLE' && (
+                {selectedSlotForStatus.status.toLowerCase() === 'available' && (
                   <span className="text-xs text-green-400 bg-green-500/20 px-2 py-1 rounded">Current</span>
                 )}
               </button>
 
               <button
-                onClick={() => updateSlotStatus('OCCUPIED')}
-                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toUpperCase() === 'OCCUPIED'}
+                onClick={() => updateSlotStatus('occupied')}
+                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toLowerCase() === 'occupied'}
                 className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
-                  selectedSlotForStatus.status.toUpperCase() === 'OCCUPIED'
+                  selectedSlotForStatus.status.toLowerCase() === 'occupied'
                     ? 'bg-red-500/30 border-red-500/50 cursor-not-allowed'
                     : 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
                 } ${actionLoading === selectedSlotForStatus.id ? 'opacity-50' : ''}`}
@@ -579,16 +585,16 @@ export default function AddSlots() {
                   <p className="text-red-400 font-medium">Occupied</p>
                   <p className="text-red-400/60 text-xs">Slot is currently in use</p>
                 </div>
-                {selectedSlotForStatus.status.toUpperCase() === 'OCCUPIED' && (
+                {selectedSlotForStatus.status.toLowerCase() === 'occupied' && (
                   <span className="text-xs text-red-400 bg-red-500/20 px-2 py-1 rounded">Current</span>
                 )}
               </button>
 
               <button
-                onClick={() => updateSlotStatus('MAINTENANCE')}
-                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toUpperCase() === 'MAINTENANCE'}
+                onClick={() => updateSlotStatus('maintenance')}
+                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toLowerCase() === 'maintenance'}
                 className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
-                  selectedSlotForStatus.status.toUpperCase() === 'MAINTENANCE'
+                  selectedSlotForStatus.status.toLowerCase() === 'maintenance'
                     ? 'bg-yellow-500/30 border-yellow-500/50 cursor-not-allowed'
                     : 'bg-yellow-500/10 border-yellow-500/30 hover:bg-yellow-500/20'
                 } ${actionLoading === selectedSlotForStatus.id ? 'opacity-50' : ''}`}
@@ -598,7 +604,7 @@ export default function AddSlots() {
                   <p className="text-yellow-400 font-medium">Maintenance</p>
                   <p className="text-yellow-400/60 text-xs">Slot is under maintenance</p>
                 </div>
-                {selectedSlotForStatus.status.toUpperCase() === 'MAINTENANCE' && (
+                {selectedSlotForStatus.status.toLowerCase() === 'maintenance' && (
                   <span className="text-xs text-yellow-400 bg-yellow-500/20 px-2 py-1 rounded">Current</span>
                 )}
               </button>

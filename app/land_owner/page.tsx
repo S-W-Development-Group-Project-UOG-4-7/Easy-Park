@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
   Home, 
@@ -17,14 +17,50 @@ import {
   BarChart3,
   Calendar,
   Menu,
-  X
+  X,
+  Loader2
 } from "lucide-react";
+
+interface BookingData {
+  id: string;
+  bookingNumber: string;
+  vehicleNumber: string;
+  startTime: string;
+  duration: string;
+  amount: number;
+  status: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+  };
+  slot: {
+    slotNumber: string;
+    parkingLot: {
+      name: string;
+      address: string;
+    };
+  };
+}
+
+interface UserData {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  totalBookings: number;
+}
 
 export default function LandOwnerHome() {
   const [activeItem, setActiveItem] = useState("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedTime, setSelectedTime] = useState("all");
+  const [bookings, setBookings] = useState<BookingData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  const [selectedUserData, setSelectedUserData] = useState<UserData | null>(null);
 
   const menuItems = [
     { id: "home", label: "Home", icon: Home, href: "/land_owner" },
@@ -39,66 +75,103 @@ export default function LandOwnerHome() {
     { id: "evening", label: "Evening (5PM - 10PM)" },
   ];
 
-  // Mock users data
-  const usersData: Record<string, { name: string; email: string; phone: string; totalBookings: number }> = {
-    "USR-001": { name: "Alice Johnson", email: "alice@email.com", phone: "+94 77 123 4567", totalBookings: 12 },
-    "USR-002": { name: "Bob Smith", email: "bob@email.com", phone: "+94 77 234 5678", totalBookings: 8 },
-    "USR-003": { name: "Carol White", email: "carol@email.com", phone: "+94 77 345 6789", totalBookings: 15 },
-    "USR-004": { name: "David Brown", email: "david@email.com", phone: "+94 77 456 7890", totalBookings: 5 },
-    "USR-005": { name: "Eva Green", email: "eva@email.com", phone: "+94 77 567 8901", totalBookings: 20 },
-    "USR-006": { name: "Frank Miller", email: "frank@email.com", phone: "+94 77 678 9012", totalBookings: 3 },
+  // Fetch bookings from API
+  useEffect(() => {
+    async function fetchBookings() {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/bookings');
+        if (!response.ok) throw new Error('Failed to fetch bookings');
+        const data = await response.json();
+        setBookings(data.bookings || []);
+      } catch (err) {
+        console.error('Error fetching bookings:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchBookings();
+  }, []);
+
+  // Fetch user details when selected
+  useEffect(() => {
+    async function fetchUserDetails() {
+      if (!selectedUser) {
+        setSelectedUserData(null);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/users/${selectedUser}`);
+        if (!response.ok) throw new Error('Failed to fetch user');
+        const data = await response.json();
+        setSelectedUserData(data.user);
+      } catch (err) {
+        console.error('Error fetching user:', err);
+        // Fallback to booking data
+        const booking = bookings.find(b => b.user.id === selectedUser);
+        if (booking) {
+          const userBookingsCount = bookings.filter(b => b.user.id === selectedUser).length;
+          setSelectedUserData({
+            id: booking.user.id,
+            name: booking.user.name,
+            email: booking.user.email,
+            phone: booking.user.phone,
+            totalBookings: userBookingsCount,
+          });
+        }
+      }
+    }
+    fetchUserDetails();
+  }, [selectedUser, bookings]);
+
+  // Helper to get time period
+  const getTimePeriod = (dateStr: string) => {
+    const hour = new Date(dateStr).getHours();
+    if (hour >= 6 && hour < 12) return "morning";
+    if (hour >= 12 && hour < 17) return "afternoon";
+    if (hour >= 17 && hour < 22) return "evening";
+    return "night";
   };
 
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+  // Filter bookings by selected date
+  const bookingsForDate = bookings.filter(booking => {
+    const bookingDate = new Date(booking.startTime).toISOString().split('T')[0];
+    return bookingDate === selectedDate;
+  });
 
-  // Mock data for different dates
-  const bookingsData: Record<string, { bookings: number; revenue: string; recentBookings: typeof recentBookingsDefault }> = {
-    "2025-12-28": { bookings: 15, revenue: "$450", recentBookings: [
-      { id: "BK-001", oderId: "USR-001", vehicle: "ABC-1234", spot: "A-12", time: "09:30 AM", duration: "2h", status: "active", period: "morning" },
-      { id: "BK-002", oderId: "USR-002", vehicle: "XYZ-5678", spot: "B-05", time: "10:15 AM", duration: "1h 30m", status: "active", period: "morning" },
-      { id: "BK-003", oderId: "USR-003", vehicle: "DEF-9012", spot: "C-08", time: "08:00 AM", duration: "4h", status: "completed", period: "morning" },
-      { id: "BK-004", oderId: "USR-004", vehicle: "GHI-3456", spot: "A-03", time: "11:00 AM", duration: "3h", status: "active", period: "morning" },
-      { id: "BK-005", oderId: "USR-005", vehicle: "JKL-7890", spot: "B-08", time: "01:30 PM", duration: "2h", status: "active", period: "afternoon" },
-      { id: "BK-006", oderId: "USR-006", vehicle: "MNO-1234", spot: "C-01", time: "03:45 PM", duration: "1h 30m", status: "active", period: "afternoon" },
-      { id: "BK-007", oderId: "USR-001", vehicle: "PQR-5678", spot: "A-07", time: "06:00 PM", duration: "2h", status: "active", period: "evening" },
-      { id: "BK-008", oderId: "USR-002", vehicle: "STU-9012", spot: "B-11", time: "07:30 PM", duration: "1h", status: "completed", period: "evening" },
-    ]},
-    "2025-12-27": { bookings: 22, revenue: "$680", recentBookings: [
-      { id: "BK-098", oderId: "USR-003", vehicle: "LMN-7890", spot: "A-01", time: "08:00 AM", duration: "3h", status: "completed", period: "morning" },
-      { id: "BK-097", oderId: "USR-004", vehicle: "OPQ-1234", spot: "B-12", time: "09:45 AM", duration: "2h", status: "completed", period: "morning" },
-      { id: "BK-096", oderId: "USR-005", vehicle: "RST-5678", spot: "C-03", time: "11:30 AM", duration: "1h", status: "completed", period: "morning" },
-      { id: "BK-095", oderId: "USR-006", vehicle: "VWX-3456", spot: "A-05", time: "02:00 PM", duration: "2h 30m", status: "completed", period: "afternoon" },
-      { id: "BK-094", oderId: "USR-001", vehicle: "YZA-7890", spot: "B-09", time: "04:15 PM", duration: "1h 45m", status: "completed", period: "afternoon" },
-      { id: "BK-093", oderId: "USR-002", vehicle: "BCD-1234", spot: "C-06", time: "06:30 PM", duration: "2h", status: "completed", period: "evening" },
-    ]},
-    "2025-12-26": { bookings: 18, revenue: "$520", recentBookings: [
-      { id: "BK-085", oderId: "USR-003", vehicle: "UVW-9012", spot: "A-08", time: "10:00 AM", duration: "2h 30m", status: "completed", period: "morning" },
-      { id: "BK-084", oderId: "USR-004", vehicle: "XYZ-3456", spot: "B-02", time: "01:15 PM", duration: "1h 45m", status: "completed", period: "afternoon" },
-      { id: "BK-083", oderId: "USR-005", vehicle: "EFG-7890", spot: "C-10", time: "05:30 PM", duration: "2h", status: "completed", period: "evening" },
-    ]},
-  };
-
-  const recentBookingsDefault = [
-    { id: "BK-001", oderId: "USR-001", vehicle: "ABC-1234", spot: "A-12", time: "09:30 AM", duration: "2h", status: "active", period: "morning" },
-    { id: "BK-002", oderId: "USR-002", vehicle: "XYZ-5678", spot: "B-05", time: "10:15 AM", duration: "1h 30m", status: "active", period: "morning" },
-    { id: "BK-003", oderId: "USR-003", vehicle: "DEF-9012", spot: "C-08", time: "08:00 AM", duration: "4h", status: "completed", period: "morning" },
-    { id: "BK-004", oderId: "USR-004", vehicle: "GHI-3456", spot: "A-03", time: "11:00 AM", duration: "3h", status: "active", period: "morning" },
-  ];
-
-  const currentData = bookingsData[selectedDate] || { bookings: 0, revenue: "$0", recentBookings: [] };
-
-  // Filter bookings by selected time period
+  // Filter by time period
   const filteredBookings = selectedTime === "all" 
-    ? currentData.recentBookings 
-    : currentData.recentBookings.filter(booking => booking.period === selectedTime);
+    ? bookingsForDate 
+    : bookingsForDate.filter(booking => getTimePeriod(booking.startTime) === selectedTime);
+
+  // Calculate stats
+  const todayRevenue = bookingsForDate.reduce((sum, b) => sum + b.amount, 0);
+  const totalBookingsCount = bookings.length;
 
   const stats = [
-    { label: "Today's Bookings", value: currentData.bookings.toString(), icon: CalendarDays, color: "text-blue-400" },
-    { label: "Revenue", value: currentData.revenue, icon: DollarSign, color: "text-[#84CC16]" },
-    { label: "Total Bookings", value: "1,248", icon: BarChart3, color: "text-purple-400" },
+    { label: "Today's Bookings", value: bookingsForDate.length.toString(), icon: CalendarDays, color: "text-blue-400" },
+    { label: "Revenue", value: `$${todayRevenue.toFixed(2)}`, icon: DollarSign, color: "text-[#84CC16]" },
+    { label: "Total Bookings", value: totalBookingsCount.toString(), icon: BarChart3, color: "text-purple-400" },
   ];
 
-  const recentBookings = filteredBookings;
+  // Transform bookings for display
+  const recentBookings = filteredBookings.map(booking => ({
+    id: booking.bookingNumber,
+    oderId: booking.user.id,
+    userName: booking.user.name,
+    vehicle: booking.vehicleNumber,
+    spot: booking.slot.slotNumber,
+    time: new Date(booking.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    duration: booking.duration,
+    status: booking.status,
+    period: getTimePeriod(booking.startTime),
+  }));
+
+  // Calculate quick stats
+  const activeBookings = bookingsForDate.filter(b => b.status === 'active').length;
+  const completedBookings = bookingsForDate.filter(b => b.status === 'completed').length;
+  const occupancyRate = bookingsForDate.length > 0 ? Math.round((activeBookings / Math.max(bookingsForDate.length, 1)) * 100) : 0;
+  const weeklyRevenue = bookings.reduce((sum, b) => sum + b.amount, 0);
 
   return (
     <div className="flex min-h-screen">
@@ -177,7 +250,7 @@ export default function LandOwnerHome() {
       </aside>
 
       {/* User Details Modal */}
-      {selectedUser && usersData[selectedUser] && (
+      {selectedUser && selectedUserData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setSelectedUser(null)}>
           <div 
             className="bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4"
@@ -198,8 +271,8 @@ export default function LandOwnerHome() {
                 <User className="w-8 h-8 text-[#0F172A]" />
               </div>
               <div>
-                <h4 className="text-lg font-semibold text-[#E5E7EB]">{usersData[selectedUser].name}</h4>
-                <p className="text-sm text-[#94A3B8]">{selectedUser}</p>
+                <h4 className="text-lg font-semibold text-[#E5E7EB]">{selectedUserData.name}</h4>
+                <p className="text-sm text-[#94A3B8]">{selectedUserData.id.slice(0, 12)}...</p>
               </div>
             </div>
 
@@ -212,7 +285,7 @@ export default function LandOwnerHome() {
                 </div>
                 <div>
                   <p className="text-xs text-[#94A3B8]">Email</p>
-                  <p className="text-[#E5E7EB]">{usersData[selectedUser].email}</p>
+                  <p className="text-[#E5E7EB]">{selectedUserData.email}</p>
                 </div>
               </div>
 
@@ -224,7 +297,7 @@ export default function LandOwnerHome() {
                 </div>
                 <div>
                   <p className="text-xs text-[#94A3B8]">Phone</p>
-                  <p className="text-[#E5E7EB]">{usersData[selectedUser].phone}</p>
+                  <p className="text-[#E5E7EB]">{selectedUserData.phone || 'Not provided'}</p>
                 </div>
               </div>
 
@@ -234,7 +307,7 @@ export default function LandOwnerHome() {
                 </div>
                 <div>
                   <p className="text-xs text-[#94A3B8]">Total Bookings</p>
-                  <p className="text-[#E5E7EB]">{usersData[selectedUser].totalBookings} bookings</p>
+                  <p className="text-[#E5E7EB]">{selectedUserData.totalBookings} bookings</p>
                 </div>
               </div>
             </div>
@@ -326,7 +399,12 @@ export default function LandOwnerHome() {
                 </div>
               </div>
               
-              {recentBookings.length > 0 ? (
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="w-12 h-12 text-[#84CC16] animate-spin mb-4" />
+                  <p className="text-[#94A3B8]">Loading bookings...</p>
+                </div>
+              ) : recentBookings.length > 0 ? (
                 <>
                   {/* Mobile Cards View */}
                   <div className="sm:hidden space-y-3">
@@ -340,12 +418,14 @@ export default function LandOwnerHome() {
                               className="flex items-center gap-1 text-[#84CC16] text-sm hover:underline"
                             >
                               <User className="w-3 h-3" />
-                              {booking.oderId}
+                              {booking.userName}
                             </button>
                           </div>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                             booking.status === "active" 
                               ? "bg-green-500/20 text-green-400" 
+                              : booking.status === "cancelled"
+                              ? "bg-red-500/20 text-red-400"
                               : "bg-[#94A3B8]/20 text-[#94A3B8]"
                           }`}>
                             {booking.status}
@@ -375,7 +455,7 @@ export default function LandOwnerHome() {
                       <thead>
                         <tr className="text-left text-[#94A3B8] text-sm border-b border-white/10">
                           <th className="pb-4">Booking ID</th>
-                          <th className="pb-4">User ID</th>
+                          <th className="pb-4">User</th>
                           <th className="pb-4">Vehicle</th>
                           <th className="pb-4">Spot</th>
                           <th className="pb-4">Time</th>
@@ -392,7 +472,7 @@ export default function LandOwnerHome() {
                                 className="flex items-center gap-1 text-[#84CC16] hover:underline"
                               >
                                 <User className="w-3 h-3" />
-                                {booking.oderId}
+                                {booking.userName}
                               </button>
                             </td>
                             <td className="py-4">{booking.vehicle}</td>
@@ -407,6 +487,8 @@ export default function LandOwnerHome() {
                               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                                 booking.status === "active" 
                                   ? "bg-green-500/20 text-green-400" 
+                                  : booking.status === "cancelled"
+                                  ? "bg-red-500/20 text-red-400"
                                   : "bg-[#94A3B8]/20 text-[#94A3B8]"
                               }`}>
                                 {booking.status}
@@ -443,32 +525,32 @@ export default function LandOwnerHome() {
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-[#94A3B8]">Occupancy Rate</span>
-                    <span className="text-[#E5E7EB] font-medium">15%</span>
+                    <span className="text-[#E5E7EB] font-medium">{occupancyRate}%</span>
                   </div>
                   <div className="h-2 rounded-full bg-[#0F172A]">
-                    <div className="h-full w-[15%] rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]"></div>
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" style={{ width: `${occupancyRate}%` }}></div>
                   </div>
                 </div>
 
-                {/* Average Stay */}
+                {/* Active Bookings */}
                 <div>
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-[#94A3B8]">Average Stay</span>
-                    <span className="text-[#E5E7EB] font-medium">2h 15m</span>
+                    <span className="text-[#94A3B8]">Active Bookings</span>
+                    <span className="text-[#E5E7EB] font-medium">{activeBookings}</span>
                   </div>
                   <div className="h-2 rounded-full bg-[#0F172A]">
-                    <div className="h-full w-3/4 rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]"></div>
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" style={{ width: `${bookingsForDate.length > 0 ? (activeBookings / bookingsForDate.length) * 100 : 0}%` }}></div>
                   </div>
                 </div>
 
-                {/* Peak Hour */}
+                {/* Completed Bookings */}
                 <div>
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-[#94A3B8]">Peak Hour</span>
-                    <span className="text-[#E5E7EB] font-medium">9:00 AM</span>
+                    <span className="text-[#94A3B8]">Completed</span>
+                    <span className="text-[#E5E7EB] font-medium">{completedBookings}</span>
                   </div>
                   <div className="h-2 rounded-full bg-[#0F172A]">
-                    <div className="h-full w-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]"></div>
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" style={{ width: `${bookingsForDate.length > 0 ? (completedBookings / bookingsForDate.length) * 100 : 0}%` }}></div>
                   </div>
                 </div>
 
@@ -480,27 +562,27 @@ export default function LandOwnerHome() {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#0F172A] rounded-lg p-3">
-                      <p className="text-[#94A3B8] text-xs">Check-ins</p>
-                      <p className="text-xl font-bold text-[#E5E7EB]">24</p>
+                      <p className="text-[#94A3B8] text-xs">Active</p>
+                      <p className="text-xl font-bold text-green-400">{activeBookings}</p>
                     </div>
                     <div className="bg-[#0F172A] rounded-lg p-3">
-                      <p className="text-[#94A3B8] text-xs">Check-outs</p>
-                      <p className="text-xl font-bold text-[#E5E7EB]">18</p>
+                      <p className="text-[#94A3B8] text-xs">Completed</p>
+                      <p className="text-xl font-bold text-[#E5E7EB]">{completedBookings}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Revenue Trend */}
+                {/* Total Revenue */}
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center justify-between">
-                    <span className="text-[#94A3B8] text-sm">Weekly Revenue</span>
+                    <span className="text-[#94A3B8] text-sm">Total Revenue</span>
                     <div className="flex items-center gap-1 text-green-400 text-sm">
                       <TrendingUp className="w-4 h-4" />
-                      +12.5%
+                      All Time
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-[#84CC16] mt-2">$2,850</p>
-                  <p className="text-xs text-[#94A3B8] mt-1">vs $2,533 last week</p>
+                  <p className="text-2xl font-bold text-[#84CC16] mt-2">${weeklyRevenue.toFixed(2)}</p>
+                  <p className="text-xs text-[#94A3B8] mt-1">from {totalBookingsCount} bookings</p>
                 </div>
               </div>
             </div>
