@@ -1,8 +1,104 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export function SignUpCard() {
+  const router = useRouter();
+  const [formData, setFormData] = useState({
+    fullName: '',
+    contactNo: '',
+    email: '',
+    vehicleNumber: '',
+    nic: '',
+    password: '',
+    confirmPassword: '',
+    role: 'CUSTOMER',
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setError(''); // Clear error when user types
+  };
+
+  // Helper function to get redirect path based on role
+  const getRedirectPath = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return '/admin';
+      case 'CUSTOMER':
+        return '/customer';
+      case 'COUNTER':
+        return '/counter';
+      case 'LAND_OWNER':
+        return '/land-owner';
+      case 'WASHER':
+        return '/washer';
+      default:
+        return '/customer';
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    // Validation
+    if (!formData.fullName || !formData.email || !formData.password) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/sign-up', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          contactNo: formData.contactNo,
+          email: formData.email,
+          vehicleNumber: formData.vehicleNumber,
+          nic: formData.nic,
+          password: formData.password,
+          role: formData.role,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setError(data.error || 'Failed to create account');
+        return;
+      }
+
+      // Success! Redirect based on user role
+      const redirectPath = getRedirectPath(data.data.user.role);
+      router.push(redirectPath);
+    } catch (err) {
+      setError('Something went wrong. Please try again.');
+      console.error('Sign up error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="w-full">
       <div className="bg-gradient-to-br from-[#1E293B] to-[#0F172A] rounded-2xl shadow-2xl p-8 border border-[#334155]/50">
@@ -11,11 +107,20 @@ export function SignUpCard() {
           <p className="text-sm text-[#84CC16] text-center">Use email or service, to create account</p>
         </div>
 
-        <form className="space-y-4">
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/50 text-red-400 text-sm text-center">
+            {error}
+          </div>
+        )}
+
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <input
               type="text"
-              placeholder="Full name"
+              name="fullName"
+              value={formData.fullName}
+              onChange={handleChange}
+              placeholder="Full name *"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
           </div>
@@ -23,6 +128,9 @@ export function SignUpCard() {
           <div>
             <input
               type="tel"
+              name="contactNo"
+              value={formData.contactNo}
+              onChange={handleChange}
               placeholder="Contact No"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
@@ -31,7 +139,10 @@ export function SignUpCard() {
           <div>
             <input
               type="email"
-              placeholder="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="Email *"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
           </div>
@@ -39,6 +150,9 @@ export function SignUpCard() {
           <div>
             <input
               type="text"
+              name="vehicleNumber"
+              value={formData.vehicleNumber}
+              onChange={handleChange}
               placeholder="Vehicle Number"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
@@ -47,15 +161,36 @@ export function SignUpCard() {
           <div>
             <input
               type="text"
+              name="nic"
+              value={formData.nic}
+              onChange={handleChange}
               placeholder="NIC"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
           </div>
 
           <div>
+            <select
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200 cursor-pointer"
+            >
+              <option value="ADMIN" className="bg-[#1E293B] text-[#E5E7EB]">Admin</option>
+              <option value="CUSTOMER" className="bg-[#1E293B] text-[#E5E7EB]">Customer</option>
+              <option value="COUNTER" className="bg-[#1E293B] text-[#E5E7EB]">Counter</option>
+              <option value="LAND_OWNER" className="bg-[#1E293B] text-[#E5E7EB]">Land Owner</option>
+              <option value="WASHER" className="bg-[#1E293B] text-[#E5E7EB]">Washer</option>
+            </select>
+          </div>
+
+          <div>
             <input
               type="password"
-              placeholder="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Password *"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
           </div>
@@ -63,16 +198,20 @@ export function SignUpCard() {
           <div>
             <input
               type="password"
-              placeholder="confirm password"
+              name="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              placeholder="Confirm password *"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 rounded-lg bg-black text-white font-medium hover:bg-gradient-to-r hover:from-[#84CC16] hover:to-[#BEF264] hover:text-black transition-all duration-300 shadow-lg hover:shadow-[#84CC16]/50"
+            disabled={loading}
+            className="w-full py-3 rounded-lg bg-black text-white font-medium hover:bg-gradient-to-r hover:from-[#84CC16] hover:to-[#BEF264] hover:text-black transition-all duration-300 shadow-lg hover:shadow-[#84CC16]/50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            continue
+            {loading ? 'Creating account...' : 'Continue'}
           </button>
         </form>
 
