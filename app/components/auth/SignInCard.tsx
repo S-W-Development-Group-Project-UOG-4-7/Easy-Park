@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-<<<<<<< HEAD
 
 // Map roles to their redirect paths
 const ROLE_REDIRECT_MAP: Record<string, string> = {
@@ -13,8 +12,6 @@ const ROLE_REDIRECT_MAP: Record<string, string> = {
   LAND_OWNER: '/land-owner',
   WASHER: '/washer',
 };
-=======
->>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
 
 export function SignInCard() {
   const router = useRouter();
@@ -25,27 +22,6 @@ export function SignInCard() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-<<<<<<< HEAD
-=======
-  // Helper function to get redirect path based on role
-  const getRedirectPath = (role: string) => {
-    switch (role) {
-      case 'ADMIN':
-        return '/admin';
-      case 'CUSTOMER':
-        return '/customer';
-      case 'COUNTER':
-        return '/counter';
-      case 'LAND_OWNER':
-        return '/land-owner';
-      case 'WASHER':
-        return '/washer';
-      default:
-        return '/customer';
-    }
-  };
-
->>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
@@ -82,12 +58,8 @@ export function SignInCard() {
       }
 
       // Success! Redirect based on user role
-<<<<<<< HEAD
       const userRole = data.data?.user?.role || 'CUSTOMER';
       const redirectPath = ROLE_REDIRECT_MAP[userRole] || '/customer';
-=======
-      const redirectPath = getRedirectPath(data.data.user.role);
->>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
       router.push(redirectPath);
     } catch (err) {
       setError('Something went wrong. Please try again.');

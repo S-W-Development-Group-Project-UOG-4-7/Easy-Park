@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-<<<<<<< HEAD
 
 // Role options for the dropdown
 const ROLE_OPTIONS = [
@@ -22,8 +21,6 @@ const ROLE_REDIRECT_MAP: Record<string, string> = {
   LAND_OWNER: '/land-owner',
   WASHER: '/washer',
 };
-=======
->>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
 
 export function SignUpCard() {
   const router = useRouter();
@@ -45,27 +42,6 @@ export function SignUpCard() {
     setError(''); // Clear error when user types
   };
 
-<<<<<<< HEAD
-=======
-  // Helper function to get redirect path based on role
-  const getRedirectPath = (role: string) => {
-    switch (role) {
-      case 'ADMIN':
-        return '/admin';
-      case 'CUSTOMER':
-        return '/customer';
-      case 'COUNTER':
-        return '/counter';
-      case 'LAND_OWNER':
-        return '/land-owner';
-      case 'WASHER':
-        return '/washer';
-      default:
-        return '/customer';
-    }
-  };
-
->>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -113,11 +89,7 @@ export function SignUpCard() {
       }
 
       // Success! Redirect based on user role
-<<<<<<< HEAD
       const redirectPath = ROLE_REDIRECT_MAP[formData.role] || '/customer';
-=======
-      const redirectPath = getRedirectPath(data.data.user.role);
->>>>>>> 7804710b074a678f7a53c3e46fee4da1ef830302
       router.push(redirectPath);
     } catch (err) {
       setError('Something went wrong. Please try again.');
@@ -195,21 +167,6 @@ export function SignUpCard() {
               placeholder="NIC"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
-          </div>
-
-          <div>
-            <select
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200 cursor-pointer"
-            >
-              <option value="ADMIN" className="bg-[#1E293B] text-[#E5E7EB]">Admin</option>
-              <option value="CUSTOMER" className="bg-[#1E293B] text-[#E5E7EB]">Customer</option>
-              <option value="COUNTER" className="bg-[#1E293B] text-[#E5E7EB]">Counter</option>
-              <option value="LAND_OWNER" className="bg-[#1E293B] text-[#E5E7EB]">Land Owner</option>
-              <option value="WASHER" className="bg-[#1E293B] text-[#E5E7EB]">Washer</option>
-            </select>
           </div>
 
           <div>
