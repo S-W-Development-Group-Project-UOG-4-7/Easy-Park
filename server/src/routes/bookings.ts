@@ -1,100 +1,54 @@
 import { Router, Request, Response } from 'express';
-import { query } from '../db/config.js';
+import prisma from '../db/prisma.js';
 
 const router = Router();
 
 // Get all bookings with filters
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { propertyId, date, time, status } = req.query;
+    const { propertyId, date, status } = req.query;
 
-    let sql = `
-      SELECT 
-        b.id,
-        b.booking_date,
-        b.start_time,
-        b.end_time,
-        b.hours_selected,
-        b.check_in_time,
-        b.check_out_time,
-        b.payment_amount,
-        b.payment_method,
-        b.payment_status,
-        b.booking_status,
-        b.extras,
-        b.created_at,
-        c.id as customer_id,
-        c.name as customer_name,
-        c.address as customer_address,
-        c.email as customer_email,
-        c.phone as customer_phone,
-        p.id as property_id,
-        p.name as property_name,
-        ps.id as slot_id,
-        ps.slot_number,
-        ps.type as parking_type
-      FROM bookings b
-      JOIN customers c ON b.customer_id = c.id
-      JOIN properties p ON b.property_id = p.id
-      JOIN parking_slots ps ON b.slot_id = ps.id
-      WHERE 1=1
-    `;
+    const bookings = await prisma.booking.findMany({
+      where: {
+        ...(propertyId && propertyId !== 'all' && { propertyId: parseInt(propertyId as string) }),
+        ...(date && { bookingDate: new Date(date as string) }),
+        ...(status && { bookingStatus: status as any })
+      },
+      include: {
+        customer: true,
+        property: true,
+        slot: true
+      },
+      orderBy: [{ bookingDate: 'desc' }, { startTime: 'desc' }]
+    });
 
-    const params: any[] = [];
-    let paramCount = 0;
-
-    if (propertyId && propertyId !== 'all') {
-      paramCount++;
-      sql += ` AND b.property_id = $${paramCount}`;
-      params.push(propertyId);
-    }
-
-    if (date) {
-      paramCount++;
-      sql += ` AND b.booking_date = $${paramCount}`;
-      params.push(date);
-    }
-
-    if (time) {
-      paramCount++;
-      sql += ` AND b.start_time = $${paramCount}`;
-      params.push(time);
-    }
-
-    if (status) {
-      paramCount++;
-      sql += ` AND b.booking_status = $${paramCount}`;
-      params.push(status);
-    }
-
-    sql += ' ORDER BY b.booking_date DESC, b.start_time DESC';
-
-    const result = await query(sql, params);
-
-    const bookings = result.rows.map((row) => ({
-      id: row.id.toString(),
-      customerId: row.customer_id.toString(),
-      name: row.customer_name,
-      address: row.customer_address,
-      email: row.customer_email,
-      phone: row.customer_phone,
-      propertyName: row.property_name,
-      propertyId: row.property_id.toString(),
-      parkingSlot: row.slot_number,
-      parkingSlotId: row.slot_id.toString(),
-      date: row.booking_date.toISOString().split('T')[0],
-      time: row.start_time,
-      parkingType: row.parking_type === 'EV' ? 'EV Slot' : row.parking_type,
-      hoursSelected: row.hours_selected,
-      checkOutTime: row.check_out_time?.toISOString() || null,
-      paymentAmount: parseFloat(row.payment_amount),
-      paymentMethod: row.payment_method,
-      paymentStatus: row.payment_status,
-      bookingStatus: row.booking_status,
-      extras: row.extras,
+    const result = bookings.map(b => ({
+      id: b.id,
+      customerId: b.customerId,
+      name: b.customer.name,
+      address: b.customer.address,
+      email: b.customer.email,
+      phone: b.customer.phone,
+      propertyId: b.propertyId,
+      propertyName: b.property.name,
+      slotId: b.slotId,
+      slotNumber: b.slot.slotNumber,
+      parkingType: b.slot.type === 'CarWashing' ? 'Car Washing' : b.slot.type,
+      bookingDate: b.bookingDate,
+      startTime: b.startTime,
+      endTime: b.endTime,
+      hoursSelected: b.hoursSelected,
+      checkInTime: b.checkInTime,
+      checkOutTime: b.checkOutTime,
+      paymentAmount: b.paymentAmount,
+      paymentMethod: b.paymentMethod,
+      paymentStatus: b.paymentStatus,
+      bookingStatus: b.bookingStatus,
+      extras: b.extras,
+      createdAt: b.createdAt
     }));
 
-    res.json(bookings);
+    res.json(result);
   } catch (error) {
     console.error('Error fetching bookings:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -105,50 +59,45 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    
+    const booking = await prisma.booking.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        customer: true,
+        property: true,
+        slot: true
+      }
+    });
 
-    const result = await query(
-      `SELECT 
-        b.*,
-        c.name as customer_name,
-        c.address as customer_address,
-        c.email as customer_email,
-        c.phone as customer_phone,
-        p.name as property_name,
-        ps.slot_number,
-        ps.type as parking_type
-      FROM bookings b
-      JOIN customers c ON b.customer_id = c.id
-      JOIN properties p ON b.property_id = p.id
-      JOIN parking_slots ps ON b.slot_id = ps.id
-      WHERE b.id = $1`,
-      [id]
-    );
-
-    if (result.rows.length === 0) {
+    if (!booking) {
       res.status(404).json({ error: 'Booking not found' });
       return;
     }
 
-    const row = result.rows[0];
     res.json({
-      id: row.id.toString(),
-      customerId: row.customer_id.toString(),
-      name: row.customer_name,
-      address: row.customer_address,
-      propertyName: row.property_name,
-      propertyId: row.property_id.toString(),
-      parkingSlot: row.slot_number,
-      parkingSlotId: row.slot_id.toString(),
-      date: row.booking_date.toISOString().split('T')[0],
-      time: row.start_time,
-      parkingType: row.parking_type === 'EV' ? 'EV Slot' : row.parking_type,
-      hoursSelected: row.hours_selected,
-      checkOutTime: row.check_out_time?.toISOString() || null,
-      paymentAmount: parseFloat(row.payment_amount),
-      paymentMethod: row.payment_method,
-      paymentStatus: row.payment_status,
-      bookingStatus: row.booking_status,
-      extras: row.extras,
+      id: booking.id,
+      customerId: booking.customerId,
+      name: booking.customer.name,
+      address: booking.customer.address,
+      email: booking.customer.email,
+      phone: booking.customer.phone,
+      propertyId: booking.propertyId,
+      propertyName: booking.property.name,
+      slotId: booking.slotId,
+      slotNumber: booking.slot.slotNumber,
+      parkingType: booking.slot.type === 'CarWashing' ? 'Car Washing' : booking.slot.type,
+      bookingDate: booking.bookingDate,
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      hoursSelected: booking.hoursSelected,
+      checkInTime: booking.checkInTime,
+      checkOutTime: booking.checkOutTime,
+      paymentAmount: booking.paymentAmount,
+      paymentMethod: booking.paymentMethod,
+      paymentStatus: booking.paymentStatus,
+      bookingStatus: booking.bookingStatus,
+      extras: booking.extras,
+      createdAt: booking.createdAt
     });
   } catch (error) {
     console.error('Error fetching booking:', error);
@@ -161,51 +110,43 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const {
       customerId,
-      customerName,
-      customerEmail,
-      customerPhone,
-      customerAddress,
       propertyId,
       slotId,
       bookingDate,
       startTime,
+      endTime,
       hoursSelected,
       paymentAmount,
       paymentMethod,
-      extras,
+      extras
     } = req.body;
 
-    let custId = customerId;
+    // Update slot status to occupied
+    await prisma.parkingSlot.update({
+      where: { id: slotId },
+      data: { status: 'occupied' }
+    });
 
-    // Create customer if not exists
-    if (!custId && customerName) {
-      const customerResult = await query(
-        `INSERT INTO customers (name, email, phone, address)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
-         RETURNING id`,
-        [customerName, customerEmail, customerPhone, customerAddress]
-      );
-      custId = customerResult.rows[0].id;
-    }
-
-    // Create booking
-    const result = await query(
-      `INSERT INTO bookings (customer_id, property_id, slot_id, booking_date, start_time, hours_selected, payment_amount, payment_method, extras)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id`,
-      [custId, propertyId, slotId, bookingDate, startTime, hoursSelected, paymentAmount, paymentMethod, extras]
-    );
-
-    // Update slot status
-    await query(
-      `UPDATE parking_slots SET status = 'reserved' WHERE id = $1`,
-      [slotId]
-    );
+    const booking = await prisma.booking.create({
+      data: {
+        customerId,
+        propertyId,
+        slotId,
+        bookingDate: new Date(bookingDate),
+        startTime: new Date(`1970-01-01T${startTime}`),
+        endTime: endTime ? new Date(`1970-01-01T${endTime}`) : null,
+        hoursSelected: hoursSelected || 1,
+        paymentAmount,
+        paymentMethod,
+        paymentStatus: 'paid',
+        bookingStatus: 'confirmed',
+        extras
+      }
+    });
 
     res.status(201).json({
-      id: result.rows[0].id.toString(),
-      message: 'Booking created successfully',
+      id: booking.id.toString(),
+      message: 'Booking created successfully'
     });
   } catch (error) {
     console.error('Error creating booking:', error);
@@ -213,39 +154,88 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-// Update booking status
+// Update booking
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { bookingStatus, paymentStatus, checkOutTime } = req.body;
+    const { bookingStatus, paymentStatus } = req.body;
+    
+    await prisma.booking.update({
+      where: { id: parseInt(id) },
+      data: {
+        ...(bookingStatus && { bookingStatus }),
+        ...(paymentStatus && { paymentStatus })
+      }
+    });
 
-    const result = await query(
-      `UPDATE bookings 
-       SET booking_status = COALESCE($1, booking_status),
-           payment_status = COALESCE($2, payment_status),
-           check_out_time = COALESCE($3, check_out_time),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4
-       RETURNING slot_id`,
-      [bookingStatus, paymentStatus, checkOutTime, id]
-    );
+    res.json({ message: 'Booking updated successfully' });
+  } catch (error: any) {
+    if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Booking not found' });
+      return;
+    }
+    console.error('Error updating booking:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-    if (result.rows.length === 0) {
+// Check-in
+router.post('/:id/checkin', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    await prisma.booking.update({
+      where: { id: parseInt(id) },
+      data: {
+        checkInTime: new Date(),
+        bookingStatus: 'checked_in'
+      }
+    });
+
+    res.json({ message: 'Check-in successful' });
+  } catch (error: any) {
+    if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Booking not found' });
+      return;
+    }
+    console.error('Error checking in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Check-out
+router.post('/:id/checkout', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const booking = await prisma.booking.findUnique({
+      where: { id: parseInt(id) },
+      select: { slotId: true }
+    });
+
+    if (!booking) {
       res.status(404).json({ error: 'Booking not found' });
       return;
     }
 
-    // Update slot status if completed or cancelled
-    if (bookingStatus === 'completed' || bookingStatus === 'cancelled') {
-      await query(
-        `UPDATE parking_slots SET status = 'available' WHERE id = $1`,
-        [result.rows[0].slot_id]
-      );
-    }
+    // Update booking
+    await prisma.booking.update({
+      where: { id: parseInt(id) },
+      data: {
+        checkOutTime: new Date(),
+        bookingStatus: 'completed'
+      }
+    });
 
-    res.json({ message: 'Booking updated successfully' });
+    // Free up the slot
+    await prisma.parkingSlot.update({
+      where: { id: booking.slotId },
+      data: { status: 'available' }
+    });
+
+    res.json({ message: 'Check-out successful' });
   } catch (error) {
-    console.error('Error updating booking:', error);
+    console.error('Error checking out:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -254,27 +244,30 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    
+    const booking = await prisma.booking.findUnique({
+      where: { id: parseInt(id) },
+      select: { slotId: true }
+    });
 
-    const booking = await query(
-      `SELECT slot_id FROM bookings WHERE id = $1`,
-      [id]
-    );
+    if (booking) {
+      // Free up the slot
+      await prisma.parkingSlot.update({
+        where: { id: booking.slotId },
+        data: { status: 'available' }
+      });
+    }
 
-    if (booking.rows.length === 0) {
+    await prisma.booking.delete({
+      where: { id: parseInt(id) }
+    });
+
+    res.json({ message: 'Booking deleted successfully' });
+  } catch (error: any) {
+    if (error.code === 'P2025') {
       res.status(404).json({ error: 'Booking not found' });
       return;
     }
-
-    // Free up the slot
-    await query(
-      `UPDATE parking_slots SET status = 'available' WHERE id = $1`,
-      [booking.rows[0].slot_id]
-    );
-
-    await query(`DELETE FROM bookings WHERE id = $1`, [id]);
-
-    res.json({ message: 'Booking deleted successfully' });
-  } catch (error) {
     console.error('Error deleting booking:', error);
     res.status(500).json({ error: 'Internal server error' });
   }

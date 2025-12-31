@@ -1,0 +1,113 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Property {
+  id          Int           @id @default(autoincrement())
+  name        String        @db.VarChar(255)
+  address     String
+  description String?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  slots       ParkingSlot[]
+  bookings    Booking[]
+
+  @@map("properties")
+}
+
+model ParkingSlot {
+  id         Int       @id @default(autoincrement())
+  propertyId Int       @map("property_id")
+  slotNumber String    @map("slot_number") @db.VarChar(20)
+  type       SlotType
+  status     SlotStatus @default(available)
+  hourlyRate Decimal   @default(5.00) @map("hourly_rate") @db.Decimal(10, 2)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  property   Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  bookings   Booking[]
+
+  @@unique([propertyId, slotNumber])
+  @@map("parking_slots")
+}
+
+model Customer {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  email     String?   @unique @db.VarChar(255)
+  phone     String?   @db.VarChar(20)
+  address   String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  bookings  Booking[]
+
+  @@map("customers")
+}
+
+model Booking {
+  id            Int           @id @default(autoincrement())
+  customerId    Int           @map("customer_id")
+  propertyId    Int           @map("property_id")
+  slotId        Int           @map("slot_id")
+  bookingDate   DateTime      @map("booking_date") @db.Date
+  startTime     DateTime      @map("start_time") @db.Time()
+  endTime       DateTime?     @map("end_time") @db.Time()
+  hoursSelected Int           @default(1) @map("hours_selected")
+  checkInTime   DateTime?     @map("check_in_time")
+  checkOutTime  DateTime?     @map("check_out_time")
+  paymentAmount Decimal       @map("payment_amount") @db.Decimal(10, 2)
+  paymentMethod String?       @map("payment_method") @db.VarChar(50)
+  paymentStatus PaymentStatus @default(pending) @map("payment_status")
+  bookingStatus BookingStatus @default(confirmed) @map("booking_status")
+  extras        String?
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  property      Property      @relation(fields: [propertyId], references: [id])
+  slot          ParkingSlot   @relation(fields: [slotId], references: [id])
+
+  @@map("bookings")
+}
+
+enum SlotType {
+  Normal
+  EV
+  CarWashing @map("Car Washing")
+
+  @@map("slot_type")
+}
+
+enum SlotStatus {
+  available
+  occupied
+  reserved
+  maintenance
+
+  @@map("slot_status")
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  refunded
+  cancelled
+
+  @@map("payment_status")
+}
+
+enum BookingStatus {
+  confirmed
+  checked_in
+  completed
+  cancelled
+  no_show
+
+  @@map("booking_status")
+}
