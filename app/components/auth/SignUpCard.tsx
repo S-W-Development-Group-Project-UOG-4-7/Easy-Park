@@ -4,6 +4,24 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+// Role options for the dropdown
+const ROLE_OPTIONS = [
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'CUSTOMER', label: 'Customer' },
+  { value: 'COUNTER', label: 'Counter' },
+  { value: 'LAND_OWNER', label: 'Land Owner' },
+  { value: 'WASHER', label: 'Washer' },
+];
+
+// Map roles to their redirect paths
+const ROLE_REDIRECT_MAP: Record<string, string> = {
+  ADMIN: '/admin',
+  CUSTOMER: '/customer',
+  COUNTER: '/counter',
+  LAND_OWNER: '/land-owner',
+  WASHER: '/washer',
+};
+
 export function SignUpCard() {
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -22,24 +40,6 @@ export function SignUpCard() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError(''); // Clear error when user types
-  };
-
-  // Helper function to get redirect path based on role
-  const getRedirectPath = (role: string) => {
-    switch (role) {
-      case 'ADMIN':
-        return '/admin';
-      case 'CUSTOMER':
-        return '/customer';
-      case 'COUNTER':
-        return '/counter';
-      case 'LAND_OWNER':
-        return '/land-owner';
-      case 'WASHER':
-        return '/washer';
-      default:
-        return '/customer';
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -89,7 +89,7 @@ export function SignUpCard() {
       }
 
       // Success! Redirect based on user role
-      const redirectPath = getRedirectPath(data.data.user.role);
+      const redirectPath = ROLE_REDIRECT_MAP[formData.role] || '/customer';
       router.push(redirectPath);
     } catch (err) {
       setError('Something went wrong. Please try again.');
@@ -170,21 +170,6 @@ export function SignUpCard() {
           </div>
 
           <div>
-            <select
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200 cursor-pointer"
-            >
-              <option value="ADMIN" className="bg-[#1E293B] text-[#E5E7EB]">Admin</option>
-              <option value="CUSTOMER" className="bg-[#1E293B] text-[#E5E7EB]">Customer</option>
-              <option value="COUNTER" className="bg-[#1E293B] text-[#E5E7EB]">Counter</option>
-              <option value="LAND_OWNER" className="bg-[#1E293B] text-[#E5E7EB]">Land Owner</option>
-              <option value="WASHER" className="bg-[#1E293B] text-[#E5E7EB]">Washer</option>
-            </select>
-          </div>
-
-          <div>
             <input
               type="password"
               name="password"
@@ -204,6 +189,31 @@ export function SignUpCard() {
               placeholder="Confirm password *"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
+          </div>
+
+          <div>
+            <select
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200 appearance-none cursor-pointer"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394A3B8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 12px center',
+                backgroundSize: '20px',
+              }}
+            >
+              {ROLE_OPTIONS.map((option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                  className="bg-[#1E293B] text-[#E5E7EB]"
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <button

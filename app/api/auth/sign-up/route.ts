@@ -6,15 +6,7 @@ import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-r
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-<<<<<<< HEAD
     const { email, password, fullName, contactNo, vehicleNumber, nic, role } = body;
-
-    // Validate role
-    const validRoles = ['ADMIN', 'CUSTOMER', 'COUNTER', 'LAND_OWNER', 'WASHER'];
-    const userRole = validRoles.includes(role) ? role : 'CUSTOMER';
-=======
-    const { email, password, fullName, contactNo, vehicleNumber, nic } = body;
->>>>>>> e199644a47d9c5dcf8e7365e241b056f4998bf09
 
     // Validation
     if (!email || !password || !fullName) {
@@ -47,6 +39,10 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
+    // Validate role
+    const validRoles = ['ADMIN', 'CUSTOMER', 'COUNTER', 'LAND_OWNER', 'WASHER'];
+    const userRole = role && validRoles.includes(role) ? role : 'CUSTOMER';
+
     // Create user
     const user = await prisma.user.create({
       data: {
@@ -56,10 +52,7 @@ export async function POST(request: NextRequest) {
         contactNo,
         vehicleNumber,
         nic,
-<<<<<<< HEAD
         role: userRole,
-=======
->>>>>>> e199644a47d9c5dcf8e7365e241b056f4998bf09
       },
       select: {
         id: true,

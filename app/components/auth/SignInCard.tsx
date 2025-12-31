@@ -4,6 +4,15 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+// Map roles to their redirect paths
+const ROLE_REDIRECT_MAP: Record<string, string> = {
+  ADMIN: '/admin',
+  CUSTOMER: '/customer',
+  COUNTER: '/counter',
+  LAND_OWNER: '/land-owner',
+  WASHER: '/washer',
+};
+
 export function SignInCard() {
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -12,24 +21,6 @@ export function SignInCard() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Helper function to get redirect path based on role
-  const getRedirectPath = (role: string) => {
-    switch (role) {
-      case 'ADMIN':
-        return '/admin';
-      case 'CUSTOMER':
-        return '/customer';
-      case 'COUNTER':
-        return '/counter';
-      case 'LAND_OWNER':
-        return '/land-owner';
-      case 'WASHER':
-        return '/washer';
-      default:
-        return '/customer';
-    }
-  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -67,7 +58,8 @@ export function SignInCard() {
       }
 
       // Success! Redirect based on user role
-      const redirectPath = getRedirectPath(data.data.user.role);
+      const userRole = data.data?.user?.role || 'CUSTOMER';
+      const redirectPath = ROLE_REDIRECT_MAP[userRole] || '/customer';
       router.push(redirectPath);
     } catch (err) {
       setError('Something went wrong. Please try again.');

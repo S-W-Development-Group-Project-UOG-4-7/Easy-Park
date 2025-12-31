@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 
 interface User {
@@ -9,134 +9,125 @@ interface User {
   fullName: string;
   contactNo?: string;
   vehicleNumber?: string;
-  nic?: string;
   role: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
+  loading: boolean;
   signOut: () => Promise<void>;
-  checkAuth: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper function to get redirect path based on role
-const getRedirectPath = (role: string) => {
-  switch (role) {
-    case 'ADMIN':
-      return '/admin';
-    case 'CUSTOMER':
-      return '/customer';
-    case 'COUNTER':
-      return '/counter';
-    case 'LAND_OWNER':
-      return '/land-owner';
-    case 'WASHER':
-      return '/washer';
-    default:
-      return '/customer';
-  }
+// Role to redirect path mapping
+const ROLE_REDIRECT_MAP: Record<string, string> = {
+  ADMIN: '/admin',
+  CUSTOMER: '/customer',
+  COUNTER: '/counter',
+  LAND_OWNER: '/land-owner',
+  WASHER: '/washer',
 };
 
-// Protected routes that require authentication
-const protectedRoutes = ['/customer', '/admin', '/counter', '/land-owner', '/washer'];
+// Protected route patterns
+const PROTECTED_ROUTES = ['/customer', '/admin', '/counter', '/land-owner', '/washer'];
 
-// Check if a path is protected
-const isProtectedRoute = (path: string) => {
-  return protectedRoutes.some(route => path.startsWith(route));
-};
+// Public routes that don't require authentication
+const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up'];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
 
-  const checkAuth = useCallback(async () => {
+  // Check if current route is protected
+  const isProtectedRoute = PROTECTED_ROUTES.some(route => pathname.startsWith(route));
+  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+
+  // Fetch current user from API
+  const refreshUser = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/me', {
         credentials: 'include',
       });
       
-      const data = await response.json();
-      
-      if (data.success && data.data) {
-        setUser(data.data);
-        return data.data;
-      } else {
-        setUser(null);
-        return null;
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          setUser(data.data);
+          return data.data;
+        }
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
       setUser(null);
       return null;
-    } finally {
-      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      setUser(null);
+      return null;
     }
   }, []);
 
+  // Sign out function
   const signOut = useCallback(async () => {
     try {
-      // Call backend to clear session/token
       await fetch('/api/auth/sign-out', {
         method: 'POST',
         credentials: 'include',
       });
-      
+    } catch (error) {
+      console.error('Sign out error:', error);
+    } finally {
       // Clear user state
       setUser(null);
       
-      // Clear any localStorage data if exists
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('user');
-        localStorage.removeItem('token');
-      }
+      // Clear any client-side storage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       
-      // Redirect to home page with replace to prevent back navigation
-      router.replace('/');
-    } catch (error) {
-      console.error('Sign out error:', error);
-      // Even if the API call fails, clear local state and redirect
-      setUser(null);
+      // Redirect to home using replace
       router.replace('/');
     }
   }, [router]);
 
-  // Check auth on mount and when pathname changes
+  // Check authentication on mount and route changes
   useEffect(() => {
-    const verifyAuth = async () => {
-      setIsLoading(true);
-      const authenticatedUser = await checkAuth();
+    const checkAuth = async () => {
+      setLoading(true);
+      const currentUser = await refreshUser();
       
       // If on a protected route and not authenticated, redirect to sign-in
-      if (isProtectedRoute(pathname) && !authenticatedUser) {
+      if (isProtectedRoute && !currentUser) {
+        router.replace('/sign-in');
+      }
+      
+      setLoading(false);
+    };
+
+    checkAuth();
+  }, [pathname, isProtectedRoute, refreshUser, router]);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = async () => {
+      const currentUser = await refreshUser();
+      if (isProtectedRoute && !currentUser) {
         router.replace('/sign-in');
       }
     };
 
-    verifyAuth();
-  }, [checkAuth, pathname, router]);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isProtectedRoute, refreshUser, router]);
 
-  // Prevent accessing protected routes when not authenticated
-  useEffect(() => {
-    if (!isLoading && !user && isProtectedRoute(pathname)) {
-      router.replace('/sign-in');
-    }
-  }, [isLoading, user, pathname, router]);
-
-  const value = {
-    user,
-    isLoading,
-    isAuthenticated: !!user,
-    signOut,
-    checkAuth,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
@@ -146,5 +137,3 @@ export function useAuth() {
   }
   return context;
 }
-
-export { getRedirectPath, isProtectedRoute };
