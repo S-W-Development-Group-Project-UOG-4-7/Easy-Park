@@ -1,209 +1,112 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getAuthUser } from '@/lib/auth';
+import {
+  successResponse,
+  createdResponse,
+  errorResponse,
+  unauthorizedResponse,
+  serverErrorResponse,
+} from '@/lib/api-response';
 
-// GET all bookings
-export async function GET(request: Request) {
+// GET all bookings for the authenticated user
+export async function GET(request: NextRequest) {
   try {
+    const authUser = getAuthUser(request);
+    
+    if (!authUser) {
+      return unauthorizedResponse();
+    }
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
-    const userId = searchParams.get('userId');
-    const slotId = searchParams.get('slotId');
-
-    const where: {
-      status?: string;
-      userId?: string;
-      slotId?: string;
-    } = {};
-
-    if (status && status !== 'all') {
-      where.status = status;
-    }
-    if (userId) {
-      where.userId = userId;
-    }
-    if (slotId) {
-      where.slotId = slotId;
-    }
 
     const bookings = await prisma.booking.findMany({
-      where,
+      where: {
+        userId: authUser.userId,
+        ...(status && { status: status as any }),
+      },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          },
-        },
-        slot: {
+        slots: {
           include: {
-            parkingLot: {
-              select: {
-                name: true,
-                address: true,
-              },
-            },
+            slot: true,
           },
         },
+        payment: true,
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    return NextResponse.json({ bookings });
+    return successResponse(bookings);
   } catch (error) {
-    console.error('Error fetching bookings:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch bookings' },
-      { status: 500 }
-    );
+    console.error('Get bookings error:', error);
+    return serverErrorResponse('Failed to fetch bookings');
   }
 }
 
 // POST create a new booking
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { vehicleNumber, startTime, duration, amount, userId, slotId } = body;
-
-    if (!vehicleNumber || !startTime || !duration || !userId || !slotId) {
-      return NextResponse.json(
-        { error: 'vehicleNumber, startTime, duration, userId, and slotId are required' },
-        { status: 400 }
-      );
+    const authUser = getAuthUser(request);
+    
+    if (!authUser) {
+      return unauthorizedResponse();
     }
 
-    // Check if slot is available
-    const slot = await prisma.slot.findUnique({
-      where: { id: slotId },
+    const body = await request.json();
+    const { date, startTime, endTime, duration, slotIds } = body;
+
+    // Validation
+    if (!date || !startTime || !endTime || !duration || !slotIds || slotIds.length === 0) {
+      return errorResponse('Missing required fields');
+    }
+
+    // Check if slots are available
+    const slots = await prisma.parkingSlot.findMany({
+      where: {
+        id: { in: slotIds },
+        status: 'AVAILABLE',
+      },
     });
 
-    if (!slot) {
-      return NextResponse.json(
-        { error: 'Slot not found' },
-        { status: 404 }
-      );
+    if (slots.length !== slotIds.length) {
+      return errorResponse('One or more selected slots are not available');
     }
 
-    if (slot.status !== 'available') {
-      return NextResponse.json(
-        { error: 'Slot is not available' },
-        { status: 400 }
-      );
-    }
+    // Calculate total amount
+    const PRICE_PER_SLOT_PER_HOUR = 300;
+    const totalAmount = PRICE_PER_SLOT_PER_HOUR * duration * slots.length;
 
-    // Create booking and update slot status
-    const [booking] = await prisma.$transaction([
-      prisma.booking.create({
-        data: {
-          vehicleNumber,
-          startTime: new Date(startTime),
-          duration,
-          amount: amount || slot.pricePerHour,
-          userId,
-          slotId,
+    // Create booking with slots
+    const booking = await prisma.booking.create({
+      data: {
+        userId: authUser.userId,
+        date: new Date(date),
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        duration,
+        totalAmount,
+        status: 'PENDING',
+        slots: {
+          create: slotIds.map((slotId: string) => ({
+            slotId,
+          })),
         },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-            },
-          },
-          slot: {
-            include: {
-              parkingLot: {
-                select: {
-                  name: true,
-                  address: true,
-                },
-              },
-            },
+      },
+      include: {
+        slots: {
+          include: {
+            slot: true,
           },
         },
-      }),
-      prisma.slot.update({
-        where: { id: slotId },
-        data: { status: 'occupied' },
-      }),
-    ]);
-
-    return NextResponse.json({ booking }, { status: 201 });
-  } catch (error) {
-    console.error('Error creating booking:', error);
-    return NextResponse.json(
-      { error: 'Failed to create booking' },
-      { status: 500 }
-    );
-  }
-}
-
-// PATCH update booking status
-export async function PATCH(request: Request) {
-  try {
-    const body = await request.json();
-    const { id, status } = body;
-
-    if (!id || !status) {
-      return NextResponse.json(
-        { error: 'ID and status are required' },
-        { status: 400 }
-      );
-    }
-
-    const validStatuses = ['active', 'completed', 'cancelled'];
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json(
-        { error: 'Invalid status. Must be: active, completed, or cancelled' },
-        { status: 400 }
-      );
-    }
-
-    const booking = await prisma.booking.findUnique({
-      where: { id },
+      },
     });
 
-    if (!booking) {
-      return NextResponse.json(
-        { error: 'Booking not found' },
-        { status: 404 }
-      );
-    }
-
-    // Update booking and release slot if completed or cancelled
-    if (status === 'completed' || status === 'cancelled') {
-      const [updatedBooking] = await prisma.$transaction([
-        prisma.booking.update({
-          where: { id },
-          data: {
-            status,
-            endTime: status === 'completed' ? new Date() : undefined,
-          },
-        }),
-        prisma.slot.update({
-          where: { id: booking.slotId },
-          data: { status: 'available' },
-        }),
-      ]);
-
-      return NextResponse.json({ booking: updatedBooking });
-    }
-
-    const updatedBooking = await prisma.booking.update({
-      where: { id },
-      data: { status },
-    });
-
-    return NextResponse.json({ booking: updatedBooking });
+    return createdResponse(booking, 'Booking created successfully');
   } catch (error) {
-    console.error('Error updating booking:', error);
-    return NextResponse.json(
-      { error: 'Failed to update booking' },
-      { status: 500 }
-    );
+    console.error('Create booking error:', error);
+    return serverErrorResponse('Failed to create booking');
   }
 }
