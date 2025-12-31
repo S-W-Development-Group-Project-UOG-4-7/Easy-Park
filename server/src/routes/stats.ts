@@ -1,121 +1,94 @@
 import { Router, Request, Response } from 'express';
-import prisma from '../db/prisma.js';
+import { query } from '../db/config.js';
 
 const router = Router();
 
-// Get dashboard stats from database
+// Get dashboard stats
 router.get('/', async (req: Request, res: Response) => {
   try {
     // Total revenue
-    const revenueResult = await prisma.booking.aggregate({
-      _sum: { paymentAmount: true },
-      where: { paymentStatus: 'paid' }
-    });
-    const totalRevenue = Number(revenueResult._sum.paymentAmount) || 0;
+    const revenueResult = await query(`
+      SELECT COALESCE(SUM(payment_amount), 0) as total_revenue
+      FROM bookings
+      WHERE payment_status = 'paid'
+    `);
 
     // Available slots
-    const availableSlots = await prisma.parkingSlot.count({
-      where: { status: 'available' }
-    });
+    const slotsResult = await query(`
+      SELECT COUNT(*) as available_slots
+      FROM parking_slots
+      WHERE status = 'available'
+    `);
 
     // Total customers
-    const totalCustomers = await prisma.customer.count();
+    const customersResult = await query(`
+      SELECT COUNT(DISTINCT customer_id) as total_customers
+      FROM bookings
+    `);
 
     // Today's bookings
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayBookingsResult = await query(`
+      SELECT COUNT(*) as today_bookings
+      FROM bookings
+      WHERE booking_date = CURRENT_DATE
+    `);
 
-    const todayBookings = await prisma.booking.count({
-      where: {
-        bookingDate: {
-          gte: today,
-          lt: tomorrow
-        }
-      }
-    });
+    // Revenue by month (last 6 months)
+    const monthlyRevenueResult = await query(`
+      SELECT 
+        TO_CHAR(booking_date, 'Mon YYYY') as month,
+        COALESCE(SUM(payment_amount), 0) as revenue
+      FROM bookings
+      WHERE payment_status = 'paid'
+        AND booking_date >= CURRENT_DATE - INTERVAL '6 months'
+      GROUP BY TO_CHAR(booking_date, 'Mon YYYY'), DATE_TRUNC('month', booking_date)
+      ORDER BY DATE_TRUNC('month', booking_date) DESC
+      LIMIT 6
+    `);
 
-    // Monthly revenue (last 6 months)
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const monthlyBookings = await prisma.booking.findMany({
-      where: {
-        paymentStatus: 'paid',
-        bookingDate: { gte: sixMonthsAgo }
-      },
-      select: {
-        bookingDate: true,
-        paymentAmount: true
-      }
-    });
-
-    const monthlyRevenueMap = new Map<string, number>();
-    monthlyBookings.forEach(b => {
-      const date = new Date(b.bookingDate);
-      const key = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      const current = monthlyRevenueMap.get(key) || 0;
-      monthlyRevenueMap.set(key, current + Number(b.paymentAmount));
-    });
-
-    const monthlyRevenue = Array.from(monthlyRevenueMap.entries())
-      .map(([month, revenue]) => ({ month, revenue }))
-      .slice(0, 6);
-
-    // Parking types breakdown
-    const slotTypeCounts = await prisma.parkingSlot.groupBy({
-      by: ['type'],
-      _count: true
-    });
-
-    const bookingsBySlot = await prisma.booking.groupBy({
-      by: ['slotId'],
-      _count: true
-    });
-
-    const parkingTypes = slotTypeCounts.map(st => ({
-      type: st.type === 'CarWashing' ? 'Car Washing' : st.type,
-      bookingCount: 0 // Will be calculated below
-    }));
-
-    // Get booking counts per type
-    const slots = await prisma.parkingSlot.findMany({
-      include: { _count: { select: { bookings: true } } }
-    });
-
-    const typeBookingCounts: { [key: string]: number } = {};
-    slots.forEach(slot => {
-      const type = slot.type === 'CarWashing' ? 'Car Washing' : slot.type;
-      typeBookingCounts[type] = (typeBookingCounts[type] || 0) + slot._count.bookings;
-    });
-
-    const parkingTypesWithCounts = Object.entries(typeBookingCounts).map(([type, bookingCount]) => ({
-      type,
-      bookingCount
-    }));
+    // Popular parking types
+    const parkingTypesResult = await query(`
+      SELECT 
+        ps.type,
+        COUNT(b.id) as booking_count
+      FROM bookings b
+      JOIN parking_slots ps ON b.slot_id = ps.id
+      GROUP BY ps.type
+      ORDER BY booking_count DESC
+    `);
 
     // Property occupancy
-    const properties = await prisma.property.findMany({
-      include: {
-        slots: true
-      }
-    });
-
-    const propertyOccupancy = properties.map(p => ({
-      propertyName: p.name,
-      totalSlots: p.slots.length,
-      occupiedSlots: p.slots.filter(s => s.status === 'occupied').length
-    }));
+    const occupancyResult = await query(`
+      SELECT 
+        p.name as property_name,
+        COUNT(ps.id) as total_slots,
+        COUNT(CASE WHEN ps.status = 'occupied' OR ps.status = 'reserved' THEN 1 END) as occupied_slots
+      FROM properties p
+      LEFT JOIN parking_slots ps ON p.id = ps.property_id
+      GROUP BY p.id, p.name
+    `);
 
     res.json({
-      totalRevenue,
-      availableSlots,
-      totalCustomers,
-      todayBookings,
-      monthlyRevenue,
-      parkingTypes: parkingTypesWithCounts,
-      propertyOccupancy
+      totalRevenue: parseFloat(revenueResult.rows[0].total_revenue),
+      availableSlots: parseInt(slotsResult.rows[0].available_slots),
+      totalCustomers: parseInt(customersResult.rows[0].total_customers),
+      todayBookings: parseInt(todayBookingsResult.rows[0].today_bookings),
+      monthlyRevenue: monthlyRevenueResult.rows.map((r) => ({
+        month: r.month,
+        revenue: parseFloat(r.revenue),
+      })),
+      parkingTypes: parkingTypesResult.rows.map((r) => ({
+        type: r.type,
+        count: parseInt(r.booking_count),
+      })),
+      propertyOccupancy: occupancyResult.rows.map((r) => ({
+        name: r.property_name,
+        totalSlots: parseInt(r.total_slots),
+        occupiedSlots: parseInt(r.occupied_slots),
+        occupancyRate: r.total_slots > 0 
+          ? Math.round((parseInt(r.occupied_slots) / parseInt(r.total_slots)) * 100) 
+          : 0,
+      })),
     });
   } catch (error) {
     console.error('Error fetching stats:', error);

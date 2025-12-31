@@ -1,9 +1,11 @@
 const API_BASE_URL = 'http://localhost:3001/api';
 
-// Helper to get headers
-const getHeaders = (): HeadersInit => {
+// Helper to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  const token = localStorage.getItem('adminToken');
   return {
     'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 };
 
@@ -15,10 +17,18 @@ async function apiRequest<T>(
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
-      ...getHeaders(),
+      ...getAuthHeaders(),
       ...options.headers,
     },
   });
+
+  if (response.status === 401) {
+    // Token expired or invalid - redirect to login
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
+    window.location.href = '/login';
+    throw new Error('Session expired. Please login again.');
+  }
 
   const data = await response.json();
 
@@ -29,11 +39,34 @@ async function apiRequest<T>(
   return data;
 }
 
+// Auth API
+export const authApi = {
+  login: (username: string, password: string) =>
+    apiRequest<{ token: string; admin: any }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
+  register: (data: { username: string; email: string; password: string; fullName?: string }) =>
+    apiRequest<{ token: string; admin: any }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getProfile: () => apiRequest<any>('/auth/profile'),
+
+  updateProfile: (data: { fullName?: string; phone?: string; email?: string }) =>
+    apiRequest<any>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+};
+
 // Properties API
 export const propertiesApi = {
   getAll: () => apiRequest<any[]>('/properties'),
 
-  getById: (id: string | number) => apiRequest<any>(`/properties/${id}`),
+  getById: (id: string) => apiRequest<any>(`/properties/${id}`),
 
   create: (data: { propertyName: string; address: string; parkingSlots?: any[] }) =>
     apiRequest<{ id: string; message: string }>('/properties', {
@@ -41,13 +74,13 @@ export const propertiesApi = {
       body: JSON.stringify(data),
     }),
 
-  update: (id: string | number, data: { name?: string; address?: string; description?: string }) =>
+  update: (id: string, data: { name?: string; address?: string; description?: string }) =>
     apiRequest<{ message: string }>(`/properties/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
-  delete: (id: string | number) =>
+  delete: (id: string) =>
     apiRequest<{ message: string }>(`/properties/${id}`, {
       method: 'DELETE',
     }),
@@ -159,6 +192,7 @@ export const slotsApi = {
 };
 
 export default {
+  auth: authApi,
   properties: propertiesApi,
   bookings: bookingsApi,
   stats: statsApi,
