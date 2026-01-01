@@ -1,10 +1,11 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProfilePage from './pages/ProfilePage';
 import AdminLayout from './components/AdminLayout';
 import AdminHomePage from './pages/AdminHomePage';
 import ViewBookingDetailsPage from './pages/ViewBookingDetailsPage';
 import AddPropertiesPage from './pages/AddPropertiesPage';
+import ManagePropertiesPage from './pages/ManagePropertiesPage';
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
       <Route path="/admin/*" element={<AdminLayout />}>
         <Route index element={<AdminHomePage />} />
         <Route path="bookings" element={<ViewBookingDetailsPage />} />
+        <Route path="properties" element={<ManagePropertiesPage />} />
         <Route path="properties/add" element={<AddPropertiesPage />} />
       </Route>
     </Routes>

@@ -1,43 +1,27 @@
 import { query } from './config.js';
-import bcrypt from 'bcrypt';
 
 export async function seed() {
   console.log('Seeding database with sample data...');
 
   try {
-    // Create default admin user
-    const passwordHash = await bcrypt.hash('admin123', 10);
-    const adminResult = await query(`
-      INSERT INTO admins (username, email, password_hash, full_name, role)
-      VALUES ('admin', 'admin@parking.com', $1, 'System Administrator', 'super_admin')
-      ON CONFLICT (email) DO NOTHING
-      RETURNING id;
-    `, [passwordHash]);
-    
-    const adminId = adminResult.rows[0]?.id || 1;
-    console.log('✓ Created admin user (username: admin, password: admin123)');
-
     // Create sample properties
-    const property1 = await query(`
-      INSERT INTO properties (name, address, description, created_by)
-      VALUES ('Downtown Parking', '123 Main St, City Center', 'Premium downtown parking facility', $1)
-      ON CONFLICT DO NOTHING
-      RETURNING id;
-    `, [adminId]);
+    await query(`
+      INSERT INTO properties (name, address, description)
+      VALUES ('Downtown Parking', '123 Main St, City Center', 'Premium downtown parking facility')
+      ON CONFLICT DO NOTHING;
+    `);
 
-    const property2 = await query(`
-      INSERT INTO properties (name, address, description, created_by)
-      VALUES ('Mall Parking', '456 Oak Ave, Shopping District', 'Convenient mall parking with covered areas', $1)
-      ON CONFLICT DO NOTHING
-      RETURNING id;
-    `, [adminId]);
+    await query(`
+      INSERT INTO properties (name, address, description)
+      VALUES ('Mall Parking', '456 Oak Ave, Shopping District', 'Convenient mall parking with covered areas')
+      ON CONFLICT DO NOTHING;
+    `);
 
-    const property3 = await query(`
-      INSERT INTO properties (name, address, description, created_by)
-      VALUES ('Airport Parking', '789 Airport Rd, Terminal 1', '24/7 secure airport parking', $1)
-      ON CONFLICT DO NOTHING
-      RETURNING id;
-    `, [adminId]);
+    await query(`
+      INSERT INTO properties (name, address, description)
+      VALUES ('Airport Parking', '789 Airport Rd, Terminal 1', '24/7 secure airport parking')
+      ON CONFLICT DO NOTHING;
+    `);
 
     console.log('✓ Created sample properties');
 
@@ -101,9 +85,6 @@ export async function seed() {
     console.log('✓ Created sample bookings');
 
     console.log('\n✅ Database seeded successfully!');
-    console.log('\n📋 Login credentials:');
-    console.log('   Username: admin');
-    console.log('   Password: admin123');
   } catch (error) {
     console.error('Seeding failed:', error);
     throw error;

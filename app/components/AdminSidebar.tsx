@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Calendar, Building2, User } from 'lucide-react';
+import { Home, Calendar, Building2, User, Settings } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 interface AdminSidebarProps {
@@ -15,12 +15,16 @@ export default function AdminSidebar({ onLinkClick }: AdminSidebarProps) {
   const menuItems = [
     { href: '/admin', label: 'Home', icon: Home },
     { href: '/admin/bookings', label: 'View Booking Details', icon: Calendar },
-    { href: '/admin/properties/add', label: 'Add Properties', icon: Building2 },
+    { href: '/admin/properties', label: 'Manage Properties', icon: Building2 },
+    { href: '/admin/properties/add', label: 'Add Properties', icon: Settings },
   ];
 
   const isActive = (path: string) => {
     if (path === '/admin') {
       return location.pathname === '/admin';
+    }
+    if (path === '/admin/properties') {
+      return location.pathname === '/admin/properties';
     }
     return location.pathname.startsWith(path);
   };
