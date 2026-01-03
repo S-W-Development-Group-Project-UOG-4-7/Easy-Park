@@ -14,8 +14,8 @@ function App() {
       <Route
         path="/*"
         element={
-          <div className="relative min-h-screen overflow-hidden bg-linear-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(132,204,22,0.12),transparent_30%),radial-gradient(circle_at_80%_10%,rgba(132,204,22,0.08),transparent_30%),radial-gradient(circle_at_50%_80%,rgba(15,23,42,0.45),transparent_35%)]" />
+          <div className="relative min-h-screen overflow-hidden transition-colors duration-300 bg-linear-to-b from-slate-100 via-slate-50 to-slate-100 text-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(132,204,22,0.08),transparent_30%),radial-gradient(circle_at_80%_10%,rgba(132,204,22,0.05),transparent_30%),radial-gradient(circle_at_50%_80%,rgba(241,245,249,0.45),transparent_35%)] dark:bg-[radial-gradient(circle_at_20%_20%,rgba(132,204,22,0.12),transparent_30%),radial-gradient(circle_at_80%_10%,rgba(132,204,22,0.08),transparent_30%),radial-gradient(circle_at_50%_80%,rgba(15,23,42,0.45),transparent_35%)]" />
             <Navbar />
             <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-16 pt-10 md:px-8">
               <Routes>

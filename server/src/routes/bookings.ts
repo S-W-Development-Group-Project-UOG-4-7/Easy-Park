@@ -7,7 +7,7 @@ const router = Router();
 // Get all bookings with filters
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { propertyId, date, status } = req.query;
+    const { propertyId, date, time, status } = req.query;
 
     const bookings = await prisma.booking.findMany({
       where: {
@@ -23,30 +23,39 @@ router.get('/', async (req: Request, res: Response) => {
       orderBy: [{ bookingDate: 'desc' }, { startTime: 'desc' }]
     });
 
-    const result = bookings.map(b => ({
-      id: b.id,
-      customerId: b.customerId,
+    // Filter by time if provided (client-side filtering for time comparison)
+    let filteredBookings = bookings;
+    if (time) {
+      const filterTime = time as string;
+      filteredBookings = bookings.filter(b => {
+        const startTimeStr = b.startTime.toISOString().slice(11, 16); // HH:MM
+        const endTimeStr = b.endTime ? b.endTime.toISOString().slice(11, 16) : '23:59';
+        return filterTime >= startTimeStr && filterTime <= endTimeStr;
+      });
+    }
+
+    const result = filteredBookings.map(b => ({
+      id: b.id.toString(),
+      customerId: `C${String(b.customerId).padStart(3, '0')}`,
       name: b.customer.name,
-      address: b.customer.address,
+      address: b.customer.address || '',
       email: b.customer.email,
       phone: b.customer.phone,
-      propertyId: b.propertyId,
+      propertyId: b.propertyId.toString(),
       propertyName: b.property.name,
-      slotId: b.slotId,
-      slotNumber: b.slot.slotNumber,
-      parkingType: b.slot.type === SlotType.CarWashing ? 'Car Washing' : b.slot.type,
-      bookingDate: b.bookingDate,
-      startTime: b.startTime,
-      endTime: b.endTime,
+      parkingSlotId: b.slotId.toString(),
+      parkingSlot: b.slot.slotNumber,
+      parkingType: b.slot.type === SlotType.CarWashing ? 'Car Washing' : b.slot.type === SlotType.EV ? 'EV Slot' : 'Normal',
+      date: b.bookingDate.toISOString().split('T')[0],
+      time: b.startTime.toISOString().slice(11, 16),
       hoursSelected: b.hoursSelected,
-      checkInTime: b.checkInTime,
-      checkOutTime: b.checkOutTime,
-      paymentAmount: b.paymentAmount,
-      paymentMethod: b.paymentMethod,
+      checkOutTime: b.checkOutTime ? b.checkOutTime.toISOString() : '',
+      paymentAmount: Number(b.paymentAmount),
+      paymentMethod: b.paymentMethod || '',
       paymentStatus: b.paymentStatus,
       bookingStatus: b.bookingStatus,
-      extras: b.extras,
-      createdAt: b.createdAt
+      extras: b.extras || '',
+      createdAt: b.createdAt.toISOString()
     }));
 
     res.json(result);
