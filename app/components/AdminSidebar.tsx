@@ -3,14 +3,13 @@ import { Home, Calendar, Building2, User, Settings } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 interface AdminSidebarProps {
+  adminName?: string;
   onLinkClick?: () => void;
 }
 
-export default function AdminSidebar({ onLinkClick }: AdminSidebarProps) {
+export default function AdminSidebar({ adminName = 'Admin', onLinkClick }: AdminSidebarProps) {
   const location = useLocation();
   const { theme } = useTheme();
-
-  const adminName = 'Admin';
 
   const menuItems = [
     { href: '/admin', label: 'Home', icon: Home },
