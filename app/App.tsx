@@ -1,11 +1,13 @@
 import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProfilePage from './pages/ProfilePage';
-import AdminLayout from './components/AdminLayout';
-import AdminHomePage from './pages/AdminHomePage';
-import ViewBookingDetailsPage from './pages/ViewBookingDetailsPage';
-import AddPropertiesPage from './pages/AddPropertiesPage';
-import ManagePropertiesPage from './pages/ManagePropertiesPage';
+import {
+  AdminLayout,
+  AdminHomePage,
+  ViewBookingDetailsPage,
+  AddPropertiesPage,
+  ManagePropertiesPage,
+} from './admin';
 
 function App() {
   return (

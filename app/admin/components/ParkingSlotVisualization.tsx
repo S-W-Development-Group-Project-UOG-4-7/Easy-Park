@@ -204,5 +204,3 @@ export default function ParkingSlotVisualization({ slots, propertyName }: Parkin
     </div>
   );
 }
-
-

@@ -1,7 +1,7 @@
 'use client';
 
 import { Link, useLocation } from 'react-router-dom';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme } from '../admin';
 import { Moon, Sun } from 'lucide-react';
 
 const navLinks = [

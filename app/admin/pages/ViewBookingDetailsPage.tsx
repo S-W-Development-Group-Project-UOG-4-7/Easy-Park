@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Calendar, Building2, Eye, Clock, DollarSign, BookOpen } from 'lucide-react';
 import ParkingSlotVisualization from '../components/ParkingSlotVisualization';
-import { propertiesApi, bookingsApi } from '../services/api';
+import { propertiesApi, bookingsApi } from '../../services/api';
 
 interface Booking {
   id: string;

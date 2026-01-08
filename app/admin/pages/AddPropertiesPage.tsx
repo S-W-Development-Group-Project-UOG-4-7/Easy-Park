@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Building2, MapPin, Plus, X, Car, Zap, Droplets, ArrowLeft, Trash2, RefreshCw } from 'lucide-react';
-import { propertiesApi } from '../services/api';
+import { propertiesApi } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
 interface Property {
@@ -497,4 +497,3 @@ export default function AddPropertiesPage() {
     </div>
   );
 }
-

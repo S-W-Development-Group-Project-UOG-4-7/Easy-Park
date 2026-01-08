@@ -16,7 +16,7 @@ import {
   Car,
   Building2,
 } from 'lucide-react';
-import { statsApi } from '../services/api';
+import { statsApi } from '../../services/api';
 
 interface Stats {
   totalRevenue: number;

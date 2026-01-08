@@ -76,4 +76,3 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick }: Admin
     </aside>
   );
 }
-
