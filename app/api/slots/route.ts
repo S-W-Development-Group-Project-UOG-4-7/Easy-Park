@@ -11,7 +11,7 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const locationId = searchParams.get('locationId');
+    const locationId = searchParams.get('locationId') || searchParams.get('parkingLotId');
     const type = searchParams.get('type');
     const status = searchParams.get('status');
     const date = searchParams.get('date');
@@ -62,6 +62,21 @@ export async function GET(request: NextRequest) {
         }))
       : slots;
 
+    // Land-owner UI expects { slots: [...] } and fields like slotNumber + parkingLotId
+    const wantsLandOwnerShape = searchParams.has('parkingLotId');
+    if (wantsLandOwnerShape) {
+      return successResponse(
+        availableSlots.map((s: any) => ({
+          id: s.id,
+          slotNumber: s.number,
+          zone: s.zone,
+          status: String(s.status).toLowerCase(),
+          pricePerHour: s.pricePerHour,
+          parkingLotId: s.locationId,
+        }))
+      );
+    }
+
     return successResponse(availableSlots);
   } catch (error) {
     console.error('Get slots error:', error);
@@ -73,18 +88,88 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { number, type, pricePerHour, locationId } = body;
+    // Supports both:
+    // 1) Existing API: { number, type, pricePerHour, locationId }
+    // 2) Land-owner UI: { parkingLotId, zone, count, pricePerHour }
+    const {
+      number,
+      type,
+      pricePerHour,
+      locationId,
+      parkingLotId,
+      zone,
+      count,
+    } = body;
+
+    const resolvedLocationId = locationId || parkingLotId;
 
     // Validation
-    if (!number || !locationId) {
-      return errorResponse('Slot number and location are required');
+    if (!resolvedLocationId) {
+      return errorResponse('locationId (or parkingLotId) is required');
+    }
+
+    // Land-owner batch create
+    if (!number && count) {
+      const createCount = Number(count);
+      if (!zone || !Number.isFinite(createCount) || createCount <= 0) {
+        return errorResponse('zone and a positive count are required');
+      }
+
+      // Find last slot number in this zone to continue numbering
+      const existing = await prisma.parkingSlot.findMany({
+        where: {
+          locationId: resolvedLocationId,
+          zone,
+        },
+        select: { number: true },
+      });
+
+      let maxNumeric = 0;
+      for (const s of existing) {
+        const match = String(s.number).match(/(\d+)$/);
+        if (match) {
+          const n = Number(match[1]);
+          if (Number.isFinite(n)) maxNumeric = Math.max(maxNumeric, n);
+        }
+      }
+
+      const newSlotsData = Array.from({ length: createCount }, (_, i) => {
+        const next = maxNumeric + i + 1;
+        return {
+          number: `${zone}${next}`,
+          zone,
+          type: 'NORMAL' as const,
+          pricePerHour: pricePerHour ?? 300,
+          locationId: resolvedLocationId,
+        };
+      });
+
+      await prisma.parkingSlot.createMany({
+        data: newSlotsData,
+        skipDuplicates: true,
+      });
+
+      // Keep ParkingLocation.totalSlots roughly in sync
+      const totalSlots = await prisma.parkingSlot.count({
+        where: { locationId: resolvedLocationId },
+      });
+      await prisma.parkingLocation.update({
+        where: { id: resolvedLocationId },
+        data: { totalSlots },
+      });
+
+      return createdResponse({ created: createCount }, 'Slots created successfully');
+    }
+
+    if (!number) {
+      return errorResponse('Slot number is required');
     }
 
     // Check if slot number already exists at this location
     const existingSlot = await prisma.parkingSlot.findFirst({
       where: {
         number,
-        locationId,
+        locationId: resolvedLocationId,
       },
     });
 
@@ -95,18 +180,89 @@ export async function POST(request: NextRequest) {
     const slot = await prisma.parkingSlot.create({
       data: {
         number,
+        zone: zone || 'A',
         type: type || 'NORMAL',
         pricePerHour: pricePerHour || 300,
-        locationId,
+        locationId: resolvedLocationId,
       },
       include: {
         location: true,
       },
     });
 
+    // Keep ParkingLocation.totalSlots roughly in sync
+    const totalSlots = await prisma.parkingSlot.count({
+      where: { locationId: resolvedLocationId },
+    });
+    await prisma.parkingLocation.update({
+      where: { id: resolvedLocationId },
+      data: { totalSlots },
+    });
+
     return createdResponse(slot, 'Slot created successfully');
   } catch (error) {
     console.error('Create slot error:', error);
     return serverErrorResponse('Failed to create slot');
+  }
+}
+
+// PATCH update slot status (land-owner UI)
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, status } = body;
+
+    if (!id || !status) {
+      return errorResponse('id and status are required');
+    }
+
+    const normalized = String(status).toUpperCase();
+    const allowed = ['AVAILABLE', 'OCCUPIED', 'MAINTENANCE'];
+    if (!allowed.includes(normalized)) {
+      return errorResponse('Invalid status');
+    }
+
+    const updated = await prisma.parkingSlot.update({
+      where: { id },
+      data: { status: normalized as any },
+    });
+
+    return successResponse(updated, 'Slot updated successfully');
+  } catch (error) {
+    console.error('Update slot error:', error);
+    return serverErrorResponse('Failed to update slot');
+  }
+}
+
+// DELETE remove a slot (land-owner UI)
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return errorResponse('id is required');
+    }
+
+    const slot = await prisma.parkingSlot.findUnique({
+      where: { id },
+      select: { locationId: true },
+    });
+
+    await prisma.parkingSlot.delete({ where: { id } });
+
+    if (slot?.locationId) {
+      const totalSlots = await prisma.parkingSlot.count({
+        where: { locationId: slot.locationId },
+      });
+      await prisma.parkingLocation.update({
+        where: { id: slot.locationId },
+        data: { totalSlots },
+      });
+    }
+
+    return successResponse({ deleted: true }, 'Slot deleted successfully');
+  } catch (error) {
+    console.error('Delete slot error:', error);
+    return serverErrorResponse('Failed to delete slot');
   }
 }

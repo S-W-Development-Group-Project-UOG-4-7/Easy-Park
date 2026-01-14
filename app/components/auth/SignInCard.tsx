@@ -9,7 +9,7 @@ const ROLE_REDIRECT_MAP: Record<string, string> = {
   ADMIN: '/admin',
   CUSTOMER: '/customer',
   COUNTER: '/counter',
-  LAND_OWNER: '/land-owner',
+  LAND_OWNER: '/land_owner',
   WASHER: '/washer',
 };
 

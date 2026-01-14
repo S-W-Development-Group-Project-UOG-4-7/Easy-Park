@@ -23,6 +23,7 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   bookings      Booking[]
+  ownedLocations ParkingLocation[] @relation("ParkingLocationOwner")
 
   @@map("users")
 }
@@ -42,6 +43,8 @@ model ParkingLocation {
   address     String
   description String?
   totalSlots  Int
+  ownerId     String?
+  owner       User?         @relation("ParkingLocationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   slots       ParkingSlot[]
@@ -53,6 +56,7 @@ model ParkingLocation {
 model ParkingSlot {
   id           String          @id @default(cuid())
   number       String
+  zone         String          @default("A")
   type         SlotType        @default(NORMAL)
   status       SlotStatus      @default(AVAILABLE)
   pricePerHour Float           @default(300)

@@ -6,7 +6,7 @@ const protectedRoutes: { path: string; roles: string[] }[] = [
   { path: '/customer', roles: ['CUSTOMER', 'ADMIN'] },
   { path: '/admin', roles: ['ADMIN'] },
   { path: '/counter', roles: ['COUNTER', 'ADMIN'] },
-  { path: '/land-owner', roles: ['LAND_OWNER', 'ADMIN'] },
+  { path: '/land_owner', roles: ['LAND_OWNER', 'ADMIN'] },
   { path: '/washer', roles: ['WASHER', 'ADMIN'] },
 ];
 
@@ -48,7 +48,7 @@ export function middleware(request: NextRequest) {
           ADMIN: '/admin',
           CUSTOMER: '/customer',
           COUNTER: '/counter',
-          LAND_OWNER: '/land-owner',
+          LAND_OWNER: '/land_owner',
           WASHER: '/washer',
         };
         const redirectPath = roleRedirects[userRole] || '/';
