@@ -4,12 +4,12 @@ import prisma from '@/lib/prisma';
 // GET all parking lots
 export async function GET() {
   try {
-    const parkingLots = await prisma.parkingLot.findMany({
+    const parkingLots = await prisma.parkingLocation.findMany({
       include: {
         owner: {
           select: {
             id: true,
-            name: true,
+            fullName: true,
             email: true,
           },
         },
@@ -31,9 +31,15 @@ export async function GET() {
       name: lot.name,
       address: lot.address,
       ownerId: lot.ownerId,
-      owner: lot.owner,
+      owner: lot.owner
+        ? {
+            id: lot.owner.id,
+            name: lot.owner.fullName,
+            email: lot.owner.email,
+          }
+        : null,
       totalSlots: lot.slots.length,
-      availableSlots: lot.slots.filter((s) => s.status === 'available').length,
+      availableSlots: lot.slots.filter((s) => s.status === 'AVAILABLE').length,
       createdAt: lot.createdAt,
       updatedAt: lot.updatedAt,
     }));
@@ -61,24 +67,44 @@ export async function POST(request: Request) {
       );
     }
 
-    const parkingLot = await prisma.parkingLot.create({
+    const parkingLot = await prisma.parkingLocation.create({
       data: {
         name,
         address,
         ownerId,
+        totalSlots: 0,
       },
       include: {
         owner: {
           select: {
             id: true,
-            name: true,
+            fullName: true,
             email: true,
           },
         },
       },
     });
 
-    return NextResponse.json({ parkingLot }, { status: 201 });
+    return NextResponse.json(
+      {
+        parkingLot: {
+          id: parkingLot.id,
+          name: parkingLot.name,
+          address: parkingLot.address,
+          ownerId: parkingLot.ownerId,
+          owner: parkingLot.owner
+            ? {
+                id: parkingLot.owner.id,
+                name: parkingLot.owner.fullName,
+                email: parkingLot.owner.email,
+              }
+            : null,
+          createdAt: parkingLot.createdAt,
+          updatedAt: parkingLot.updatedAt,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error creating parking lot:', error);
     return NextResponse.json(

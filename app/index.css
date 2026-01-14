@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --shadow-neon-lime: 0 10px 40px rgba(132, 204, 22, 0.35);
+}
+
+:root {
+  color-scheme: dark;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  background-color: #020617;
+}
+
+body {
+  min-height: 100vh;
+  background: linear-gradient(to bottom, #020617, #0f172a, #020617);
+  color: #f1f5f9;
+  -webkit-font-smoothing: antialiased;
+}
+
+.surface-card {
+  background: linear-gradient(to bottom right, rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.7), rgba(2, 6, 23, 0.85));
+  border: 1px solid rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(12px);
+}
+
+.accent-cta {
+  background: linear-gradient(to right, #84cc16, #a3e635, #bef264);
+  color: #020617;
+  box-shadow: var(--shadow-neon-lime);
+}
+
+.divider-faint {
+  border-top: 1px solid rgba(30, 41, 59, 0.6);
+}
+

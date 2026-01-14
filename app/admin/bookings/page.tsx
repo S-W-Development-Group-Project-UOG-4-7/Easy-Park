@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Moon, Sun, Menu, X, LogOut } from "lucide-react";
-import AdminSidebar from "./components/AdminSidebar";
-import AdminHomePage from "./pages/AdminHomePage";
+import AdminSidebar from "../components/AdminSidebar";
+import ViewBookingDetailsPage from "../pages/ViewBookingDetailsPage";
 
 interface UserData {
   id: string;
@@ -13,7 +13,7 @@ interface UserData {
   role: string;
 }
 
-export default function AdminDashboard() {
+export default function AdminBookingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,7 +134,7 @@ export default function AdminDashboard() {
 
         {/* Page Content */}
         <main className="p-4 md:p-6">
-          <AdminHomePage />
+          <ViewBookingDetailsPage />
         </main>
       </div>
     </div>

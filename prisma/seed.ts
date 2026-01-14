@@ -37,72 +37,349 @@ async function main() {
   });
   console.log('✅ Created admin user:', admin.email);
 
+  // Create land owner user
+  const ownerPassword = await bcrypt.hash('owner123', 12);
+  const landOwner = await prisma.user.upsert({
+    where: { email: 'owner@easypark.com' },
+    update: {
+      fullName: 'Land Owner',
+      role: 'LAND_OWNER',
+      contactNo: '0770000000',
+    },
+    create: {
+      email: 'owner@easypark.com',
+      password: ownerPassword,
+      fullName: 'Land Owner',
+      contactNo: '0770000000',
+      role: 'LAND_OWNER',
+    },
+  });
+  console.log('✅ Created land owner user:', landOwner.email);
+
   // Create parking locations
   const location1 = await prisma.parkingLocation.upsert({
     where: { id: 'loc-main' },
-    update: {},
+    update: {
+      ownerId: landOwner.id,
+    },
     create: {
       id: 'loc-main',
       name: 'Main Parking Complex',
       address: '123 Main Street, Colombo',
       description: 'Main parking area with EV charging stations',
-      totalSlots: 50,
+      totalSlots: 0,
+      ownerId: landOwner.id,
     },
   });
 
   const location2 = await prisma.parkingLocation.upsert({
     where: { id: 'loc-downtown' },
-    update: {},
+    update: {
+      ownerId: landOwner.id,
+    },
     create: {
       id: 'loc-downtown',
       name: 'Downtown Parking',
       address: '456 Downtown Road, Colombo',
       description: 'Convenient downtown parking with car wash service',
-      totalSlots: 30,
+      totalSlots: 0,
+      ownerId: landOwner.id,
     },
   });
   console.log('✅ Created parking locations');
 
-  // Create parking slots for location 1
-  const slotTypes = ['NORMAL', 'NORMAL', 'NORMAL', 'EV', 'CAR_WASH'] as const;
-  
-  for (let i = 1; i <= 20; i++) {
-    await prisma.parkingSlot.upsert({
-      where: {
-        locationId_number: {
-          locationId: location1.id,
-          number: `A${i.toString().padStart(2, '0')}`,
+  // Create parking slots for land-owner testing
+  // (zones A/B so the land-owner UI can group them)
+  const slotTypes = ['NORMAL', 'NORMAL', 'EV', 'NORMAL', 'CAR_WASH'] as const;
+
+  const createZoneSlots = async (locationId: string, zone: string, count: number) => {
+    for (let i = 1; i <= count; i++) {
+      const slotType = slotTypes[i % slotTypes.length];
+      await prisma.parkingSlot.upsert({
+        where: {
+          locationId_number: {
+            locationId,
+            number: `${zone}${i}`,
+          },
         },
-      },
+        update: {
+          zone,
+          type: slotType,
+          pricePerHour: slotType === 'EV' ? 400 : slotType === 'CAR_WASH' ? 500 : 300,
+          status: i % 7 === 0 ? 'MAINTENANCE' : i % 5 === 0 ? 'OCCUPIED' : 'AVAILABLE',
+        },
+        create: {
+          number: `${zone}${i}`,
+          zone,
+          type: slotType,
+          pricePerHour: slotType === 'EV' ? 400 : slotType === 'CAR_WASH' ? 500 : 300,
+          status: i % 7 === 0 ? 'MAINTENANCE' : i % 5 === 0 ? 'OCCUPIED' : 'AVAILABLE',
+          locationId,
+        },
+      });
+    }
+  };
+
+  await createZoneSlots(location1.id, 'A', 8);
+  await createZoneSlots(location1.id, 'B', 5);
+  await createZoneSlots(location2.id, 'A', 6);
+
+  // Keep totalSlots in sync
+  const loc1Count = await prisma.parkingSlot.count({ where: { locationId: location1.id } });
+  const loc2Count = await prisma.parkingSlot.count({ where: { locationId: location2.id } });
+  await prisma.parkingLocation.update({ where: { id: location1.id }, data: { totalSlots: loc1Count } });
+  await prisma.parkingLocation.update({ where: { id: location2.id }, data: { totalSlots: loc2Count } });
+
+  console.log('✅ Created land-owner parking slots');
+
+  // Create additional users for different roles
+  const counterPassword = await bcrypt.hash('counter123', 12);
+  const counter = await prisma.user.upsert({
+    where: { email: 'counter@easypark.com' },
+    update: {},
+    create: {
+      email: 'counter@easypark.com',
+      password: counterPassword,
+      fullName: 'Counter Staff',
+      contactNo: '0772222222',
+      role: 'COUNTER',
+    },
+  });
+  console.log('✅ Created counter user:', counter.email);
+
+  const washerPassword = await bcrypt.hash('washer123', 12);
+  const washer = await prisma.user.upsert({
+    where: { email: 'washer@easypark.com' },
+    update: {},
+    create: {
+      email: 'washer@easypark.com',
+      password: washerPassword,
+      fullName: 'Car Washer',
+      contactNo: '0773333333',
+      role: 'WASHER',
+    },
+  });
+  console.log('✅ Created washer user:', washer.email);
+
+  // Create more customer users
+  const customer2 = await prisma.user.upsert({
+    where: { email: 'john@example.com' },
+    update: {},
+    create: {
+      email: 'john@example.com',
+      password: hashedPassword,
+      fullName: 'John Smith',
+      contactNo: '0774444444',
+      vehicleNumber: 'CAB-5678',
+      nic: '199912345678',
+    },
+  });
+
+  const customer3 = await prisma.user.upsert({
+    where: { email: 'mary@example.com' },
+    update: {},
+    create: {
+      email: 'mary@example.com',
+      password: hashedPassword,
+      fullName: 'Mary Johnson',
+      contactNo: '0775555555',
+      vehicleNumber: 'WP-KA-1234',
+      nic: '198812345678',
+    },
+  });
+  console.log('✅ Created additional customers');
+
+  // Get available slots for bookings
+  const availableSlots = await prisma.parkingSlot.findMany({
+    where: { status: 'AVAILABLE' },
+    take: 6,
+  });
+
+  // Create bookings with different statuses
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Booking 1: Completed booking for test user (yesterday)
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  const booking1 = await prisma.booking.upsert({
+    where: { id: 'booking-1' },
+    update: {},
+    create: {
+      id: 'booking-1',
+      userId: user.id,
+      date: yesterday,
+      startTime: new Date(yesterday.getTime() + 9 * 60 * 60 * 1000), // 9 AM
+      endTime: new Date(yesterday.getTime() + 12 * 60 * 60 * 1000),  // 12 PM
+      duration: 3,
+      totalAmount: 900,
+      paidAmount: 900,
+      status: 'COMPLETED',
+    },
+  });
+
+  // Link slots to booking 1
+  if (availableSlots[0]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking1.id, slotId: availableSlots[0].id } },
       update: {},
-      create: {
-        number: `A${i.toString().padStart(2, '0')}`,
-        type: slotTypes[i % 5],
-        pricePerHour: slotTypes[i % 5] === 'EV' ? 400 : slotTypes[i % 5] === 'CAR_WASH' ? 500 : 300,
-        locationId: location1.id,
-      },
+      create: { bookingId: booking1.id, slotId: availableSlots[0].id },
     });
   }
 
-  // Create parking slots for location 2
-  for (let i = 1; i <= 15; i++) {
-    await prisma.parkingSlot.upsert({
-      where: {
-        locationId_number: {
-          locationId: location2.id,
-          number: `B${i.toString().padStart(2, '0')}`,
-        },
-      },
+  // Booking 2: Confirmed booking for today (test user)
+  const booking2 = await prisma.booking.upsert({
+    where: { id: 'booking-2' },
+    update: {},
+    create: {
+      id: 'booking-2',
+      userId: user.id,
+      date: today,
+      startTime: new Date(today.getTime() + 14 * 60 * 60 * 1000), // 2 PM
+      endTime: new Date(today.getTime() + 17 * 60 * 60 * 1000),   // 5 PM
+      duration: 3,
+      totalAmount: 900,
+      paidAmount: 0,
+      status: 'CONFIRMED',
+    },
+  });
+
+  if (availableSlots[1]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking2.id, slotId: availableSlots[1].id } },
       update: {},
-      create: {
-        number: `B${i.toString().padStart(2, '0')}`,
-        type: slotTypes[i % 5],
-        pricePerHour: slotTypes[i % 5] === 'EV' ? 400 : slotTypes[i % 5] === 'CAR_WASH' ? 500 : 300,
-        locationId: location2.id,
-      },
+      create: { bookingId: booking2.id, slotId: availableSlots[1].id },
     });
   }
-  console.log('✅ Created parking slots');
+
+  // Booking 3: Pending booking for john
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const booking3 = await prisma.booking.upsert({
+    where: { id: 'booking-3' },
+    update: {},
+    create: {
+      id: 'booking-3',
+      userId: customer2.id,
+      date: tomorrow,
+      startTime: new Date(tomorrow.getTime() + 10 * 60 * 60 * 1000), // 10 AM
+      endTime: new Date(tomorrow.getTime() + 14 * 60 * 60 * 1000),   // 2 PM
+      duration: 4,
+      totalAmount: 1600,
+      paidAmount: 0,
+      status: 'PENDING',
+    },
+  });
+
+  if (availableSlots[2]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking3.id, slotId: availableSlots[2].id } },
+      update: {},
+      create: { bookingId: booking3.id, slotId: availableSlots[2].id },
+    });
+  }
+
+  // Booking 4: Paid booking for mary (today)
+  const booking4 = await prisma.booking.upsert({
+    where: { id: 'booking-4' },
+    update: {},
+    create: {
+      id: 'booking-4',
+      userId: customer3.id,
+      date: today,
+      startTime: new Date(today.getTime() + 8 * 60 * 60 * 1000),  // 8 AM
+      endTime: new Date(today.getTime() + 11 * 60 * 60 * 1000),   // 11 AM
+      duration: 3,
+      totalAmount: 1200,
+      paidAmount: 1200,
+      status: 'PAID',
+    },
+  });
+
+  if (availableSlots[3]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking4.id, slotId: availableSlots[3].id } },
+      update: {},
+      create: { bookingId: booking4.id, slotId: availableSlots[3].id },
+    });
+  }
+
+  // Booking 5: Cancelled booking
+  const booking5 = await prisma.booking.upsert({
+    where: { id: 'booking-5' },
+    update: {},
+    create: {
+      id: 'booking-5',
+      userId: customer2.id,
+      date: yesterday,
+      startTime: new Date(yesterday.getTime() + 15 * 60 * 60 * 1000),
+      endTime: new Date(yesterday.getTime() + 17 * 60 * 60 * 1000),
+      duration: 2,
+      totalAmount: 600,
+      paidAmount: 0,
+      status: 'CANCELLED',
+    },
+  });
+
+  console.log('✅ Created bookings');
+
+  // Create payments
+  // Payment for completed booking 1
+  await prisma.payment.upsert({
+    where: { bookingId: booking1.id },
+    update: {},
+    create: {
+      bookingId: booking1.id,
+      amount: 900,
+      method: 'CARD',
+      status: 'COMPLETED',
+      transactionId: 'TXN-001-CARD',
+      paidAt: yesterday,
+    },
+  });
+
+  // Payment for paid booking 4
+  await prisma.payment.upsert({
+    where: { bookingId: booking4.id },
+    update: {},
+    create: {
+      bookingId: booking4.id,
+      amount: 1200,
+      method: 'CASH',
+      status: 'COMPLETED',
+      transactionId: 'TXN-002-CASH',
+      paidAt: today,
+    },
+  });
+
+  // Pending payment for booking 2
+  await prisma.payment.upsert({
+    where: { bookingId: booking2.id },
+    update: {},
+    create: {
+      bookingId: booking2.id,
+      amount: 900,
+      method: 'ONLINE',
+      status: 'PENDING',
+    },
+  });
+
+  // Failed payment attempt for booking 3
+  await prisma.payment.upsert({
+    where: { bookingId: booking3.id },
+    update: {},
+    create: {
+      bookingId: booking3.id,
+      amount: 1600,
+      method: 'CARD',
+      status: 'FAILED',
+      transactionId: 'TXN-003-FAILED',
+    },
+  });
+
+  console.log('✅ Created payments');
 
   console.log('🎉 Seed completed successfully!');
 }

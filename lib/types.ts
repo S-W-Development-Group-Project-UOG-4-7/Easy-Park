@@ -7,7 +7,7 @@ export interface User {
   contactNo?: string;
   vehicleNumber?: string;
   nic?: string;
-  role: 'CUSTOMER' | 'ADMIN' | 'STAFF';
+  role: 'ADMIN' | 'CUSTOMER' | 'COUNTER' | 'LAND_OWNER' | 'WASHER';
   createdAt: string;
 }
 

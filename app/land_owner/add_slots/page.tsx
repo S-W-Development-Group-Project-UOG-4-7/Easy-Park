@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { 
   Home, 
   CalendarDays, 
@@ -34,6 +36,7 @@ interface ParkingLot {
 }
 
 export default function AddSlots() {
+  const router = useRouter();
   const [activeItem, setActiveItem] = useState("slots");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -42,6 +45,8 @@ export default function AddSlots() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
   
   const [newSlot, setNewSlot] = useState({ zone: "A", count: 1, pricePerHour: 15 });
   const [showAddForm, setShowAddForm] = useState(false);
@@ -55,6 +60,64 @@ export default function AddSlots() {
 
   const zones = ["A", "B", "C", "D"];
 
+  // Open sign out confirmation modal
+  const openSignOutModal = () => {
+    setSidebarOpen(false); // Close sidebar if open
+    setShowSignOutModal(true);
+  };
+
+  // Close sign out confirmation modal
+  const closeSignOutModal = () => {
+    setShowSignOutModal(false);
+  };
+
+  // Handle Sign Out
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    
+    setSigningOut(true);
+    setShowSignOutModal(false);
+
+    try {
+      // Call the sign-out API to clear server-side session/cookies
+      await fetch('/api/auth/sign-out', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Clear any client-side storage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+
+      // Redirect to home page using replace to prevent back navigation
+      router.replace('/');
+    } catch (error) {
+      console.error('Sign out error:', error);
+      // Even if API fails, clear local storage and redirect
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      router.replace('/');
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
+  // Prevent background scroll when sign out modal is open
+  useEffect(() => {
+    if (!showSignOutModal) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showSignOutModal]);
+
   // Fetch parking lots on mount
   useEffect(() => {
     async function fetchParkingLots() {
@@ -62,12 +125,16 @@ export default function AddSlots() {
         const response = await fetch('/api/parking-lots');
         if (!response.ok) throw new Error('Failed to fetch parking lots');
         const data = await response.json();
-        setParkingLots(data.parkingLots || []);
-        if (data.parkingLots?.length > 0) {
-          setSelectedParkingLot(data.parkingLots[0].id);
+        // API returns { parkingLots: [...] } format
+        const lots = data.parkingLots || [];
+        setParkingLots(lots);
+        if (lots.length > 0) {
+          setSelectedParkingLot(lots[0].id);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
       }
     }
     fetchParkingLots();
@@ -85,7 +152,9 @@ export default function AddSlots() {
         const response = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
         if (!response.ok) throw new Error('Failed to fetch slots');
         const data = await response.json();
-        setSlots(data.slots || []);
+        // API returns { success: true, data: [...] } format from successResponse
+        const slotsData = data.data || data.slots || [];
+        setSlots(slotsData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
@@ -132,10 +201,10 @@ export default function AddSlots() {
         throw new Error(data.error || 'Failed to add slots');
       }
 
-      // Refresh slots
+      // Refresh slots from database
       const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
       const slotsData = await slotsResponse.json();
-      setSlots(slotsData.slots || []);
+      setSlots(slotsData.data || slotsData.slots || []);
       
       setShowAddForm(false);
       setNewSlot({ zone: "A", count: 1, pricePerHour: 15 });
@@ -195,7 +264,7 @@ export default function AddSlots() {
       // Refresh slots from database to ensure sync
       const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
       const slotsData = await slotsResponse.json();
-      setSlots(slotsData.slots || []);
+      setSlots(slotsData.data || slotsData.slots || []);
       
       setSelectedSlotForStatus(null);
     } catch (err) {
@@ -274,9 +343,13 @@ export default function AddSlots() {
 
         {/* Sign Out Button */}
         <div className="p-4 border-t border-white/10">
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-all duration-200">
+          <button
+            onClick={openSignOutModal}
+            disabled={signingOut}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <LogOut className="w-5 h-5" />
-            <span>Sign Out</span>
+            <span>{signingOut ? 'Signing Out...' : 'Sign Out'}</span>
           </button>
         </div>
 
@@ -626,6 +699,67 @@ export default function AddSlots() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Sign Out Confirmation Modal - Using Portal to render at body level */}
+      {showSignOutModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={closeSignOutModal}
+          />
+          
+          {/* Modal - Centered on screen */}
+          <div className="relative z-[10000] mx-4 w-full max-w-md rounded-2xl border border-slate-700/70 bg-gradient-to-br from-[#1E293B] to-[#0F172A] p-6 shadow-2xl">
+            {/* Warning Icon */}
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/20 ring-1 ring-amber-500/40">
+              <svg
+                className="h-7 w-7 text-amber-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+
+            {/* Title */}
+            <h3 className="mb-2 text-center text-xl font-bold text-white">
+              Sign Out
+            </h3>
+
+            {/* Message */}
+            <p className="mb-6 text-center text-slate-400">
+              Are you sure you want to sign out? You will need to sign in again to access your account.
+            </p>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={closeSignOutModal}
+                className="flex-1 rounded-xl border border-slate-600 bg-slate-700/50 px-4 py-2.5 font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="flex-1 rounded-xl border border-red-500/50 bg-red-500/20 px-4 py-2.5 font-semibold text-red-400 transition hover:bg-red-500/30 hover:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {signingOut ? 'Signing Out...' : 'Sign Out'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
