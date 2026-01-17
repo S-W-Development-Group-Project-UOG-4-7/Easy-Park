@@ -75,14 +75,14 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
           })}
         </nav>
 
-        {/* Logout Button */}
+        {/* Sign Out Button */}
         {onLogout && (
           <button
             onClick={onLogout}
-            className="flex items-center space-x-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 text-red-400 hover:bg-red-500/10"
+            className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 font-medium text-sm transition hover:bg-red-500/20 hover:border-red-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-400"
           >
-            <LogOut className="h-5 w-5" />
-            <span>Logout</span>
+            <LogOut className="h-4 w-4" />
+            <span>Sign Out</span>
           </button>
         )}
       </div>
