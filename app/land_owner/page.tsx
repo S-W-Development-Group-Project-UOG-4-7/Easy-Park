@@ -58,8 +58,9 @@ export default function LandOwnerHome() {
   const router = useRouter();
   const [activeItem, setActiveItem] = useState("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedTime, setSelectedTime] = useState("all");
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [bookings, setBookings] = useState<BookingData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -73,12 +74,11 @@ export default function LandOwnerHome() {
     { id: "slots", label: "Add Slots", icon: PlusSquare, href: "/land_owner/add_slots" },
   ];
 
-  const timeFilters = [
-    { id: "all", label: "All Day" },
-    { id: "morning", label: "Morning (6AM - 12PM)" },
-    { id: "afternoon", label: "Afternoon (12PM - 5PM)" },
-    { id: "evening", label: "Evening (5PM - 10PM)" },
-  ];
+  // Clear time filter
+  const clearTimeFilter = () => {
+    setStartTime("");
+    setEndTime("");
+  };
 
   // Open sign out confirmation modal
   const openSignOutModal = () => {
@@ -198,25 +198,57 @@ export default function LandOwnerHome() {
     return "night";
   };
 
-  // Filter bookings by selected date
-  const bookingsForDate = bookings.filter(booking => {
-    const bookingDate = new Date(booking.startTime).toISOString().split('T')[0];
-    return bookingDate === selectedDate;
+  // Filter bookings by selected month
+  const bookingsForMonth = bookings.filter(booking => {
+    const bookingMonth = new Date(booking.startTime).toISOString().slice(0, 7);
+    return bookingMonth === selectedMonth;
   });
 
-  // Filter by time period
-  const filteredBookings = selectedTime === "all" 
-    ? bookingsForDate 
-    : bookingsForDate.filter(booking => getTimePeriod(booking.startTime) === selectedTime);
+  // Filter by time range
+  const filteredBookings = bookingsForMonth.filter(booking => {
+    if (!startTime && !endTime) return true; // No filter applied
+    
+    const bookingTime = new Date(booking.startTime);
+    const bookingHours = bookingTime.getHours();
+    const bookingMinutes = bookingTime.getMinutes();
+    const bookingTimeValue = bookingHours * 60 + bookingMinutes;
+    
+    if (startTime && endTime) {
+      const [startH, startM] = startTime.split(':').map(Number);
+      const [endH, endM] = endTime.split(':').map(Number);
+      const startValue = startH * 60 + startM;
+      const endValue = endH * 60 + endM;
+      return bookingTimeValue >= startValue && bookingTimeValue <= endValue;
+    }
+    
+    if (startTime) {
+      const [startH, startM] = startTime.split(':').map(Number);
+      const startValue = startH * 60 + startM;
+      return bookingTimeValue >= startValue;
+    }
+    
+    if (endTime) {
+      const [endH, endM] = endTime.split(':').map(Number);
+      const endValue = endH * 60 + endM;
+      return bookingTimeValue <= endValue;
+    }
+    
+    return true;
+  });
 
   // Calculate stats
-  const todayRevenue = bookingsForDate.reduce((sum, b) => sum + b.amount, 0);
-  const totalBookingsCount = bookings.length;
+  const today = new Date().toISOString().split('T')[0];
+  const bookingsForToday = bookings.filter(booking => {
+    const bookingDate = new Date(booking.startTime).toISOString().split('T')[0];
+    return bookingDate === today;
+  });
+  const todayRevenue = bookingsForToday.reduce((sum, b) => sum + b.amount, 0);
+  const monthlyRevenue = bookingsForMonth.reduce((sum, b) => sum + b.amount, 0);
 
   const stats = [
-    { label: "Today's Bookings", value: bookingsForDate.length.toString(), icon: CalendarDays, color: "text-blue-400" },
-    { label: "Revenue", value: `$${todayRevenue.toFixed(2)}`, icon: DollarSign, color: "text-[#84CC16]" },
-    { label: "Total Bookings", value: totalBookingsCount.toString(), icon: BarChart3, color: "text-purple-400" },
+    { label: "Today's Bookings", value: bookingsForToday.length.toString(), icon: CalendarDays, color: "text-blue-400" },
+    { label: "Today's Revenue", value: `$${todayRevenue.toFixed(2)}`, icon: DollarSign, color: "text-[#84CC16]" },
+    { label: "Monthly Bookings", value: bookingsForMonth.length.toString(), icon: BarChart3, color: "text-purple-400" },
   ];
 
   // Transform bookings for display
@@ -233,10 +265,9 @@ export default function LandOwnerHome() {
   }));
 
   // Calculate quick stats
-  const activeBookings = bookingsForDate.filter(b => b.status === 'active').length;
-  const completedBookings = bookingsForDate.filter(b => b.status === 'completed').length;
-  const occupancyRate = bookingsForDate.length > 0 ? Math.round((activeBookings / Math.max(bookingsForDate.length, 1)) * 100) : 0;
-  const weeklyRevenue = bookings.reduce((sum, b) => sum + b.amount, 0);
+  const activeBookings = bookingsForMonth.filter(b => b.status === 'active').length;
+  const completedBookings = bookingsForMonth.filter(b => b.status === 'completed').length;
+  const occupancyRate = bookingsForMonth.length > 0 ? Math.round((activeBookings / Math.max(bookingsForMonth.length, 1)) * 100) : 0;
 
   return (
     <div className="flex min-h-screen">
@@ -406,16 +437,16 @@ export default function LandOwnerHome() {
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8 mt-14 lg:mt-0">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-[#E5E7EB]">Welcome Back, John!</h1>
-              <p className="text-[#94A3B8] mt-1 text-sm sm:text-base">Here's what's happening with your parking lot today.</p>
+              <p className="text-[#94A3B8] mt-1 text-sm sm:text-base">Here's what's happening with your parking lot this month.</p>
             </div>
             
-            {/* Date Picker */}
+            {/* Month Picker */}
             <div className="flex items-center gap-3 bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 rounded-xl px-4 py-3 w-full sm:w-auto">
               <Calendar className="w-5 h-5 text-[#84CC16]" />
               <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
                 className="bg-transparent text-[#E5E7EB] text-sm focus:outline-none cursor-pointer [color-scheme:dark] flex-1"
               />
             </div>
@@ -448,23 +479,37 @@ export default function LandOwnerHome() {
             <div className="lg:col-span-2 rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4 sm:p-6">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
                 <h2 className="text-base sm:text-xl font-semibold text-[#84CC16]">
-                  Bookings for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  Bookings for {new Date(selectedMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </h2>
                 
                 {/* Time Filter */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Clock className="w-4 h-4 text-[#94A3B8]" />
-                  <select
-                    value={selectedTime}
-                    onChange={(e) => setSelectedTime(e.target.value)}
-                    className="bg-[#0F172A] border border-white/10 rounded-lg px-3 sm:px-4 py-2 text-[#E5E7EB] text-xs sm:text-sm focus:outline-none focus:border-[#84CC16] cursor-pointer flex-1 sm:flex-none"
-                  >
-                    {timeFilters.map((filter) => (
-                      <option key={filter.id} value={filter.id}>
-                        {filter.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      placeholder="From"
+                      className="bg-[#0F172A] border border-white/10 rounded-lg px-2 sm:px-3 py-2 text-[#E5E7EB] text-xs sm:text-sm focus:outline-none focus:border-[#84CC16] cursor-pointer [color-scheme:dark] w-[100px] sm:w-[120px]"
+                    />
+                    <span className="text-[#94A3B8] text-xs">to</span>
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      placeholder="To"
+                      className="bg-[#0F172A] border border-white/10 rounded-lg px-2 sm:px-3 py-2 text-[#E5E7EB] text-xs sm:text-sm focus:outline-none focus:border-[#84CC16] cursor-pointer [color-scheme:dark] w-[100px] sm:w-[120px]"
+                    />
+                  </div>
+                  {(startTime || endTime) && (
+                    <button
+                      onClick={clearTimeFilter}
+                      className="text-[#94A3B8] hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
               </div>
               
@@ -608,7 +653,7 @@ export default function LandOwnerHome() {
                     <span className="text-[#E5E7EB] font-medium">{activeBookings}</span>
                   </div>
                   <div className="h-2 rounded-full bg-[#0F172A]">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" style={{ width: `${bookingsForDate.length > 0 ? (activeBookings / bookingsForDate.length) * 100 : 0}%` }}></div>
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" style={{ width: `${bookingsForMonth.length > 0 ? (activeBookings / bookingsForMonth.length) * 100 : 0}%` }}></div>
                   </div>
                 </div>
 
@@ -619,15 +664,15 @@ export default function LandOwnerHome() {
                     <span className="text-[#E5E7EB] font-medium">{completedBookings}</span>
                   </div>
                   <div className="h-2 rounded-full bg-[#0F172A]">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" style={{ width: `${bookingsForDate.length > 0 ? (completedBookings / bookingsForDate.length) * 100 : 0}%` }}></div>
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" style={{ width: `${bookingsForMonth.length > 0 ? (completedBookings / bookingsForMonth.length) * 100 : 0}%` }}></div>
                   </div>
                 </div>
 
-                {/* Today's Summary */}
+                {/* Monthly Summary */}
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center gap-2 mb-3">
                     <BarChart3 className="w-5 h-5 text-[#84CC16]" />
-                    <span className="text-[#E5E7EB] font-medium">Today's Summary</span>
+                    <span className="text-[#E5E7EB] font-medium">Monthly Summary</span>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-[#0F172A] rounded-lg p-3">
@@ -644,14 +689,14 @@ export default function LandOwnerHome() {
                 {/* Total Revenue */}
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center justify-between">
-                    <span className="text-[#94A3B8] text-sm">Total Revenue</span>
+                    <span className="text-[#94A3B8] text-sm">Monthly Revenue</span>
                     <div className="flex items-center gap-1 text-green-400 text-sm">
                       <TrendingUp className="w-4 h-4" />
-                      All Time
+                      This Month
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-[#84CC16] mt-2">${weeklyRevenue.toFixed(2)}</p>
-                  <p className="text-xs text-[#94A3B8] mt-1">from {totalBookingsCount} bookings</p>
+                  <p className="text-2xl font-bold text-[#84CC16] mt-2">${monthlyRevenue.toFixed(2)}</p>
+                  <p className="text-xs text-[#94A3B8] mt-1">from {bookingsForMonth.length} bookings</p>
                 </div>
               </div>
             </div>

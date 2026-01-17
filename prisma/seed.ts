@@ -1,404 +1,387 @@
 import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Starting seed...');
 
-  // Clean existing data (in correct order due to foreign keys)
-  await prisma.payment.deleteMany();
-  await prisma.bookingSlot.deleteMany();
-  await prisma.booking.deleteMany();
-  await prisma.parkingSlot.deleteMany();
-  await prisma.parkingLocation.deleteMany();
-  await prisma.user.deleteMany();
-
-  console.log('🧹 Cleaned existing data');
-
-  // Hash password for all users (password: "password123")
-  const hashedPassword = await bcrypt.hash('password123', 10);
-
-  // Create users with different roles
-  const admin = await prisma.user.create({
-    data: {
-      email: 'admin@easypark.com',
+  // Create a test user
+  const hashedPassword = await bcrypt.hash('password123', 12);
+  
+  const user = await prisma.user.upsert({
+    where: { email: 'test@easypark.com' },
+    update: {},
+    create: {
+      email: 'test@easypark.com',
       password: hashedPassword,
+      fullName: 'Test User',
+      contactNo: '0771234567',
+      vehicleNumber: 'ABC-1234',
+      nic: '200012345678',
+    },
+  });
+  console.log('✅ Created test user:', user.email);
+
+  // Create admin user
+  const adminPassword = await bcrypt.hash('admin123', 12);
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@easypark.com' },
+    update: {},
+    create: {
+      email: 'admin@easypark.com',
+      password: adminPassword,
       fullName: 'Admin User',
-      contactNo: '+94 77 000 0000',
       role: 'ADMIN',
     },
   });
+  console.log('✅ Created admin user:', admin.email);
 
-  const landOwner1 = await prisma.user.create({
-    data: {
-      email: 'landowner1@easypark.com',
-      password: hashedPassword,
-      fullName: 'Kamal Perera',
-      contactNo: '+94 77 111 1111',
-      nic: '199012345678',
+  // Create land owner user
+  const ownerPassword = await bcrypt.hash('owner123', 12);
+  const landOwner = await prisma.user.upsert({
+    where: { email: 'owner@easypark.com' },
+    update: {
+      fullName: 'Land Owner',
+      role: 'LAND_OWNER',
+      contactNo: '0770000000',
+    },
+    create: {
+      email: 'owner@easypark.com',
+      password: ownerPassword,
+      fullName: 'Land Owner',
+      contactNo: '0770000000',
       role: 'LAND_OWNER',
     },
   });
+  console.log('✅ Created land owner user:', landOwner.email);
 
-  const landOwner2 = await prisma.user.create({
-    data: {
-      email: 'landowner2@easypark.com',
-      password: hashedPassword,
-      fullName: 'Nimal Fernando',
-      contactNo: '+94 77 222 2222',
-      nic: '198512345678',
-      role: 'LAND_OWNER',
+  // Create parking locations
+  const location1 = await prisma.parkingLocation.upsert({
+    where: { id: 'loc-main' },
+    update: {
+      ownerId: landOwner.id,
+    },
+    create: {
+      id: 'loc-main',
+      name: 'Main Parking Complex',
+      address: '123 Main Street, Colombo',
+      description: 'Main parking area with EV charging stations',
+      totalSlots: 0,
+      ownerId: landOwner.id,
     },
   });
 
-  const counter = await prisma.user.create({
-    data: {
+  const location2 = await prisma.parkingLocation.upsert({
+    where: { id: 'loc-downtown' },
+    update: {
+      ownerId: landOwner.id,
+    },
+    create: {
+      id: 'loc-downtown',
+      name: 'Downtown Parking',
+      address: '456 Downtown Road, Colombo',
+      description: 'Convenient downtown parking with car wash service',
+      totalSlots: 0,
+      ownerId: landOwner.id,
+    },
+  });
+  console.log('✅ Created parking locations');
+
+  // Create parking slots for land-owner testing
+  // (zones A/B so the land-owner UI can group them)
+  const slotTypes = ['NORMAL', 'NORMAL', 'EV', 'NORMAL', 'CAR_WASH'] as const;
+
+  const createZoneSlots = async (locationId: string, zone: string, count: number) => {
+    for (let i = 1; i <= count; i++) {
+      const slotType = slotTypes[i % slotTypes.length];
+      await prisma.parkingSlot.upsert({
+        where: {
+          locationId_number: {
+            locationId,
+            number: `${zone}${i}`,
+          },
+        },
+        update: {
+          zone,
+          type: slotType,
+          pricePerHour: slotType === 'EV' ? 400 : slotType === 'CAR_WASH' ? 500 : 300,
+          status: i % 7 === 0 ? 'MAINTENANCE' : i % 5 === 0 ? 'OCCUPIED' : 'AVAILABLE',
+        },
+        create: {
+          number: `${zone}${i}`,
+          zone,
+          type: slotType,
+          pricePerHour: slotType === 'EV' ? 400 : slotType === 'CAR_WASH' ? 500 : 300,
+          status: i % 7 === 0 ? 'MAINTENANCE' : i % 5 === 0 ? 'OCCUPIED' : 'AVAILABLE',
+          locationId,
+        },
+      });
+    }
+  };
+
+  await createZoneSlots(location1.id, 'A', 8);
+  await createZoneSlots(location1.id, 'B', 5);
+  await createZoneSlots(location2.id, 'A', 6);
+
+  // Keep totalSlots in sync
+  const loc1Count = await prisma.parkingSlot.count({ where: { locationId: location1.id } });
+  const loc2Count = await prisma.parkingSlot.count({ where: { locationId: location2.id } });
+  await prisma.parkingLocation.update({ where: { id: location1.id }, data: { totalSlots: loc1Count } });
+  await prisma.parkingLocation.update({ where: { id: location2.id }, data: { totalSlots: loc2Count } });
+
+  console.log('✅ Created land-owner parking slots');
+
+  // Create additional users for different roles
+  const counterPassword = await bcrypt.hash('counter123', 12);
+  const counter = await prisma.user.upsert({
+    where: { email: 'counter@easypark.com' },
+    update: {},
+    create: {
       email: 'counter@easypark.com',
-      password: hashedPassword,
+      password: counterPassword,
       fullName: 'Counter Staff',
-      contactNo: '+94 77 333 3333',
+      contactNo: '0772222222',
       role: 'COUNTER',
     },
   });
+  console.log('✅ Created counter user:', counter.email);
 
-  const washer = await prisma.user.create({
-    data: {
+  const washerPassword = await bcrypt.hash('washer123', 12);
+  const washer = await prisma.user.upsert({
+    where: { email: 'washer@easypark.com' },
+    update: {},
+    create: {
       email: 'washer@easypark.com',
-      password: hashedPassword,
-      fullName: 'Sunil Washer',
-      contactNo: '+94 77 444 4444',
+      password: washerPassword,
+      fullName: 'Car Washer',
+      contactNo: '0773333333',
       role: 'WASHER',
     },
   });
+  console.log('✅ Created washer user:', washer.email);
 
-  const customers = await Promise.all([
-    prisma.user.create({
-      data: {
-        email: 'alice@gmail.com',
-        password: hashedPassword,
-        fullName: 'Alice Johnson',
-        contactNo: '+94 77 123 4567',
-        vehicleNumber: 'CAA-1234',
-        nic: '199512345678',
-        role: 'CUSTOMER',
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'bob@gmail.com',
-        password: hashedPassword,
-        fullName: 'Bob Smith',
-        contactNo: '+94 77 234 5678',
-        vehicleNumber: 'CBB-5678',
-        nic: '199212345678',
-        role: 'CUSTOMER',
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'carol@gmail.com',
-        password: hashedPassword,
-        fullName: 'Carol White',
-        contactNo: '+94 77 345 6789',
-        vehicleNumber: 'CCC-9012',
-        nic: '199812345678',
-        role: 'CUSTOMER',
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'david@gmail.com',
-        password: hashedPassword,
-        fullName: 'David Brown',
-        contactNo: '+94 77 456 7890',
-        vehicleNumber: 'CDD-3456',
-        nic: '199112345678',
-        role: 'CUSTOMER',
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: 'eva@gmail.com',
-        password: hashedPassword,
-        fullName: 'Eva Green',
-        contactNo: '+94 77 567 8901',
-        vehicleNumber: 'CEE-7890',
-        nic: '200012345678',
-        role: 'CUSTOMER',
-      },
-    }),
-  ]);
-
-  console.log(`👤 Created ${customers.length + 5} users`);
-
-  // Create parking locations
-  const location1 = await prisma.parkingLocation.create({
-    data: {
-      name: 'Colombo City Center Parking',
-      address: 'No. 25, Galle Road, Colombo 03',
-      description: 'Premium parking facility in the heart of Colombo with 24/7 security',
-      totalSlots: 50,
-      ownerId: landOwner1.id,
+  // Create more customer users
+  const customer2 = await prisma.user.upsert({
+    where: { email: 'john@example.com' },
+    update: {},
+    create: {
+      email: 'john@example.com',
+      password: hashedPassword,
+      fullName: 'John Smith',
+      contactNo: '0774444444',
+      vehicleNumber: 'CAB-5678',
+      nic: '199912345678',
     },
   });
 
-  const location2 = await prisma.parkingLocation.create({
-    data: {
-      name: 'Malabe Tech Park',
-      address: 'SLIIT Campus Road, Malabe',
-      description: 'Modern parking with EV charging stations',
-      totalSlots: 30,
-      ownerId: landOwner1.id,
+  const customer3 = await prisma.user.upsert({
+    where: { email: 'mary@example.com' },
+    update: {},
+    create: {
+      email: 'mary@example.com',
+      password: hashedPassword,
+      fullName: 'Mary Johnson',
+      contactNo: '0775555555',
+      vehicleNumber: 'WP-KA-1234',
+      nic: '198812345678',
     },
   });
+  console.log('✅ Created additional customers');
 
-  const location3 = await prisma.parkingLocation.create({
-    data: {
-      name: 'Kandy Central Parking',
-      address: 'No. 10, Dalada Veediya, Kandy',
-      description: 'Convenient parking near Temple of the Tooth',
-      totalSlots: 40,
-      ownerId: landOwner2.id,
-    },
+  // Get available slots for bookings
+  const availableSlots = await prisma.parkingSlot.findMany({
+    where: { status: 'AVAILABLE' },
+    take: 6,
   });
 
-  console.log('🏢 Created 3 parking locations');
+  // Create bookings with different statuses
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  // Create parking slots for Location 1 (Colombo)
-  const colomboSlots = [];
-  for (let zone of ['A', 'B', 'C']) {
-    for (let i = 1; i <= 10; i++) {
-      const slotType = zone === 'C' && i <= 3 ? 'EV' : (zone === 'C' && i > 7 ? 'CAR_WASH' : 'NORMAL');
-      colomboSlots.push(
-        prisma.parkingSlot.create({
-          data: {
-            number: `${zone}${i.toString().padStart(2, '0')}`,
-            zone: zone,
-            type: slotType,
-            status: 'AVAILABLE',
-            pricePerHour: slotType === 'EV' ? 500 : (slotType === 'CAR_WASH' ? 400 : 300),
-            locationId: location1.id,
-          },
-        })
-      );
-    }
-  }
-  const createdColomboSlots = await Promise.all(colomboSlots);
-
-  // Create parking slots for Location 2 (Malabe)
-  const malabeSlots = [];
-  for (let zone of ['A', 'B']) {
-    for (let i = 1; i <= 15; i++) {
-      const slotType = i <= 5 ? 'EV' : 'NORMAL';
-      malabeSlots.push(
-        prisma.parkingSlot.create({
-          data: {
-            number: `${zone}${i.toString().padStart(2, '0')}`,
-            zone: zone,
-            type: slotType,
-            status: 'AVAILABLE',
-            pricePerHour: slotType === 'EV' ? 450 : 250,
-            locationId: location2.id,
-          },
-        })
-      );
-    }
-  }
-  const createdMalabeSlots = await Promise.all(malabeSlots);
-
-  // Create parking slots for Location 3 (Kandy)
-  const kandySlots = [];
-  for (let zone of ['A', 'B', 'C', 'D']) {
-    for (let i = 1; i <= 10; i++) {
-      kandySlots.push(
-        prisma.parkingSlot.create({
-          data: {
-            number: `${zone}${i.toString().padStart(2, '0')}`,
-            zone: zone,
-            type: 'NORMAL',
-            status: 'AVAILABLE',
-            pricePerHour: 200,
-            locationId: location3.id,
-          },
-        })
-      );
-    }
-  }
-  const createdKandySlots = await Promise.all(kandySlots);
-
-  console.log(`🅿️ Created ${createdColomboSlots.length + createdMalabeSlots.length + createdKandySlots.length} parking slots`);
-
-  // Create some bookings
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  // Booking 1 - Completed
-  const booking1 = await prisma.booking.create({
-    data: {
-      userId: customers[0].id,
-      date: today,
-      startTime: new Date(today.setHours(9, 0, 0, 0)),
-      endTime: new Date(today.setHours(12, 0, 0, 0)),
+  // Booking 1: Completed booking for test user (yesterday)
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  const booking1 = await prisma.booking.upsert({
+    where: { id: 'booking-1' },
+    update: {},
+    create: {
+      id: 'booking-1',
+      userId: user.id,
+      date: yesterday,
+      startTime: new Date(yesterday.getTime() + 9 * 60 * 60 * 1000), // 9 AM
+      endTime: new Date(yesterday.getTime() + 12 * 60 * 60 * 1000),  // 12 PM
       duration: 3,
       totalAmount: 900,
       paidAmount: 900,
       status: 'COMPLETED',
-      slots: {
-        create: {
-          slotId: createdColomboSlots[0].id,
-        },
-      },
     },
   });
 
-  // Booking 2 - Confirmed
-  const booking2 = await prisma.booking.create({
-    data: {
-      userId: customers[1].id,
-      date: tomorrow,
-      startTime: new Date(tomorrow.setHours(10, 0, 0, 0)),
-      endTime: new Date(tomorrow.setHours(14, 0, 0, 0)),
-      duration: 4,
-      totalAmount: 1200,
+  // Link slots to booking 1
+  if (availableSlots[0]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking1.id, slotId: availableSlots[0].id } },
+      update: {},
+      create: { bookingId: booking1.id, slotId: availableSlots[0].id },
+    });
+  }
+
+  // Booking 2: Confirmed booking for today (test user)
+  const booking2 = await prisma.booking.upsert({
+    where: { id: 'booking-2' },
+    update: {},
+    create: {
+      id: 'booking-2',
+      userId: user.id,
+      date: today,
+      startTime: new Date(today.getTime() + 14 * 60 * 60 * 1000), // 2 PM
+      endTime: new Date(today.getTime() + 17 * 60 * 60 * 1000),   // 5 PM
+      duration: 3,
+      totalAmount: 900,
       paidAmount: 0,
       status: 'CONFIRMED',
-      slots: {
-        create: {
-          slotId: createdColomboSlots[5].id,
-        },
-      },
     },
   });
 
-  // Booking 3 - Pending (EV slot)
-  const booking3 = await prisma.booking.create({
-    data: {
-      userId: customers[2].id,
+  if (availableSlots[1]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking2.id, slotId: availableSlots[1].id } },
+      update: {},
+      create: { bookingId: booking2.id, slotId: availableSlots[1].id },
+    });
+  }
+
+  // Booking 3: Pending booking for john
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const booking3 = await prisma.booking.upsert({
+    where: { id: 'booking-3' },
+    update: {},
+    create: {
+      id: 'booking-3',
+      userId: customer2.id,
       date: tomorrow,
-      startTime: new Date(tomorrow.setHours(8, 0, 0, 0)),
-      endTime: new Date(tomorrow.setHours(10, 0, 0, 0)),
-      duration: 2,
-      totalAmount: 1000,
+      startTime: new Date(tomorrow.getTime() + 10 * 60 * 60 * 1000), // 10 AM
+      endTime: new Date(tomorrow.getTime() + 14 * 60 * 60 * 1000),   // 2 PM
+      duration: 4,
+      totalAmount: 1600,
       paidAmount: 0,
       status: 'PENDING',
-      slots: {
-        create: {
-          slotId: createdColomboSlots[20].id, // Zone C EV slot
-        },
-      },
     },
   });
 
-  // Booking 4 - Paid
-  const booking4 = await prisma.booking.create({
-    data: {
-      userId: customers[3].id,
+  if (availableSlots[2]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking3.id, slotId: availableSlots[2].id } },
+      update: {},
+      create: { bookingId: booking3.id, slotId: availableSlots[2].id },
+    });
+  }
+
+  // Booking 4: Paid booking for mary (today)
+  const booking4 = await prisma.booking.upsert({
+    where: { id: 'booking-4' },
+    update: {},
+    create: {
+      id: 'booking-4',
+      userId: customer3.id,
       date: today,
-      startTime: new Date(today.setHours(14, 0, 0, 0)),
-      endTime: new Date(today.setHours(18, 0, 0, 0)),
-      duration: 4,
-      totalAmount: 1000,
-      paidAmount: 1000,
+      startTime: new Date(today.getTime() + 8 * 60 * 60 * 1000),  // 8 AM
+      endTime: new Date(today.getTime() + 11 * 60 * 60 * 1000),   // 11 AM
+      duration: 3,
+      totalAmount: 1200,
+      paidAmount: 1200,
       status: 'PAID',
-      slots: {
-        create: {
-          slotId: createdMalabeSlots[0].id,
-        },
-      },
     },
   });
 
-  // Booking 5 - Multiple slots booking
-  const booking5 = await prisma.booking.create({
-    data: {
-      userId: customers[4].id,
-      date: tomorrow,
-      startTime: new Date(tomorrow.setHours(9, 0, 0, 0)),
-      endTime: new Date(tomorrow.setHours(17, 0, 0, 0)),
-      duration: 8,
-      totalAmount: 3200,
-      paidAmount: 1600,
-      status: 'CONFIRMED',
-      slots: {
-        create: [
-          { slotId: createdKandySlots[0].id },
-          { slotId: createdKandySlots[1].id },
-        ],
-      },
+  if (availableSlots[3]) {
+    await prisma.bookingSlot.upsert({
+      where: { bookingId_slotId: { bookingId: booking4.id, slotId: availableSlots[3].id } },
+      update: {},
+      create: { bookingId: booking4.id, slotId: availableSlots[3].id },
+    });
+  }
+
+  // Booking 5: Cancelled booking
+  const booking5 = await prisma.booking.upsert({
+    where: { id: 'booking-5' },
+    update: {},
+    create: {
+      id: 'booking-5',
+      userId: customer2.id,
+      date: yesterday,
+      startTime: new Date(yesterday.getTime() + 15 * 60 * 60 * 1000),
+      endTime: new Date(yesterday.getTime() + 17 * 60 * 60 * 1000),
+      duration: 2,
+      totalAmount: 600,
+      paidAmount: 0,
+      status: 'CANCELLED',
     },
   });
 
-  console.log('📅 Created 5 bookings');
+  console.log('✅ Created bookings');
 
   // Create payments
-  await prisma.payment.create({
-    data: {
+  // Payment for completed booking 1
+  await prisma.payment.upsert({
+    where: { bookingId: booking1.id },
+    update: {},
+    create: {
       bookingId: booking1.id,
       amount: 900,
       method: 'CARD',
       status: 'COMPLETED',
-      transactionId: 'TXN-001-COMPLETED',
-      paidAt: today,
+      transactionId: 'TXN-001-CARD',
+      paidAt: yesterday,
     },
   });
 
-  await prisma.payment.create({
-    data: {
+  // Payment for paid booking 4
+  await prisma.payment.upsert({
+    where: { bookingId: booking4.id },
+    update: {},
+    create: {
       bookingId: booking4.id,
-      amount: 1000,
-      method: 'ONLINE',
+      amount: 1200,
+      method: 'CASH',
       status: 'COMPLETED',
-      transactionId: 'TXN-004-COMPLETED',
+      transactionId: 'TXN-002-CASH',
       paidAt: today,
     },
   });
 
-  await prisma.payment.create({
-    data: {
-      bookingId: booking5.id,
-      amount: 1600,
-      method: 'CASH',
+  // Pending payment for booking 2
+  await prisma.payment.upsert({
+    where: { bookingId: booking2.id },
+    update: {},
+    create: {
+      bookingId: booking2.id,
+      amount: 900,
+      method: 'ONLINE',
       status: 'PENDING',
     },
   });
 
-  console.log('💳 Created 3 payments');
-
-  // Mark some slots as occupied
-  await prisma.parkingSlot.update({
-    where: { id: createdColomboSlots[0].id },
-    data: { status: 'OCCUPIED' },
+  // Failed payment attempt for booking 3
+  await prisma.payment.upsert({
+    where: { bookingId: booking3.id },
+    update: {},
+    create: {
+      bookingId: booking3.id,
+      amount: 1600,
+      method: 'CARD',
+      status: 'FAILED',
+      transactionId: 'TXN-003-FAILED',
+    },
   });
 
-  await prisma.parkingSlot.update({
-    where: { id: createdMalabeSlots[0].id },
-    data: { status: 'OCCUPIED' },
-  });
+  console.log('✅ Created payments');
 
-  await prisma.parkingSlot.update({
-    where: { id: createdColomboSlots[15].id },
-    data: { status: 'MAINTENANCE' },
-  });
-
-  console.log('✅ Updated slot statuses');
-
-  console.log('');
   console.log('🎉 Seed completed successfully!');
-  console.log('');
-  console.log('📊 Summary:');
-  console.log('   - 1 Admin (admin@easypark.com)');
-  console.log('   - 2 Land Owners (landowner1@easypark.com, landowner2@easypark.com)');
-  console.log('   - 1 Counter Staff (counter@easypark.com)');
-  console.log('   - 1 Washer (washer@easypark.com)');
-  console.log('   - 5 Customers (alice@gmail.com, bob@gmail.com, etc.)');
-  console.log('   - 3 Parking Locations');
-  console.log('   - 100 Parking Slots');
-  console.log('   - 5 Bookings');
-  console.log('   - 3 Payments');
-  console.log('');
-  console.log('🔑 All users have password: password123');
 }
 
 main()
