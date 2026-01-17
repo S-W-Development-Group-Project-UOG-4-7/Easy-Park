@@ -13,9 +13,9 @@ export async function GET(
       where: { id },
       select: {
         id: true,
-        name: true,
+        fullName: true,
         email: true,
-        phone: true,
+        contactNo: true,
         role: true,
         createdAt: true,
         _count: {
@@ -36,9 +36,9 @@ export async function GET(
     return NextResponse.json({
       user: {
         id: user.id,
-        name: user.name,
+        name: user.fullName,
         email: user.email,
-        phone: user.phone,
+        phone: user.contactNo,
         role: user.role,
         createdAt: user.createdAt,
         totalBookings: user._count.bookings,
@@ -66,20 +66,28 @@ export async function PATCH(
     const user = await prisma.user.update({
       where: { id },
       data: {
-        ...(name && { name }),
+        ...(name && { fullName: name }),
         ...(email && { email }),
-        ...(phone !== undefined && { phone }),
+        ...(phone !== undefined && { contactNo: phone }),
       },
       select: {
         id: true,
-        name: true,
+        fullName: true,
         email: true,
-        phone: true,
+        contactNo: true,
         role: true,
       },
     });
 
-    return NextResponse.json({ user });
+    return NextResponse.json({ 
+      user: {
+        id: user.id,
+        name: user.fullName,
+        email: user.email,
+        phone: user.contactNo,
+        role: user.role,
+      },
+    });
   } catch (error) {
     console.error('Error updating user:', error);
     return NextResponse.json(

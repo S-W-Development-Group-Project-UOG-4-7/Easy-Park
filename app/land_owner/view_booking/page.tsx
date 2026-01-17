@@ -78,7 +78,9 @@ export default function ViewBookings() {
         const response = await fetch('/api/bookings');
         if (!response.ok) throw new Error('Failed to fetch bookings');
         const data = await response.json();
-        setBookings(data.bookings || []);
+        // API returns { success: true, data: [...] } format from successResponse
+        const bookingsData = data.data || data.bookings || [];
+        setBookings(bookingsData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {

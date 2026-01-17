@@ -62,12 +62,16 @@ export default function AddSlots() {
         const response = await fetch('/api/parking-lots');
         if (!response.ok) throw new Error('Failed to fetch parking lots');
         const data = await response.json();
-        setParkingLots(data.parkingLots || []);
-        if (data.parkingLots?.length > 0) {
-          setSelectedParkingLot(data.parkingLots[0].id);
+        // API returns { parkingLots: [...] } format
+        const lots = data.parkingLots || [];
+        setParkingLots(lots);
+        if (lots.length > 0) {
+          setSelectedParkingLot(lots[0].id);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
       }
     }
     fetchParkingLots();
@@ -85,7 +89,9 @@ export default function AddSlots() {
         const response = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
         if (!response.ok) throw new Error('Failed to fetch slots');
         const data = await response.json();
-        setSlots(data.slots || []);
+        // API returns { success: true, data: [...] } format from successResponse
+        const slotsData = data.data || data.slots || [];
+        setSlots(slotsData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
@@ -132,10 +138,10 @@ export default function AddSlots() {
         throw new Error(data.error || 'Failed to add slots');
       }
 
-      // Refresh slots
+      // Refresh slots from database
       const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
       const slotsData = await slotsResponse.json();
-      setSlots(slotsData.slots || []);
+      setSlots(slotsData.data || slotsData.slots || []);
       
       setShowAddForm(false);
       setNewSlot({ zone: "A", count: 1, pricePerHour: 15 });
@@ -195,7 +201,7 @@ export default function AddSlots() {
       // Refresh slots from database to ensure sync
       const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
       const slotsData = await slotsResponse.json();
-      setSlots(slotsData.slots || []);
+      setSlots(slotsData.data || slotsData.slots || []);
       
       setSelectedSlotForStatus(null);
     } catch (err) {
