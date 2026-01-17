@@ -15,7 +15,6 @@ const navItems: NavItem[] = [
   { name: 'Parking Management', href: '/parking', icon: '🚗' },
   { name: 'Reports', href: '/reports', icon: '📈' },
   { name: 'Analytics', href: '/analytics', icon: '📉' },
-  { name: 'Settings', href: '/settings', icon: '⚙️' },
 ];
 
 export default function Sidebar() {
