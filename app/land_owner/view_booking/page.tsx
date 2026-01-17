@@ -20,7 +20,8 @@ import {
   XCircle,
   Menu,
   X,
-  Loader2
+  Loader2,
+  Calendar
 } from "lucide-react";
 
 interface BookingData {
@@ -68,6 +69,9 @@ export default function ViewBookings() {
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
 
   const menuItems = [
     { id: "home", label: "Home", icon: Home, href: "/land_owner" },
@@ -200,7 +204,13 @@ export default function ViewBookings() {
     status: booking.status.toLowerCase(),
   }));
 
-  // Filter bookings based on search and status
+  // Clear time filter
+  const clearTimeFilter = () => {
+    setStartTime("");
+    setEndTime("");
+  };
+
+  // Filter bookings based on search, status, date and time
   const filteredBookings = allBookings.filter((booking) => {
     const matchesSearch = 
       booking.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -211,7 +221,43 @@ export default function ViewBookings() {
     
     const matchesStatus = statusFilter === "all" || booking.status === statusFilter;
     
-    return matchesSearch && matchesStatus;
+    // Date filter
+    const matchesDate = !selectedDate || booking.date === selectedDate;
+    
+    // Time filter
+    let matchesTime = true;
+    if (startTime || endTime) {
+      const bookingTimeStr = new Date(`${booking.date}T${booking.time}`).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+      const bookingParts = booking.time.match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (bookingParts) {
+        let hours = parseInt(bookingParts[1]);
+        const minutes = parseInt(bookingParts[2]);
+        const period = bookingParts[3].toUpperCase();
+        
+        if (period === 'PM' && hours !== 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+        
+        const bookingTimeValue = hours * 60 + minutes;
+        
+        if (startTime && endTime) {
+          const [startH, startM] = startTime.split(':').map(Number);
+          const [endH, endM] = endTime.split(':').map(Number);
+          const startValue = startH * 60 + startM;
+          const endValue = endH * 60 + endM;
+          matchesTime = bookingTimeValue >= startValue && bookingTimeValue <= endValue;
+        } else if (startTime) {
+          const [startH, startM] = startTime.split(':').map(Number);
+          const startValue = startH * 60 + startM;
+          matchesTime = bookingTimeValue >= startValue;
+        } else if (endTime) {
+          const [endH, endM] = endTime.split(':').map(Number);
+          const endValue = endH * 60 + endM;
+          matchesTime = bookingTimeValue <= endValue;
+        }
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesDate && matchesTime;
   });
 
   // Pagination
@@ -351,21 +397,88 @@ export default function ViewBookings() {
               </div>
 
               {/* Status Filter */}
-              <div className="flex items-center gap-2">
-                <Filter className="w-5 h-5 text-[#94A3B8]" />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="flex-1 sm:flex-none bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16] cursor-pointer text-sm sm:text-base"
-                >
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-5 h-5 text-[#94A3B8]" />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16] cursor-pointer text-sm sm:text-base"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </div>
+
+                {/* Date Filter */}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-[#84CC16]" />
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => {
+                      setSelectedDate(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16] cursor-pointer text-sm sm:text-base [color-scheme:dark]"
+                  />
+                  {selectedDate && (
+                    <button
+                      onClick={() => {
+                        setSelectedDate("");
+                        setCurrentPage(1);
+                      }}
+                      className="text-[#94A3B8] hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Time Filter */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Clock className="w-5 h-5 text-[#94A3B8]" />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => {
+                      setStartTime(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="From"
+                    className="bg-[#0F172A] border border-white/10 rounded-lg px-2 sm:px-3 py-2 text-[#E5E7EB] text-xs sm:text-sm focus:outline-none focus:border-[#84CC16] cursor-pointer [color-scheme:dark] w-[100px] sm:w-[120px]"
+                  />
+                  <span className="text-[#94A3B8] text-xs">to</span>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => {
+                      setEndTime(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="To"
+                    className="bg-[#0F172A] border border-white/10 rounded-lg px-2 sm:px-3 py-2 text-[#E5E7EB] text-xs sm:text-sm focus:outline-none focus:border-[#84CC16] cursor-pointer [color-scheme:dark] w-[100px] sm:w-[120px]"
+                  />
+                </div>
+                {(startTime || endTime) && (
+                  <button
+                    onClick={() => {
+                      clearTimeFilter();
+                      setCurrentPage(1);
+                    }}
+                    className="text-[#94A3B8] hover:text-red-400 text-xs px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
           </div>

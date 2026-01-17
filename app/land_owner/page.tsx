@@ -59,6 +59,7 @@ export default function LandOwnerHome() {
   const [activeItem, setActiveItem] = useState("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [bookings, setBookings] = useState<BookingData[]>([]);
@@ -204,8 +205,15 @@ export default function LandOwnerHome() {
     return bookingMonth === selectedMonth;
   });
 
+  // Filter by specific date
+  const bookingsForDate = bookingsForMonth.filter(booking => {
+    if (!selectedDate) return true; // No date filter
+    const bookingDate = new Date(booking.startTime).toISOString().split('T')[0];
+    return bookingDate === selectedDate;
+  });
+
   // Filter by time range
-  const filteredBookings = bookingsForMonth.filter(booking => {
+  const filteredBookings = bookingsForDate.filter(booking => {
     if (!startTime && !endTime) return true; // No filter applied
     
     const bookingTime = new Date(booking.startTime);
@@ -440,15 +448,32 @@ export default function LandOwnerHome() {
               <p className="text-[#94A3B8] mt-1 text-sm sm:text-base">Here's what's happening with your parking lot this month.</p>
             </div>
             
-            {/* Month Picker */}
-            <div className="flex items-center gap-3 bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 rounded-xl px-4 py-3 w-full sm:w-auto">
-              <Calendar className="w-5 h-5 text-[#84CC16]" />
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-transparent text-[#E5E7EB] text-sm focus:outline-none cursor-pointer [color-scheme:dark] flex-1"
-              />
+            {/* Date Filters */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Date Picker */}
+              <div className="flex items-center gap-2 bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 rounded-xl px-4 py-3">
+                <Calendar className="w-5 h-5 text-[#84CC16]" />
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    // Auto-sync month if date is selected
+                    if (e.target.value) {
+                      setSelectedMonth(e.target.value.slice(0, 7));
+                    }
+                  }}
+                  className="bg-transparent text-[#E5E7EB] text-sm focus:outline-none cursor-pointer [color-scheme:dark]"
+                />
+                {selectedDate && (
+                  <button
+                    onClick={() => setSelectedDate("")}
+                    className="text-[#94A3B8] hover:text-red-400 text-xs px-1 hover:bg-white/5 rounded transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
