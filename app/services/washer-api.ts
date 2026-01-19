@@ -1,7 +1,4 @@
 import { WasherBooking, BookingStatus, DashboardStats } from '@/lib/washer-types';
-import { ApiResponse } from '@/lib/types';
-
-const API_BASE_URL = '/api';
 
 // Demo data for development/fallback
 const DEMO_BOOKINGS: WasherBooking[] = [
@@ -95,153 +92,140 @@ const DEMO_BOOKINGS: WasherBooking[] = [
 // In-memory state for demo mode
 let demoBookingsState = [...DEMO_BOOKINGS];
 
-interface WasherApiConfig {
-  headers?: HeadersInit;
-}
-
-const defaultConfig: WasherApiConfig = {
-  headers: {
-    'Content-Type': 'application/json',
-  },
-};
-
-// Helper to make API requests with fallback
-async function washerApiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {},
-  config: WasherApiConfig = defaultConfig
-): Promise<T> {
-  try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        ...defaultConfig.headers,
-        ...config.headers,
-        ...options.headers,
-      },
-      credentials: 'include',
-    });
-
-    // Check if response is JSON
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('API endpoint not available');
-    }
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || data.message || 'An error occurred');
-    }
-
-    return data;
-  } catch (error) {
-    // Re-throw to let caller handle with demo data
-    throw error;
-  }
+// Helper to calculate stats from bookings
+function calculateStats(bookings: WasherBooking[]): DashboardStats {
+  return {
+    totalBookings: bookings.length,
+    pendingBookings: bookings.filter(b => b.status === 'PENDING').length,
+    acceptedBookings: bookings.filter(b => b.status === 'ACCEPTED').length,
+    completedBookings: bookings.filter(b => b.status === 'COMPLETED').length,
+    cancelledBookings: bookings.filter(b => b.status === 'CANCELLED').length,
+  };
 }
 
 export const washerApi = {
-  // Get all bookings for washer (or specific date)
-  getBookings: async (date?: string, status?: BookingStatus) => {
-    let endpoint = '/bookings?role=washer';
-    if (date) endpoint += `&date=${date}`;
-    if (status) endpoint += `&status=${status}`;
+  // Get all bookings for washer (using demo data)
+  getBookings: async (date?: string, status?: BookingStatus): Promise<WasherBooking[]> => {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 300));
     
-    const response = await washerApiRequest<ApiResponse<WasherBooking[]>>(endpoint);
-    return response.data || [];
+    let filtered = [...demoBookingsState];
+    
+    if (date) {
+      filtered = filtered.filter(b => b.slotDate === date);
+    }
+    if (status) {
+      filtered = filtered.filter(b => b.status === status);
+    }
+    
+    return filtered;
   },
 
   // Get single booking details
-  getBookingById: async (bookingId: string) => {
-    const response = await washerApiRequest<ApiResponse<WasherBooking>>(
-      `/bookings/${bookingId}?role=washer`
-    );
-    return response.data;
+  getBookingById: async (bookingId: string): Promise<WasherBooking | undefined> => {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    return demoBookingsState.find(b => b.id === bookingId);
   },
 
   // Update booking status
-  updateBookingStatus: async (bookingId: string, newStatus: BookingStatus, notes?: string) => {
-    const response = await washerApiRequest<ApiResponse<WasherBooking>>(
-      `/bookings/${bookingId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: newStatus,
-          washerNotes: notes,
-          washerAction: true,
-        }),
-      }
-    );
-    return response.data;
+  updateBookingStatus: async (bookingId: string, newStatus: BookingStatus, notes?: string): Promise<WasherBooking | undefined> => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    const index = demoBookingsState.findIndex(b => b.id === bookingId);
+    if (index !== -1) {
+      demoBookingsState[index] = {
+        ...demoBookingsState[index],
+        status: newStatus,
+        notes: notes || demoBookingsState[index].notes,
+      };
+      return demoBookingsState[index];
+    }
+    return undefined;
   },
 
   // Accept a booking
-  acceptBooking: async (bookingId: string) => {
+  acceptBooking: async (bookingId: string): Promise<WasherBooking | undefined> => {
     return washerApi.updateBookingStatus(bookingId, 'ACCEPTED');
   },
 
   // Complete a booking
-  completeBooking: async (bookingId: string, notes?: string) => {
+  completeBooking: async (bookingId: string, notes?: string): Promise<WasherBooking | undefined> => {
     return washerApi.updateBookingStatus(bookingId, 'COMPLETED', notes);
   },
 
   // Cancel a booking
-  cancelBooking: async (bookingId: string, reason?: string) => {
+  cancelBooking: async (bookingId: string, reason?: string): Promise<WasherBooking | undefined> => {
     return washerApi.updateBookingStatus(bookingId, 'CANCELLED', reason);
   },
 
   // Request reschedule
-  requestReschedule: async (bookingId: string, reason: string) => {
-    const response = await washerApiRequest<ApiResponse<WasherBooking>>(
-      `/bookings/${bookingId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({
-          rescheduleRequested: true,
-          rescheduleReason: reason,
-        }),
-      }
-    );
-    return response.data;
+  requestReschedule: async (bookingId: string, reason: string): Promise<WasherBooking | undefined> => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    const index = demoBookingsState.findIndex(b => b.id === bookingId);
+    if (index !== -1) {
+      demoBookingsState[index] = {
+        ...demoBookingsState[index],
+        rescheduleRequested: true,
+        rescheduleReason: reason,
+      };
+      return demoBookingsState[index];
+    }
+    return undefined;
   },
 
   // Bulk update bookings
-  bulkUpdateBookings: async (bookingIds: string[], action: 'accept' | 'complete') => {
-    const status = action === 'accept' ? 'ACCEPTED' : 'COMPLETED';
-    const response = await washerApiRequest<ApiResponse<{ updatedCount: number }>>(
-      '/bookings/bulk-update',
-      {
-        method: 'PATCH',
-        body: JSON.stringify({
-          bookingIds,
-          status,
-        }),
+  bulkUpdateBookings: async (bookingIds: string[], action: 'accept' | 'complete'): Promise<{ updatedCount: number }> => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const newStatus: BookingStatus = action === 'accept' ? 'ACCEPTED' : 'COMPLETED';
+    let updatedCount = 0;
+    
+    bookingIds.forEach(id => {
+      const index = demoBookingsState.findIndex(b => b.id === id);
+      if (index !== -1) {
+        demoBookingsState[index] = {
+          ...demoBookingsState[index],
+          status: newStatus,
+        };
+        updatedCount++;
       }
-    );
-    return response.data;
+    });
+    
+    return { updatedCount };
   },
 
   // Get dashboard stats for today
-  getDashboardStats: async (date?: string) => {
-    let endpoint = '/bookings/washer/stats';
-    if (date) endpoint += `?date=${date}`;
+  getDashboardStats: async (date?: string): Promise<DashboardStats> => {
+    await new Promise(resolve => setTimeout(resolve, 200));
     
-    const response = await washerApiRequest<ApiResponse<DashboardStats>>(endpoint);
-    return response.data || {
-      totalBookings: 0,
-      pendingBookings: 0,
-      acceptedBookings: 0,
-      completedBookings: 0,
-      cancelledBookings: 0,
-    };
+    let filtered = demoBookingsState;
+    if (date) {
+      filtered = demoBookingsState.filter(b => b.slotDate === date);
+    }
+    
+    return calculateStats(filtered);
   },
 
   // Get customer details
-  getCustomerDetails: async (customerId: string) => {
-    const response = await washerApiRequest<ApiResponse<any>>(
-      `/users/${customerId}`
-    );
-    return response.data;
+  getCustomerDetails: async (customerId: string): Promise<any> => {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    const booking = demoBookingsState.find(b => b.customerId === customerId);
+    if (booking) {
+      return {
+        id: booking.customerId,
+        fullName: booking.customerName,
+        email: booking.customerEmail,
+        contactNo: booking.customerPhone,
+        vehicleNumber: booking.vehicleNumber,
+      };
+    }
+    return null;
+  },
+
+  // Reset demo data
+  resetDemoData: () => {
+    demoBookingsState = [...DEMO_BOOKINGS];
   },
 };
