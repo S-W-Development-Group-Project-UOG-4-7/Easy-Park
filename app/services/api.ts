@@ -92,6 +92,11 @@ export const statsApi = {
       availableSlots: number;
       totalCustomers: number;
       todayBookings: number;
+      activeBookings: number;
+      revenueChangePercent: string;
+      slotsAddedToday: number;
+      customersThisWeek: number;
+      bookingChangePercent: string;
       monthlyRevenue: { month: string; revenue: number }[];
       parkingTypes: { type: string; count: number }[];
       propertyOccupancy: { name: string; totalSlots: number; occupiedSlots: number; occupancyRate: number }[];

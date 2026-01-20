@@ -22,6 +22,11 @@ interface Stats {
   totalRevenue: number;
   availableSlots: number;
   totalCustomers: number;
+  activeBookings: number;
+  revenueChangePercent: string;
+  slotsAddedToday: number;
+  customersThisWeek: number;
+  bookingChangePercent: string;
 }
 
 export default function AdminHomePage() {
@@ -29,6 +34,11 @@ export default function AdminHomePage() {
     totalRevenue: 0,
     availableSlots: 0,
     totalCustomers: 0,
+    activeBookings: 0,
+    revenueChangePercent: '0',
+    slotsAddedToday: 0,
+    customersThisWeek: 0,
+    bookingChangePercent: '0',
   });
   const [loading, setLoading] = useState(true);
 
@@ -43,25 +53,29 @@ export default function AdminHomePage() {
         totalRevenue: data.totalRevenue,
         availableSlots: data.availableSlots,
         totalCustomers: data.totalCustomers,
+        activeBookings: data.activeBookings,
+        revenueChangePercent: data.revenueChangePercent,
+        slotsAddedToday: data.slotsAddedToday,
+        customersThisWeek: data.customersThisWeek,
+        bookingChangePercent: data.bookingChangePercent,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
-      setStats({
-        totalRevenue: 45230,
-        availableSlots: 127,
-        totalCustomers: 342,
-      });
+      // Keep default values on error
     } finally {
       setLoading(false);
     }
   };
 //.
+  const revenueChange = parseFloat(stats.revenueChangePercent);
+  const bookingChange = parseFloat(stats.bookingChangePercent);
+
   const statCards = [
     {
       title: 'Total Revenue',
       value: `Rs. ${stats.totalRevenue.toLocaleString()}`,
-      change: '+12.5%',
-      isPositive: true,
+      change: `${revenueChange >= 0 ? '+' : ''}${stats.revenueChangePercent}%`,
+      isPositive: revenueChange >= 0,
       icon: DollarSign,
       gradient: 'from-emerald-500 to-teal-400',
       shadowColor: 'shadow-emerald-500/25',
@@ -70,8 +84,8 @@ export default function AdminHomePage() {
     {
       title: 'Available Slots',
       value: stats.availableSlots.toString(),
-      change: '+8 today',
-      isPositive: true,
+      change: `${stats.slotsAddedToday >= 0 ? '+' : ''}${stats.slotsAddedToday} today`,
+      isPositive: stats.slotsAddedToday >= 0,
       icon: ParkingSquare,
       gradient: 'from-blue-500 to-cyan-400',
       shadowColor: 'shadow-blue-500/25',
@@ -80,8 +94,8 @@ export default function AdminHomePage() {
     {
       title: 'Total Customers',
       value: stats.totalCustomers.toString(),
-      change: '+24 this week',
-      isPositive: true,
+      change: `${stats.customersThisWeek >= 0 ? '+' : ''}${stats.customersThisWeek} this week`,
+      isPositive: stats.customersThisWeek >= 0,
       icon: Users,
       gradient: 'from-purple-500 to-pink-400',
       shadowColor: 'shadow-purple-500/25',
@@ -89,9 +103,9 @@ export default function AdminHomePage() {
     },
     {
       title: 'Active Bookings',
-      value: '89',
-      change: '-3%',
-      isPositive: false,
+      value: stats.activeBookings.toString(),
+      change: `${bookingChange >= 0 ? '+' : ''}${stats.bookingChangePercent}%`,
+      isPositive: bookingChange >= 0,
       icon: Car,
       gradient: 'from-orange-500 to-amber-400',
       shadowColor: 'shadow-orange-500/25',
