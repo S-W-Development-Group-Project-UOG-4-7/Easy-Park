@@ -215,3 +215,94 @@ model WasherNotification {
 
   @@map("washer_notifications")
 }
+
+// ==========================================
+// ADMIN PANEL MODELS
+// ==========================================
+
+// Admin Property Status enum
+enum AdminPropertyStatus {
+  ACTIVATED
+  DEACTIVATED
+}
+
+// Admin Property model - stores parking area properties for admin management
+model AdminProperty {
+  id            String              @id @default(cuid())
+  propertyName  String
+  location      String
+  description   String?
+  pricePerHour  Float               @default(300)
+  status        AdminPropertyStatus @default(ACTIVATED)
+  totalSlots    Int                 @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  slots         AdminParkingSlot[]
+  bookings      AdminBooking[]
+
+  @@map("admin_properties")
+}
+
+// Admin Parking Slot Status enum
+enum AdminSlotStatus {
+  AVAILABLE
+  BOOKED
+  DISABLED
+}
+
+// Admin Parking Slot model - individual parking slots for admin properties
+model AdminParkingSlot {
+  id         String          @id @default(cuid())
+  propertyId String
+  property   AdminProperty   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  slotNumber String
+  status     AdminSlotStatus @default(AVAILABLE)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  bookings   AdminBooking[]
+
+  @@unique([propertyId, slotNumber])
+  @@map("admin_parking_slots")
+}
+
+// Admin Booking Status enum
+enum AdminBookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+// Admin Booking model - booking records for admin panel
+model AdminBooking {
+  id          String             @id @default(cuid())
+  propertyId  String
+  property    AdminProperty      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  slotId      String
+  slot        AdminParkingSlot   @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    AdminCustomer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  bookingDate DateTime
+  startTime   DateTime
+  endTime     DateTime
+  totalPrice  Float
+  status      AdminBookingStatus @default(PENDING)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@map("admin_bookings")
+}
+
+// Admin Customer model - stores customer information for admin panel
+model AdminCustomer {
+  id             String         @id @default(cuid())
+  name           String
+  email          String         @unique
+  phone          String
+  registeredDate DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  bookings       AdminBooking[]
+
+  @@map("admin_customers")
+}
