@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db/prisma.js';
-import { SlotType } from '@prisma/client';
 
 const router = Router();
 
@@ -24,7 +23,7 @@ router.get('/', async (req: Request, res: Response) => {
       propertyId: slot.propertyId,
       propertyName: slot.property.name,
       slotNumber: slot.slotNumber,
-      type: slot.type === SlotType.CarWashing ? 'Car Washing' : slot.type,
+      type: slot.type === 'CarWashing' ? 'Car Washing' : slot.type,
       status: slot.status,
       hourlyRate: slot.hourlyRate
     }));
@@ -56,7 +55,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       propertyId: slot.propertyId,
       propertyName: slot.property.name,
       slotNumber: slot.slotNumber,
-      type: slot.type === SlotType.CarWashing ? 'Car Washing' : slot.type,
+      type: slot.type === 'CarWashing' ? 'Car Washing' : slot.type,
       status: slot.status,
       hourlyRate: slot.hourlyRate
     });
@@ -97,7 +96,7 @@ router.post('/', async (req: Request, res: Response) => {
       data: {
         propertyId,
         slotNumber,
-        type: type === 'Car Washing' ? SlotType.CarWashing : type,
+        type: type === 'Car Washing' ? 'CarWashing' : type,
         status: 'available',
         hourlyRate: hourlyRate || 5.00
       }

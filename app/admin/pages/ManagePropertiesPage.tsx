@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect } from 'react';
 import { Building2, MapPin, Trash2, Eye, EyeOff, Plus, Zap, Car, Droplets } from 'lucide-react';
 import { propertiesApi } from '../../services/api';

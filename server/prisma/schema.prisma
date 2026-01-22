@@ -79,7 +79,7 @@ model Booking {
 enum SlotType {
   Normal
   EV
-  CarWashing
+  CarWashing @map("Car Washing")
 
   @@map("slot_type")
 }

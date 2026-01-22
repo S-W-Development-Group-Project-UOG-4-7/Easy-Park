@@ -1,7 +1,9 @@
+'use client';
+
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Building2, MapPin, Plus, X, Car, Zap, Droplets, ArrowLeft, Trash2, RefreshCw } from 'lucide-react';
 import { propertiesApi } from '../../services/api';
-import { useNavigate } from 'react-router-dom';
 
 interface Property {
   id: number;
@@ -19,7 +21,7 @@ interface ParkingSlot {
 }
 
 export default function AddPropertiesPage() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [formData, setFormData] = useState({
     propertyName: '',
     address: '',
@@ -139,7 +141,7 @@ export default function AddPropertiesPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <button
-          onClick={() => navigate('/admin/properties')}
+          onClick={() => router.push('/admin/properties')}
           className="p-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />

@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db/prisma.js';
-import { SlotType } from '@prisma/client';
 
 const router = Router();
 
@@ -22,7 +21,7 @@ router.get('/', async (req: Request, res: Response) => {
     // Total customers
     const totalCustomers = await prisma.customer.count();
 
-    // Today's bookings (Active Bookings)
+    // Today's bookings
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -36,90 +35,6 @@ router.get('/', async (req: Request, res: Response) => {
         }
       }
     });
-
-    // Active bookings (bookings with status 'active' or 'confirmed')
-    const activeBookings = await prisma.booking.count({
-      where: {
-        bookingStatus: {
-          in: ['active', 'confirmed', 'pending']
-        }
-      }
-    });
-
-    // Calculate change metrics
-    // Yesterday's data for comparison
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const yesterdayBookings = await prisma.booking.count({
-      where: {
-        bookingDate: {
-          gte: yesterday,
-          lt: today
-        }
-      }
-    });
-
-    // Last week's data
-    const lastWeekStart = new Date(today);
-    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-
-    const lastWeekCustomers = await prisma.customer.count({
-      where: {
-        createdAt: {
-          lt: lastWeekStart
-        }
-      }
-    });
-    const customersThisWeek = totalCustomers - lastWeekCustomers;
-
-    // Last month revenue for comparison
-    const lastMonth = new Date();
-    lastMonth.setMonth(lastMonth.getMonth() - 1);
-    const twoMonthsAgo = new Date();
-    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-
-    const lastMonthRevenue = await prisma.booking.aggregate({
-      _sum: { paymentAmount: true },
-      where: {
-        paymentStatus: 'paid',
-        bookingDate: {
-          gte: twoMonthsAgo,
-          lt: lastMonth
-        }
-      }
-    });
-
-    const thisMonthRevenue = await prisma.booking.aggregate({
-      _sum: { paymentAmount: true },
-      where: {
-        paymentStatus: 'paid',
-        bookingDate: {
-          gte: lastMonth
-        }
-      }
-    });
-
-    const lastMonthRevenueVal = Number(lastMonthRevenue._sum.paymentAmount) || 0;
-    const thisMonthRevenueVal = Number(thisMonthRevenue._sum.paymentAmount) || 0;
-    const revenueChangePercent = lastMonthRevenueVal > 0 
-      ? ((thisMonthRevenueVal - lastMonthRevenueVal) / lastMonthRevenueVal * 100).toFixed(1)
-      : '0';
-
-    // Slots added today
-    const slotsAddedToday = await prisma.parkingSlot.count({
-      where: {
-        createdAt: {
-          gte: today,
-          lt: tomorrow
-        }
-      }
-    });
-
-    // Booking change percentage
-    const bookingChangePercent = yesterdayBookings > 0
-      ? ((todayBookings - yesterdayBookings) / yesterdayBookings * 100).toFixed(1)
-      : '0';
 
     // Monthly revenue (last 6 months)
     const sixMonthsAgo = new Date();
@@ -160,7 +75,7 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     const parkingTypes = slotTypeCounts.map(st => ({
-      type: st.type === SlotType.CarWashing ? 'Car Washing' : st.type,
+      type: st.type === 'CarWashing' ? 'Car Washing' : st.type,
       bookingCount: 0 // Will be calculated below
     }));
 
@@ -171,7 +86,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     const typeBookingCounts: { [key: string]: number } = {};
     slots.forEach(slot => {
-      const type = slot.type === SlotType.CarWashing ? 'Car Washing' : slot.type;
+      const type = slot.type === 'CarWashing' ? 'Car Washing' : slot.type;
       typeBookingCounts[type] = (typeBookingCounts[type] || 0) + slot._count.bookings;
     });
 
@@ -198,11 +113,6 @@ router.get('/', async (req: Request, res: Response) => {
       availableSlots,
       totalCustomers,
       todayBookings,
-      activeBookings,
-      revenueChangePercent,
-      slotsAddedToday,
-      customersThisWeek,
-      bookingChangePercent,
       monthlyRevenue,
       parkingTypes: parkingTypesWithCounts,
       propertyOccupancy

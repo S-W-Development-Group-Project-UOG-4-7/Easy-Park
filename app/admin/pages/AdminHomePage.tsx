@@ -1,12 +1,13 @@
+'use client';
+
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import {
   DollarSign,
   ParkingSquare,
   Users,
   TrendingUp,
   ArrowUpRight,
-  ArrowDownRight,
   Calendar,
   Clock,
   MapPin,
@@ -16,17 +17,24 @@ import {
   Car,
   Building2,
 } from 'lucide-react';
-import { statsApi } from '../../services/api';
+import { statsApi, bookingsApi } from '../../services/api';
 
 interface Stats {
   totalRevenue: number;
   availableSlots: number;
   totalCustomers: number;
   activeBookings: number;
-  revenueChangePercent: string;
-  slotsAddedToday: number;
-  customersThisWeek: number;
-  bookingChangePercent: string;
+  recentActivities: Activity[];
+}
+
+interface Activity {
+  id: number;
+  action: string;
+  user: string;
+  location?: string;
+  amount?: string;
+  time: string;
+  type: 'booking' | 'payment' | 'checkout' | 'registration' | 'update';
 }
 
 export default function AdminHomePage() {
@@ -35,10 +43,7 @@ export default function AdminHomePage() {
     availableSlots: 0,
     totalCustomers: 0,
     activeBookings: 0,
-    revenueChangePercent: '0',
-    slotsAddedToday: 0,
-    customersThisWeek: 0,
-    bookingChangePercent: '0',
+    recentActivities: [],
   });
   const [loading, setLoading] = useState(true);
 
@@ -48,34 +53,70 @@ export default function AdminHomePage() {
 
   const fetchStats = async () => {
     try {
-      const data = await statsApi.getDashboard();
+      const [dashboardData, bookings] = await Promise.all([
+        statsApi.getDashboard(),
+        bookingsApi.getAll(),
+      ]);
+      
+      // Calculate active bookings (confirmed or pending bookings)
+      const activeBookings = bookings.filter(
+        (b: any) => b.status === 'confirmed' || b.status === 'pending'
+      ).length;
+      
+      // Generate recent activities from real bookings
+      const recentActivities: Activity[] = bookings
+        .slice(0, 5)
+        .map((booking: any, index: number) => {
+          let action = 'Booking';
+          let type: Activity['type'] = 'booking';
+          
+          if (booking.status === 'completed') {
+            action = 'Checkout completed';
+            type = 'checkout';
+          } else if (booking.status === 'confirmed') {
+            action = 'Booking confirmed';
+            type = 'booking';
+          } else if (booking.status === 'pending') {
+            action = 'New booking';
+            type = 'booking';
+          }
+          
+          return {
+            id: index + 1,
+            action,
+            user: booking.name || 'Customer',
+            location: booking.parkingSlot ? `Slot ${booking.parkingSlot}` : undefined,
+            amount: booking.paymentAmount ? `Rs. ${booking.paymentAmount}` : undefined,
+            time: booking.date ? new Date(booking.date).toLocaleDateString() : 'Recently',
+            type,
+          };
+        });
+      
       setStats({
-        totalRevenue: data.totalRevenue,
-        availableSlots: data.availableSlots,
-        totalCustomers: data.totalCustomers,
-        activeBookings: data.activeBookings,
-        revenueChangePercent: data.revenueChangePercent,
-        slotsAddedToday: data.slotsAddedToday,
-        customersThisWeek: data.customersThisWeek,
-        bookingChangePercent: data.bookingChangePercent,
+        totalRevenue: dashboardData.totalRevenue || 0,
+        availableSlots: dashboardData.availableSlots || 0,
+        totalCustomers: dashboardData.totalCustomers || 0,
+        activeBookings,
+        recentActivities,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
-      // Keep default values on error
+      // Keep zeros when no data is available
+      setStats({
+        totalRevenue: 0,
+        availableSlots: 0,
+        totalCustomers: 0,
+        activeBookings: 0,
+        recentActivities: [],
+      });
     } finally {
       setLoading(false);
     }
   };
-//.
-  const revenueChange = parseFloat(stats.revenueChangePercent);
-  const bookingChange = parseFloat(stats.bookingChangePercent);
-
-  const statCards = [
+const statCards = [
     {
       title: 'Total Revenue',
       value: `Rs. ${stats.totalRevenue.toLocaleString()}`,
-      change: `${revenueChange >= 0 ? '+' : ''}${stats.revenueChangePercent}%`,
-      isPositive: revenueChange >= 0,
       icon: DollarSign,
       gradient: 'from-emerald-500 to-teal-400',
       shadowColor: 'shadow-emerald-500/25',
@@ -84,8 +125,6 @@ export default function AdminHomePage() {
     {
       title: 'Available Slots',
       value: stats.availableSlots.toString(),
-      change: `${stats.slotsAddedToday >= 0 ? '+' : ''}${stats.slotsAddedToday} today`,
-      isPositive: stats.slotsAddedToday >= 0,
       icon: ParkingSquare,
       gradient: 'from-blue-500 to-cyan-400',
       shadowColor: 'shadow-blue-500/25',
@@ -94,8 +133,6 @@ export default function AdminHomePage() {
     {
       title: 'Total Customers',
       value: stats.totalCustomers.toString(),
-      change: `${stats.customersThisWeek >= 0 ? '+' : ''}${stats.customersThisWeek} this week`,
-      isPositive: stats.customersThisWeek >= 0,
       icon: Users,
       gradient: 'from-purple-500 to-pink-400',
       shadowColor: 'shadow-purple-500/25',
@@ -104,21 +141,11 @@ export default function AdminHomePage() {
     {
       title: 'Active Bookings',
       value: stats.activeBookings.toString(),
-      change: `${bookingChange >= 0 ? '+' : ''}${stats.bookingChangePercent}%`,
-      isPositive: bookingChange >= 0,
       icon: Car,
       gradient: 'from-orange-500 to-amber-400',
       shadowColor: 'shadow-orange-500/25',
       bgGlow: 'bg-orange-500/20',
     },
-  ];
-
-  const recentActivities = [
-    { id: 1, action: 'New booking', user: 'John Doe', location: 'Slot A-15', time: '2 min ago', type: 'booking' },
-    { id: 2, action: 'Payment received', user: 'Sarah Smith', amount: 'Rs. 250', time: '15 min ago', type: 'payment' },
-    { id: 3, action: 'Checkout completed', user: 'Mike Johnson', location: 'Slot B-08', time: '32 min ago', type: 'checkout' },
-    { id: 4, action: 'New customer registered', user: 'Emily Davis', time: '1 hour ago', type: 'registration' },
-    { id: 5, action: 'Property updated', user: 'Admin', location: 'Downtown Parking', time: '2 hours ago', type: 'update' },
   ];
 
   const quickActions = [
@@ -190,14 +217,6 @@ export default function AdminHomePage() {
                     <div className={`inline-flex rounded-xl bg-linear-to-br ${card.gradient} p-3 shadow-lg ${card.shadowColor}`}>
                       <Icon className="h-6 w-6 text-white" />
                     </div>
-                    <div className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-                      card.isPositive 
-                        ? 'bg-emerald-500/10 text-emerald-500' 
-                        : 'bg-red-500/10 text-red-500'
-                    }`}>
-                      {card.isPositive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                      {card.change}
-                    </div>
                   </div>
                   <div className="mt-4">
                     <p className="text-sm font-medium dark:text-slate-400 text-slate-600">{card.title}</p>
@@ -226,7 +245,7 @@ export default function AdminHomePage() {
               return (
                 <Link
                   key={index}
-                  to={action.href}
+                  href={action.href}
                   className="group flex items-center justify-between rounded-xl border p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg dark:border-slate-700/50 dark:bg-slate-800/30 dark:hover:bg-slate-800/60 border-slate-200/60 bg-slate-50/50 hover:bg-white"
                 >
                   <div className="flex items-center gap-3">
@@ -251,38 +270,46 @@ export default function AdminHomePage() {
               </div>
               <h2 className="text-lg font-semibold dark:text-white text-slate-900">Recent Activity</h2>
             </div>
-            <Link to="/admin/bookings" className="text-sm font-medium text-lime-500 hover:text-lime-400 transition-colors">
+            <Link href="/admin/bookings" className="text-sm font-medium text-lime-500 hover:text-lime-400 transition-colors">
               View all
             </Link>
           </div>
           <div className="space-y-4">
-            {recentActivities.map((activity) => (
-              <div
-                key={activity.id}
-                className="group flex items-center gap-4 rounded-xl border p-4 transition-all duration-300 hover:bg-slate-50 dark:border-slate-700/50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40 border-slate-200/60 bg-white/50"
-              >
-                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                  activity.type === 'booking' ? 'bg-blue-500/10 text-blue-500' :
-                  activity.type === 'payment' ? 'bg-emerald-500/10 text-emerald-500' :
-                  activity.type === 'checkout' ? 'bg-orange-500/10 text-orange-500' :
-                  activity.type === 'registration' ? 'bg-purple-500/10 text-purple-500' :
-                  'bg-slate-500/10 text-slate-500'
-                }`}>
-                  {activity.type === 'booking' && <Car className="h-5 w-5" />}
-                  {activity.type === 'payment' && <DollarSign className="h-5 w-5" />}
-                  {activity.type === 'checkout' && <Clock className="h-5 w-5" />}
-                  {activity.type === 'registration' && <Users className="h-5 w-5" />}
-                  {activity.type === 'update' && <Building2 className="h-5 w-5" />}
+            {stats.recentActivities.length > 0 ? (
+              stats.recentActivities.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="group flex items-center gap-4 rounded-xl border p-4 transition-all duration-300 hover:bg-slate-50 dark:border-slate-700/50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40 border-slate-200/60 bg-white/50"
+                >
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                    activity.type === 'booking' ? 'bg-blue-500/10 text-blue-500' :
+                    activity.type === 'payment' ? 'bg-emerald-500/10 text-emerald-500' :
+                    activity.type === 'checkout' ? 'bg-orange-500/10 text-orange-500' :
+                    activity.type === 'registration' ? 'bg-purple-500/10 text-purple-500' :
+                    'bg-slate-500/10 text-slate-500'
+                  }`}>
+                    {activity.type === 'booking' && <Car className="h-5 w-5" />}
+                    {activity.type === 'payment' && <DollarSign className="h-5 w-5" />}
+                    {activity.type === 'checkout' && <Clock className="h-5 w-5" />}
+                    {activity.type === 'registration' && <Users className="h-5 w-5" />}
+                    {activity.type === 'update' && <Building2 className="h-5 w-5" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium dark:text-slate-200 text-slate-800">{activity.action}</p>
+                    <p className="text-xs dark:text-slate-400 text-slate-500 truncate">
+                      {activity.user} {activity.location && `• ${activity.location}`} {activity.amount && `• ${activity.amount}`}
+                    </p>
+                  </div>
+                  <span className="text-xs dark:text-slate-500 text-slate-400 whitespace-nowrap">{activity.time}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium dark:text-slate-200 text-slate-800">{activity.action}</p>
-                  <p className="text-xs dark:text-slate-400 text-slate-500 truncate">
-                    {activity.user} {activity.location && `• ${activity.location}`} {activity.amount && `• ${activity.amount}`}
-                  </p>
-                </div>
-                <span className="text-xs dark:text-slate-500 text-slate-400 whitespace-nowrap">{activity.time}</span>
+              ))
+            ) : (
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                <Car className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>No recent activities</p>
+                <p className="text-xs mt-1">Activities will appear here when bookings are made</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -299,28 +326,28 @@ export default function AdminHomePage() {
               <TrendingUp className="h-7 w-7 text-slate-900" />
             </div>
             <div>
-              <h2 className="text-xl font-bold dark:text-white text-slate-900">System Performance</h2>
+              <h2 className="text-xl font-bold dark:text-white text-slate-900">System Overview</h2>
               <p className="mt-1 text-sm dark:text-slate-400 text-slate-600 max-w-xl">
-                Your parking management system is running smoothly. All services are operational with 99.9% uptime this month.
+                Manage your parking properties and monitor bookings from your dashboard.
               </p>
               <div className="mt-4 flex flex-wrap gap-6">
                 <div>
-                  <p className="text-2xl font-bold text-lime-500">99.9%</p>
-                  <p className="text-xs dark:text-slate-400 text-slate-500">Uptime</p>
+                  <p className="text-2xl font-bold text-lime-500">{stats.availableSlots}</p>
+                  <p className="text-xs dark:text-slate-400 text-slate-500">Available Slots</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-blue-500">1.2s</p>
-                  <p className="text-xs dark:text-slate-400 text-slate-500">Avg Response</p>
+                  <p className="text-2xl font-bold text-blue-500">{stats.activeBookings}</p>
+                  <p className="text-xs dark:text-slate-400 text-slate-500">Active Bookings</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-purple-500">2.5K</p>
-                  <p className="text-xs dark:text-slate-400 text-slate-500">API Calls/day</p>
+                  <p className="text-2xl font-bold text-purple-500">{stats.totalCustomers}</p>
+                  <p className="text-xs dark:text-slate-400 text-slate-500">Customers</p>
                 </div>
               </div>
             </div>
           </div>
           <Link
-            to="/admin/properties"
+            href="/admin/properties"
             className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-lime-500 to-emerald-500 px-6 py-3 font-semibold text-slate-900 shadow-lg shadow-lime-500/30 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-lime-500/40"
           >
             View Details

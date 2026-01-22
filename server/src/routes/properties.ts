@@ -15,9 +15,9 @@ router.get('/', async (req: Request, res: Response) => {
     });
 
     const result = properties.map(property => {
-      const normalSlots = property.slots.filter(s => s.type === SlotType.Normal).length;
-      const evSlots = property.slots.filter(s => s.type === SlotType.EV).length;
-      const carWashSlots = property.slots.filter(s => s.type === SlotType.CarWashing).length;
+      const normalSlots = property.slots.filter(s => s.type === 'Normal').length;
+      const evSlots = property.slots.filter(s => s.type === 'EV').length;
+      const carWashSlots = property.slots.filter(s => s.type === 'CarWashing').length;
       const availableSlots = property.slots.filter(s => s.status === 'available').length;
 
       return {
@@ -34,7 +34,7 @@ router.get('/', async (req: Request, res: Response) => {
         slots: property.slots.map(s => ({
           id: s.id,
           number: s.slotNumber,
-          type: s.type === SlotType.CarWashing ? 'Car Washing' : s.type,
+          type: s.type === 'CarWashing' ? 'Car Washing' : s.type,
           status: s.status,
           hourlyRate: s.hourlyRate
         }))
@@ -68,7 +68,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       slots: property.slots.map(s => ({
         id: s.id,
         number: s.slotNumber,
-        type: s.type === SlotType.CarWashing ? 'Car Washing' : s.type,
+        type: s.type === 'CarWashing' ? 'Car Washing' : s.type,
         status: s.status,
         hourlyRate: s.hourlyRate
       }))
@@ -113,7 +113,7 @@ router.post('/', async (req: Request, res: Response) => {
           const hourlyRate = slotType === 'EV' ? 8.00 : slotType === 'Car Washing' ? 15.00 : 5.00;
           
           // Map slot type to enum
-          const prismaType: SlotType = slotType === 'Car Washing' ? SlotType.CarWashing : slotType as SlotType;
+          const prismaType: SlotType = slotType === 'Car Washing' ? 'CarWashing' : slotType as SlotType;
           
           await prisma.parkingSlot.create({
             data: {

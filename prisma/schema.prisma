@@ -1,0 +1,152 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - stores customer information
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  fullName      String
+  contactNo     String?
+  vehicleNumber String?
+  nic           String?   @unique
+  role          Role      @default(CUSTOMER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  bookings      Booking[]
+  ownedLocations ParkingLocation[] @relation("ParkingLocationOwner")
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+  COUNTER
+  LAND_OWNER
+  WASHER
+}
+
+// Parking Location model - different parking areas
+model ParkingLocation {
+  id          String        @id @default(cuid())
+  name        String
+  address     String
+  description String?
+  totalSlots  Int
+  ownerId     String?
+  owner       User?         @relation("ParkingLocationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  slots       ParkingSlot[]
+
+  @@map("parking_locations")
+}
+
+// Parking Slot model - individual parking spaces
+model ParkingSlot {
+  id           String          @id @default(cuid())
+  number       String
+  zone         String          @default("A")
+  type         SlotType        @default(NORMAL)
+  status       SlotStatus      @default(AVAILABLE)
+  pricePerHour Float           @default(300)
+  locationId   String
+  location     ParkingLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  bookings     BookingSlot[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([locationId, number])
+  @@map("parking_slots")
+}
+
+enum SlotType {
+  NORMAL
+  EV
+  CAR_WASH
+}
+
+enum SlotStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+// Booking model - parking reservations
+model Booking {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime
+  startTime   DateTime
+  endTime     DateTime
+  duration    Int           // in hours
+  totalAmount Float
+  paidAmount  Float         @default(0)
+  status      BookingStatus @default(PENDING)
+  slots       BookingSlot[]
+  payment     Payment?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("bookings")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  PAID
+  COMPLETED
+  CANCELLED
+}
+
+// Junction table for Booking and ParkingSlot (many-to-many)
+model BookingSlot {
+  id        String      @id @default(cuid())
+  bookingId String
+  booking   Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  slotId    String
+  slot      ParkingSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, slotId])
+  @@map("booking_slots")
+}
+
+// Payment model - payment records
+model Payment {
+  id            String        @id @default(cuid())
+  bookingId     String        @unique
+  booking       Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  amount        Float
+  method        PaymentMethod @default(CARD)
+  status        PaymentStatus @default(PENDING)
+  transactionId String?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  CARD
+  CASH
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}

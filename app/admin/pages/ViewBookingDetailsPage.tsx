@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import { Search, Calendar, Building2, Eye, Clock, DollarSign, BookOpen } from 'lucide-react';
 import ParkingSlotVisualization from '../components/ParkingSlotVisualization';
 import { propertiesApi, bookingsApi } from '../../services/api';
@@ -174,12 +176,39 @@ export default function ViewBookingDetailsPage() {
 
   const filteredBookings = sortedBookings.filter((booking) => {
     const searchLower = searchTerm.toLowerCase();
-    return (
-      booking.name.toLowerCase().includes(searchLower) ||
-      booking.customerId.toLowerCase().includes(searchLower) ||
-      booking.propertyName.toLowerCase().includes(searchLower) ||
-      booking.parkingSlot.toLowerCase().includes(searchLower)
-    );
+    
+    // Search filter
+    const matchesSearch = !searchTerm || 
+      (booking.name || '').toLowerCase().includes(searchLower) ||
+      (booking.customerId || '').toLowerCase().includes(searchLower) ||
+      (booking.propertyName || '').toLowerCase().includes(searchLower) ||
+      (booking.parkingSlot || '').toLowerCase().includes(searchLower);
+    
+    // Property filter - match by ID or by name
+    let matchesProperty = selectedProperty === 'all';
+    if (!matchesProperty) {
+      const selectedProp = properties.find(p => p.id === selectedProperty);
+      matchesProperty = booking.propertyId === selectedProperty || 
+        (selectedProp && booking.propertyName === selectedProp.name);
+    }
+    
+    // Date filter (client-side backup)
+    let matchesDate = true;
+    if (selectedDate) {
+      const bookingDate = booking.date ? new Date(booking.date).toISOString().split('T')[0] : '';
+      matchesDate = bookingDate === selectedDate;
+    }
+    
+    // Time filter (client-side backup)
+    let matchesTime = true;
+    if (selectedTime && booking.time) {
+      const bookingTime = booking.time.includes('T') 
+        ? booking.time.split('T')[1]?.substring(0, 5) 
+        : booking.time.substring(0, 5);
+      matchesTime = bookingTime === selectedTime;
+    }
+    
+    return matchesSearch && matchesProperty && matchesDate && matchesTime;
   });
 
   const paginatedBookings = filteredBookings.slice(
@@ -198,7 +227,7 @@ export default function ViewBookingDetailsPage() {
     if (selectedProperty === 'all') return null;
     
     const property = properties.find(p => p.id === selectedProperty);
-    if (!property) return null;
+    if (!property || !property.slots) return null;
 
     const bookedSlotIds = new Set(
       bookings
@@ -241,7 +270,7 @@ export default function ViewBookingDetailsPage() {
               setSelectedProperty(e.target.value);
               setShowSlotVisualization(e.target.value !== 'all');
             }}
-            className="w-full rounded-lg border bg-linear-to-br pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+            className="w-full rounded-lg border bg-linear-to-br pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] [&>option]:dark:bg-[#0EA5E9] [&>option]:dark:text-white [&>option]:bg-[#38BDF8] [&>option]:text-white"
           >
             <option value="all">All Properties</option>
             {properties.map((prop) => (
@@ -379,9 +408,8 @@ export default function ViewBookingDetailsPage() {
                 </tr>
               ) : (
                 paginatedBookings.map((booking) => (
-                  <>
+                  <React.Fragment key={booking.id}>
                     <tr
-                      key={booking.id}
                       className="transition-colors hover:bg-slate-100/50 dark:hover:bg-slate-800/30"
                     >
                       <td className="px-6 py-4 text-sm dark:text-[#E5E7EB] text-[#111827]">{booking.customerId}</td>
@@ -433,7 +461,7 @@ export default function ViewBookingDetailsPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))
               )}
             </tbody>
