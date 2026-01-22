@@ -36,18 +36,27 @@ enum Role {
   WASHER
 }
 
+// Parking Location Status enum
+enum ParkingLocationStatus {
+  ACTIVATED
+  NOT_ACTIVATED
+}
+
 // Parking Location model - different parking areas
 model ParkingLocation {
-  id          String        @id @default(cuid())
-  name        String
-  address     String
-  description String?
-  totalSlots  Int
-  ownerId     String?
-  owner       User?         @relation("ParkingLocationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  slots       ParkingSlot[]
+  id           String                @id @default(cuid())
+  name         String
+  address      String
+  description  String?
+  totalSlots   Int
+  pricePerHour Float                 @default(300)
+  pricePerDay  Float                 @default(2000)
+  status       ParkingLocationStatus @default(NOT_ACTIVATED)
+  ownerId      String?
+  owner        User?                 @relation("ParkingLocationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  slots        ParkingSlot[]
 
   @@map("parking_locations")
 }
@@ -149,4 +158,60 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+// ==========================================
+// WASHER DASHBOARD MODELS
+// ==========================================
+
+// Washer Customer model - stores customer information for car wash services
+model WasherCustomer {
+  id               String           @id @default(cuid())
+  name             String
+  email            String           @unique
+  phone            String
+  vehicleDetails   String           // e.g., "Toyota Camry 2020 - Black"
+  otherRelevantInfo String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  bookings         WasherBooking[]
+
+  @@map("washer_customers")
+}
+
+// Washer Booking Status enum
+enum WasherBookingStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+}
+
+// Washer Booking model - car wash service bookings
+model WasherBooking {
+  id          String              @id @default(cuid())
+  customerId  String
+  customer    WasherCustomer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  slotTime    DateTime
+  vehicle     String              // Vehicle description for this specific booking
+  serviceType String              // e.g., "Car Wash", "Full Detail", "Quick Wash", "Interior Clean"
+  status      WasherBookingStatus @default(PENDING)
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@map("washer_bookings")
+}
+
+// Washer Notification model - for tracking alerts and notifications
+model WasherNotification {
+  id        String   @id @default(cuid())
+  type      String   // 'new_booking', 'urgent_reminder', 'upcoming_slot'
+  message   String
+  bookingId String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("washer_notifications")
 }

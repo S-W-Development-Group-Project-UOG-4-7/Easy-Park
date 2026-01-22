@@ -2,26 +2,53 @@
 
 import React from 'react';
 import { DashboardStats as DashboardStatsType } from '@/lib/washer-types';
-import { TrendingUp, Clock, CheckCircle, AlertCircle, BarChart3 } from 'lucide-react';
+import { TrendingUp, Clock, CheckCircle, AlertCircle, BarChart3, Database } from 'lucide-react';
+
+interface AllTimeStats {
+  total: number;
+  pending: number;
+  accepted: number;
+  completed: number;
+  cancelled: number;
+}
 
 interface DashboardStatsProps {
   stats: DashboardStatsType;
+  allTimeStats?: AllTimeStats;
   isLoading?: boolean;
 }
 
 export const DashboardStats: React.FC<DashboardStatsProps> = ({
   stats,
+  allTimeStats,
   isLoading = false,
 }) => {
-  const completionRate = stats.totalBookings > 0 
-    ? Math.round((stats.completedBookings / stats.totalBookings) * 100) 
+  // Ensure all stats values are valid numbers
+  const safeStats = {
+    totalBookings: stats?.totalBookings || 0,
+    pendingBookings: stats?.pendingBookings || 0,
+    acceptedBookings: stats?.acceptedBookings || 0,
+    completedBookings: stats?.completedBookings || 0,
+    cancelledBookings: stats?.cancelledBookings || 0,
+  };
+
+  const safeAllTime = {
+    total: allTimeStats?.total || 0,
+    pending: allTimeStats?.pending || 0,
+    accepted: allTimeStats?.accepted || 0,
+    completed: allTimeStats?.completed || 0,
+    cancelled: allTimeStats?.cancelled || 0,
+  };
+
+  const completionRate = safeStats.totalBookings > 0 
+    ? Math.round((safeStats.completedBookings / safeStats.totalBookings) * 100) 
     : 0;
 
   const statCards = [
     {
       icon: BarChart3,
       label: 'Total Bookings',
-      value: stats.totalBookings,
+      value: safeAllTime.total,
       bg: 'from-blue-500/20 to-blue-500/5',
       border: 'border-blue-500/30',
       textColor: 'text-blue-300',
@@ -29,7 +56,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
     {
       icon: AlertCircle,
       label: 'Pending',
-      value: stats.pendingBookings,
+      value: safeAllTime.pending,
       bg: 'from-yellow-500/20 to-yellow-500/5',
       border: 'border-yellow-500/30',
       textColor: 'text-yellow-300',
@@ -37,7 +64,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
     {
       icon: Clock,
       label: 'Accepted',
-      value: stats.acceptedBookings,
+      value: safeAllTime.accepted,
       bg: 'from-purple-500/20 to-purple-500/5',
       border: 'border-purple-500/30',
       textColor: 'text-purple-300',
@@ -45,7 +72,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
     {
       icon: CheckCircle,
       label: 'Completed',
-      value: stats.completedBookings,
+      value: safeAllTime.completed,
       bg: 'from-green-500/20 to-green-500/5',
       border: 'border-green-500/30',
       textColor: 'text-green-300',
@@ -98,7 +125,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
               )}
             </div>
             <div className="text-sm text-lime-200">
-              {stats.completedBookings} of {stats.totalBookings} completed
+              {safeStats.completedBookings} of {safeStats.totalBookings} completed
             </div>
           </div>
           {/* Progress Bar */}
@@ -119,36 +146,36 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
                 <AlertCircle size={18} className="text-yellow-400" />
                 <span className="text-sm">Pending Actions</span>
               </div>
-              <div className="text-white font-bold">{stats.pendingBookings}</div>
+              <div className="text-white font-bold">{safeStats.pendingBookings}</div>
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
               <div className="flex items-center gap-2 text-white/70">
                 <Clock size={18} className="text-blue-400" />
                 <span className="text-sm">In Progress</span>
               </div>
-              <div className="text-white font-bold">{stats.acceptedBookings}</div>
+              <div className="text-white font-bold">{safeStats.acceptedBookings}</div>
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
               <div className="flex items-center gap-2 text-white/70">
                 <CheckCircle size={18} className="text-green-400" />
                 <span className="text-sm">Finished Today</span>
               </div>
-              <div className="text-white font-bold">{stats.completedBookings}</div>
+              <div className="text-white font-bold">{safeStats.completedBookings}</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Motivational Message */}
-      {stats.totalBookings > 0 && (
+      {safeStats.totalBookings > 0 && (
         <div className="p-4 rounded-xl border border-white/10 bg-gradient-to-r from-white/5 to-white/0">
           <div className="text-white/70 text-sm">
-            {stats.completedBookings === stats.totalBookings && stats.totalBookings > 0 ? (
+            {safeStats.completedBookings === safeStats.totalBookings && safeStats.totalBookings > 0 ? (
               <span className="text-lime-300 font-medium">🎉 Amazing work! All bookings for today are completed!</span>
-            ) : stats.pendingBookings === 0 ? (
+            ) : safeStats.pendingBookings === 0 ? (
               <span className="text-blue-300 font-medium">✓ No pending bookings. Keep up the great work!</span>
             ) : (
-              <span>You have <span className="text-yellow-300 font-medium">{stats.pendingBookings}</span> booking{stats.pendingBookings !== 1 ? 's' : ''} awaiting your attention.</span>
+              <span>You have <span className="text-yellow-300 font-medium">{safeStats.pendingBookings}</span> booking{safeStats.pendingBookings !== 1 ? 's' : ''} awaiting your attention.</span>
             )}
           </div>
         </div>

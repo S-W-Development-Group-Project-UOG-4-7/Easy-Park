@@ -21,6 +21,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const all = searchParams.get('all'); // For land owners to get all bookings
+    const propertyId = searchParams.get('propertyId'); // Filter by property/location
+    const dateFilter = searchParams.get('date'); // Filter by date
+    const timeFilter = searchParams.get('time'); // Filter by time
 
     // Build where clause based on role
     let whereClause: any = {};
@@ -57,6 +60,29 @@ export async function GET(request: NextRequest) {
       whereClause.status = status as any;
     }
 
+    // Add property/location filter if provided
+    if (propertyId) {
+      whereClause.slots = {
+        ...whereClause.slots,
+        some: {
+          slot: {
+            locationId: propertyId,
+          },
+        },
+      };
+    }
+
+    // Add date filter if provided
+    if (dateFilter) {
+      const filterDate = new Date(dateFilter);
+      const startOfDay = new Date(filterDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(filterDate.setHours(23, 59, 59, 999));
+      whereClause.date = {
+        gte: startOfDay,
+        lte: endOfDay,
+      };
+    }
+
     const bookings = await prisma.booking.findMany({
       where: whereClause,
       include: {
@@ -85,8 +111,23 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Filter by time if provided (do this after fetching since we need to compare time strings)
+    let filteredBookings = bookings;
+    if (timeFilter) {
+      const [filterHour, filterMinute] = timeFilter.split(':').map(Number);
+      filteredBookings = bookings.filter((booking) => {
+        const bookingStartTime = new Date(booking.startTime);
+        const bookingEndTime = new Date(booking.endTime);
+        const filterTimeInMinutes = filterHour * 60 + filterMinute;
+        const startInMinutes = bookingStartTime.getHours() * 60 + bookingStartTime.getMinutes();
+        const endInMinutes = bookingEndTime.getHours() * 60 + bookingEndTime.getMinutes();
+        // Check if the filter time falls within the booking time range
+        return filterTimeInMinutes >= startInMinutes && filterTimeInMinutes <= endInMinutes;
+      });
+    }
+
     // Transform bookings for the frontend
-    const transformedBookings = bookings.map((booking) => {
+    const transformedBookings = filteredBookings.map((booking) => {
       const firstSlot = booking.slots[0]?.slot;
       return {
         id: booking.id,

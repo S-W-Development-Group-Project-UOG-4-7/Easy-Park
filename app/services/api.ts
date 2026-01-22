@@ -33,14 +33,26 @@ async function apiRequest<T>(
 
 // Properties API (using parking-lots endpoint)
 export const propertiesApi = {
-  getAll: async () => {
-    const response = await apiRequest<{ parkingLots: any[] }>('/parking-lots');
+  getAll: async (showAll: boolean = true) => {
+    const response = await apiRequest<{ parkingLots: any[] }>(`/parking-lots?showAll=${showAll}`);
+    return response.parkingLots || [];
+  },
+
+  getActivated: async () => {
+    const response = await apiRequest<{ parkingLots: any[] }>('/parking-lots?showAll=false');
     return response.parkingLots || [];
   },
 
   getById: (id: string | number) => apiRequest<any>(`/parking-lots/${id}`),
 
-  create: async (data: { propertyName: string; address: string; parkingSlots?: any[] }) => {
+  create: async (data: { 
+    propertyName: string; 
+    address: string; 
+    parkingSlots?: any[];
+    pricePerHour?: number;
+    pricePerDay?: number;
+    status?: 'ACTIVATED' | 'NOT_ACTIVATED';
+  }) => {
     // Get current user to use as owner
     const userResponse = await fetch('/api/auth/me', { credentials: 'include' });
     const userData = await userResponse.json();
@@ -57,14 +69,37 @@ export const propertiesApi = {
         address: data.address,
         ownerId: ownerId,
         slots: data.parkingSlots,
+        pricePerHour: data.pricePerHour,
+        pricePerDay: data.pricePerDay,
+        status: data.status,
       }),
     });
   },
 
-  update: (id: string | number, data: { name?: string; address?: string; description?: string }) =>
-    apiRequest<{ message: string }>(`/parking-lots/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
+  update: (id: string | number, data: { 
+    name?: string; 
+    address?: string; 
+    description?: string;
+    status?: 'ACTIVATED' | 'NOT_ACTIVATED';
+    pricePerHour?: number;
+    pricePerDay?: number;
+    totalSlots?: number;
+  }) =>
+    apiRequest<{ message: string; parkingLot: any }>('/parking-lots', {
+      method: 'PATCH',
+      body: JSON.stringify({ id: String(id), ...data }),
+    }),
+
+  toggleStatus: (id: string | number, status: 'ACTIVATED' | 'NOT_ACTIVATED') =>
+    apiRequest<{ message: string; parkingLot: any }>('/parking-lots', {
+      method: 'PATCH',
+      body: JSON.stringify({ id: String(id), status }),
+    }),
+
+  updatePrices: (id: string | number, pricePerHour: number, pricePerDay?: number) =>
+    apiRequest<{ message: string; parkingLot: any }>('/parking-lots', {
+      method: 'PATCH',
+      body: JSON.stringify({ id: String(id), pricePerHour, pricePerDay }),
     }),
 
   delete: (id: string | number) =>
@@ -93,9 +128,9 @@ export const bookingsApi = {
         customerId: booking.user?.id || booking.customerId || 'N/A',
         name: booking.user?.name || booking.name || 'Unknown',
         address: booking.user?.address || booking.address || 'N/A',
-        propertyName: booking.slot?.parkingLot?.name || booking.propertyName || 'Unknown',
-        propertyId: booking.slot?.parkingLot?.id || booking.propertyId || '',
-        parkingSlot: booking.slot?.slotNumber || booking.parkingSlot || 'N/A',
+        propertyName: booking.slot?.parkingLot?.name || booking.slots?.[0]?.location || booking.propertyName || 'Unknown',
+        propertyId: booking.slot?.parkingLot?.id || booking.slots?.[0]?.slot?.locationId || booking.propertyId || '',
+        parkingSlot: booking.slot?.slotNumber || booking.slots?.[0]?.number || booking.parkingSlot || 'N/A',
         parkingSlotId: booking.slots?.[0]?.id || booking.parkingSlotId || '',
         date: booking.date || '',
         time: booking.startTime || booking.time || '',

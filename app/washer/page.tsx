@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { LogOut, RefreshCw } from "lucide-react";
-import { WasherBooking, BookingStatus, BookingFilters, NotificationAlert, DashboardStats as DashboardStatsType } from "@/lib/washer-types";
+import { WasherBooking, BookingStatus, BookingFilters, NotificationAlert, DashboardStats as DashboardStatsType, FullDashboardStats } from "@/lib/washer-types";
 import { washerApi } from "@/app/services/washer-api";
 import { WasherBookingsTable } from "@/app/components/washer/WasherBookingsTable";
 import { CustomerDetailsModal } from "@/app/components/washer/CustomerDetailsModal";
@@ -24,6 +24,13 @@ export default function WasherDashboard() {
     acceptedBookings: 0,
     completedBookings: 0,
     cancelledBookings: 0,
+  });
+  const [allTimeStats, setAllTimeStats] = useState<{ total: number; pending: number; accepted: number; completed: number; cancelled: number }>({
+    total: 0,
+    pending: 0,
+    accepted: 0,
+    completed: 0,
+    cancelled: 0,
   });
   const [notifications, setNotifications] = useState<NotificationAlert[]>([]);
   const [selectedBooking, setSelectedBooking] = useState<WasherBooking | null>(null);
@@ -47,18 +54,29 @@ export default function WasherDashboard() {
       setIsLoading(true);
       const today = new Date().toISOString().split("T")[0];
       
+      // Fetch ALL bookings (no date filter) - let frontend filters handle date filtering
       const [bookingsData, statsData] = await Promise.all([
-        washerApi.getBookings(today),
+        washerApi.getBookings(), // Remove date filter to get all bookings
         washerApi.getDashboardStats(today),
       ]);
 
       setBookings(bookingsData || []);
-      setStats(statsData || {
+      // Extract the 'today' stats from the response
+      setStats(statsData?.today || {
         totalBookings: 0,
         pendingBookings: 0,
         acceptedBookings: 0,
         completedBookings: 0,
         cancelledBookings: 0,
+      });
+      
+      // Set all-time stats from the response
+      setAllTimeStats(statsData?.allTime || {
+        total: 0,
+        pending: 0,
+        accepted: 0,
+        completed: 0,
+        cancelled: 0,
       });
 
       // Simulate new notifications for demo
@@ -286,7 +304,7 @@ export default function WasherDashboard() {
 
         {/* Dashboard Stats */}
         <section className="mb-8">
-          <DashboardStats stats={stats} isLoading={isLoading} />
+          <DashboardStats stats={stats} allTimeStats={allTimeStats} isLoading={isLoading} />
         </section>
 
         {/* Filter and Search Section */}
