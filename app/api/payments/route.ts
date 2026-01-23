@@ -19,18 +19,18 @@ export async function GET(request: NextRequest) {
       return unauthorizedResponse();
     }
 
-    const payments = await prisma.payment.findMany({
+    const payments = await prisma.payments.findMany({
       where: {
-        booking: {
+        bookings: {
           userId: authUser.userId,
         },
       },
       include: {
-        booking: {
+        bookings: {
           include: {
-            slots: {
+            booking_slots: {
               include: {
-                slot: true,
+                parking_slots: true,
               },
             },
           },
@@ -66,13 +66,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the booking
-    const booking = await prisma.booking.findFirst({
+    const booking = await prisma.bookings.findFirst({
       where: {
         id: bookingId,
         userId: authUser.userId,
       },
       include: {
-        payment: true,
+        payments: true,
       },
     });
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       return notFoundResponse('Booking not found');
     }
 
-    if (booking.payment) {
+    if (booking.payments) {
       return errorResponse('Payment already exists for this booking');
     }
 
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     // Create payment and update booking status in a transaction
     const result = await prisma.$transaction(async (tx) => {
-      const payment = await tx.payment.create({
+      const payment = await tx.payments.create({
         data: {
           bookingId,
           amount,
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      await tx.booking.update({
+      await tx.bookings.update({
         where: { id: bookingId },
         data: {
           status: 'PAID',

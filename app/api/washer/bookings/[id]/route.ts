@@ -31,7 +31,7 @@ export async function GET(
 
     const { id } = await params;
 
-    const booking = await prisma.washerBooking.findUnique({
+    const booking = await prisma.washer_bookings.findUnique({
       where: { id },
       include: {
         customer: true,
@@ -71,7 +71,7 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const booking = await prisma.washerBooking.findUnique({
+    const booking = await prisma.washer_bookings.findUnique({
       where: { id },
     });
 
@@ -79,7 +79,7 @@ export async function DELETE(
       return notFoundResponse('Booking not found');
     }
 
-    await prisma.washerBooking.delete({
+    await prisma.washer_bookings.delete({
       where: { id },
     });
 

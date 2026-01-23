@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     if (search) {
       whereClause.OR = [
         {
-          customer: {
+          washer_customers: {
             name: {
               contains: search,
               mode: 'insensitive',
@@ -100,10 +100,10 @@ export async function GET(request: NextRequest) {
         orderByClause = { slotTime: 'asc' };
     }
 
-    const bookings = await prisma.washerBooking.findMany({
+    const bookings = await prisma.washer_bookings.findMany({
       where: whereClause,
       include: {
-        customer: {
+        washer_customers: {
           select: {
             id: true,
             name: true,
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if customer exists
-    const customer = await prisma.washerCustomer.findUnique({
+    const customer = await prisma.washer_customers.findUnique({
       where: { id: customerId },
     });
 
@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the booking with default PENDING status
-    const booking = await prisma.washerBooking.create({
+    const booking = await prisma.washer_bookings.create({
       data: {
         customerId,
         slotTime: new Date(slotTime),
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
         status: 'PENDING',
       },
       include: {
-        customer: {
+        washer_customers: {
           select: {
             id: true,
             name: true,
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Create notification for new booking
-    await prisma.washerNotification.create({
+    await prisma.washer_notifications.create({
       data: {
         type: 'new_booking',
         message: `New booking from ${customer.name} for ${serviceType}`,

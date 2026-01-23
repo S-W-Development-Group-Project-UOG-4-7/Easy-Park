@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     
     if (authUser.role === 'LAND_OWNER') {
       // Land owners can see all bookings for slots in their locations
-      const ownedLocations = await prisma.parkingLocation.findMany({
+      const ownedLocations = await prisma.parking_locations.findMany({
         where: { ownerId: authUser.userId },
         select: { id: true },
       });
@@ -38,9 +38,9 @@ export async function GET(request: NextRequest) {
       
       if (locationIds.length > 0) {
         whereClause = {
-          slots: {
+          booking_slots: {
             some: {
-              slot: {
+              parking_slots: {
                 locationId: { in: locationIds },
               },
             },
@@ -62,10 +62,10 @@ export async function GET(request: NextRequest) {
 
     // Add property/location filter if provided
     if (propertyId) {
-      whereClause.slots = {
-        ...whereClause.slots,
+      whereClause.booking_slots = {
+        ...whereClause.booking_slots,
         some: {
-          slot: {
+          parking_slots: {
             locationId: propertyId,
           },
         },
@@ -83,10 +83,10 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    const bookings = await prisma.booking.findMany({
+    const bookings = await prisma.bookings.findMany({
       where: whereClause,
       include: {
-        user: {
+        users: {
           select: {
             id: true,
             fullName: true,
@@ -95,16 +95,16 @@ export async function GET(request: NextRequest) {
             vehicleNumber: true,
           },
         },
-        slots: {
+        booking_slots: {
           include: {
-            slot: {
+            parking_slots: {
               include: {
-                location: true,
+                parking_locations: true,
               },
             },
           },
         },
-        payment: true,
+        payments: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
 
     // Transform bookings for the frontend
     const transformedBookings = filteredBookings.map((booking) => {
-      const firstSlot = booking.slots[0]?.slot;
+      const firstSlot = booking.booking_slots[0]?.parking_slots;
       return {
         id: booking.id,
         bookingNumber: `BK-${booking.id.slice(-6).toUpperCase()}`,
@@ -140,30 +140,30 @@ export async function GET(request: NextRequest) {
         paidAmount: booking.paidAmount,
         amount: booking.totalAmount,
         status: booking.status.toLowerCase(),
-        vehicleNumber: booking.user.vehicleNumber || 'N/A',
+        vehicleNumber: booking.users?.vehicleNumber || 'N/A',
         createdAt: booking.createdAt,
         user: {
-          id: booking.user.id,
-          name: booking.user.fullName,
-          email: booking.user.email,
-          phone: booking.user.contactNo,
+          id: booking.users?.id,
+          name: booking.users?.fullName,
+          email: booking.users?.email,
+          phone: booking.users?.contactNo,
         },
         slot: {
           slotNumber: firstSlot?.number || 'N/A',
           zone: firstSlot?.zone || 'A',
           parkingLot: {
-            id: firstSlot?.location?.id || '',
-            name: firstSlot?.location?.name || 'Unknown',
-            address: firstSlot?.location?.address || '',
+            id: firstSlot?.parking_locations?.id || '',
+            name: firstSlot?.parking_locations?.name || 'Unknown',
+            address: firstSlot?.parking_locations?.address || '',
           },
         },
-        slots: booking.slots.map((bs) => ({
-          id: bs.slot.id,
-          number: bs.slot.number,
-          zone: bs.slot.zone,
-          location: bs.slot.location?.name,
+        slots: booking.booking_slots.map((bs) => ({
+          id: bs.parking_slots.id,
+          number: bs.parking_slots.number,
+          zone: bs.parking_slots.zone,
+          location: bs.parking_slots.parking_locations?.name,
         })),
-        payment: booking.payment,
+        payment: booking.payments,
       };
     });
 
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if slots are available
-    const slots = await prisma.parkingSlot.findMany({
+    const slots = await prisma.parking_slots.findMany({
       where: {
         id: { in: slotIds },
         status: 'AVAILABLE',
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
     const totalAmount = PRICE_PER_SLOT_PER_HOUR * duration * slots.length;
 
     // Create booking with slots
-    const booking = await prisma.booking.create({
+    const booking = await prisma.bookings.create({
       data: {
         userId: authUser.userId,
         date: new Date(date),

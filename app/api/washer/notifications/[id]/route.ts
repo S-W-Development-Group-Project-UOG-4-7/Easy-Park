@@ -31,7 +31,7 @@ export async function GET(
 
     const { id } = await params;
 
-    const notification = await prisma.washerNotification.findUnique({
+    const notification = await prisma.washer_notifications.findUnique({
       where: { id },
     });
 
@@ -74,7 +74,7 @@ export async function PATCH(
       return errorResponse('Missing or invalid required field: read (must be boolean)');
     }
 
-    const notification = await prisma.washerNotification.findUnique({
+    const notification = await prisma.washer_notifications.findUnique({
       where: { id },
     });
 
@@ -82,7 +82,7 @@ export async function PATCH(
       return notFoundResponse('Notification not found');
     }
 
-    const updatedNotification = await prisma.washerNotification.update({
+    const updatedNotification = await prisma.washer_notifications.update({
       where: { id },
       data: { read },
     });
@@ -119,7 +119,7 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const notification = await prisma.washerNotification.findUnique({
+    const notification = await prisma.washer_notifications.findUnique({
       where: { id },
     });
 
@@ -127,7 +127,7 @@ export async function DELETE(
       return notFoundResponse('Notification not found');
     }
 
-    await prisma.washerNotification.delete({
+    await prisma.washer_notifications.delete({
       where: { id },
     });
 

@@ -33,9 +33,9 @@ export async function PATCH(
     const { id } = await params;
 
     // Find the booking
-    const booking = await prisma.washerBooking.findUnique({
+    const booking = await prisma.washer_bookings.findUnique({
       where: { id },
-      include: { customer: true },
+      include: { washer_customers: true },
     });
 
     if (!booking) {
@@ -58,13 +58,13 @@ export async function PATCH(
     }
 
     // Update the booking status to CANCELLED
-    const updatedBooking = await prisma.washerBooking.update({
+    const updatedBooking = await prisma.washer_bookings.update({
       where: { id },
       data: {
         status: 'CANCELLED',
       },
       include: {
-        customer: {
+        washer_customers: {
           select: {
             id: true,
             name: true,

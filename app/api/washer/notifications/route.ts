@@ -41,14 +41,14 @@ export async function GET(request: NextRequest) {
       whereClause.read = false;
     }
 
-    const notifications = await prisma.washerNotification.findMany({
+    const notifications = await prisma.washer_notifications.findMany({
       where: whereClause,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
 
     // Get unread count
-    const unreadCount = await prisma.washerNotification.count({
+    const unreadCount = await prisma.washer_notifications.count({
       where: { read: false },
     });
 
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       return errorResponse(`Invalid notification type. Must be one of: ${validTypes.join(', ')}`);
     }
 
-    const notification = await prisma.washerNotification.create({
+    const notification = await prisma.washer_notifications.create({
       data: {
         type,
         message,
@@ -130,7 +130,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Mark all unread notifications as read
-    const result = await prisma.washerNotification.updateMany({
+    const result = await prisma.washer_notifications.updateMany({
       where: { read: false },
       data: { read: true },
     });
@@ -163,7 +163,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete all read notifications
-    const result = await prisma.washerNotification.deleteMany({
+    const result = await prisma.washer_notifications.deleteMany({
       where: { read: true },
     });
 

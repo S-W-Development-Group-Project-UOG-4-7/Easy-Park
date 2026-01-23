@@ -51,9 +51,9 @@ export async function PATCH(
     }
 
     // Find the booking
-    const booking = await prisma.washerBooking.findUnique({
+    const booking = await prisma.washer_bookings.findUnique({
       where: { id },
-      include: { customer: true },
+      include: { washer_customers: true },
     });
 
     if (!booking) {
@@ -69,13 +69,13 @@ export async function PATCH(
     }
 
     // Update the booking's slot time
-    const updatedBooking = await prisma.washerBooking.update({
+    const updatedBooking = await prisma.washer_bookings.update({
       where: { id },
       data: {
         slotTime: newSlotTime,
       },
       include: {
-        customer: {
+        washer_customers: {
           select: {
             id: true,
             name: true,

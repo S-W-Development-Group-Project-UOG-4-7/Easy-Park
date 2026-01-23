@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id },
       select: {
         id: true,
@@ -63,7 +63,7 @@ export async function PATCH(
     const body = await request.json();
     const { name, email, phone } = body;
 
-    const user = await prisma.user.update({
+    const user = await prisma.users.update({
       where: { id },
       data: {
         ...(name && { fullName: name }),

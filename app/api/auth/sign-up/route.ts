@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already exists
-    const existingUser = await prisma.user.findFirst({
+    const existingUser = await prisma.users.findFirst({
       where: {
         OR: [
           { email: email.toLowerCase() },
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     const userRole = role && validRoles.includes(role) ? role : 'CUSTOMER';
 
     // Create user
-    const user = await prisma.user.create({
+    const user = await prisma.users.create({
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,

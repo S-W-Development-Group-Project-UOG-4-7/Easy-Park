@@ -24,14 +24,14 @@ export async function GET(request: NextRequest) {
     if (type) where.type = type;
     if (status) where.status = status;
 
-    const slots = await prisma.parkingSlot.findMany({
+    const slots = await prisma.parking_slots.findMany({
       where,
       include: {
-        location: true,
+        parking_locations: true,
         // Include bookings for the specified date/time to check availability
-        bookings: date ? {
+        booking_slots: date ? {
           where: {
-            booking: {
+            bookings: {
               date: new Date(date),
               status: { notIn: ['CANCELLED'] },
               ...(startTime && endTime ? {
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
             },
           },
           include: {
-            booking: true,
+            bookings: true,
           },
         } : false,
       },
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     const availableSlots = date
       ? slots.map((slot) => ({
           ...slot,
-          isAvailable: !slot.bookings || slot.bookings.length === 0,
+          isAvailable: !slot.booking_slots || slot.booking_slots.length === 0,
         }))
       : slots;
 
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Find last slot number in this zone to continue numbering
-      const existing = await prisma.parkingSlot.findMany({
+      const existing = await prisma.parking_slots.findMany({
         where: {
           locationId: resolvedLocationId,
           zone,
@@ -144,16 +144,16 @@ export async function POST(request: NextRequest) {
         };
       });
 
-      await prisma.parkingSlot.createMany({
+      await prisma.parking_slots.createMany({
         data: newSlotsData,
         skipDuplicates: true,
       });
 
       // Keep ParkingLocation.totalSlots roughly in sync
-      const totalSlots = await prisma.parkingSlot.count({
+      const totalSlots = await prisma.parking_slots.count({
         where: { locationId: resolvedLocationId },
       });
-      await prisma.parkingLocation.update({
+      await prisma.parking_locations.update({
         where: { id: resolvedLocationId },
         data: { totalSlots },
       });
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if slot number already exists at this location
-    const existingSlot = await prisma.parkingSlot.findFirst({
+    const existingSlot = await prisma.parking_slots.findFirst({
       where: {
         number,
         locationId: resolvedLocationId,
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Slot number already exists at this location');
     }
 
-    const slot = await prisma.parkingSlot.create({
+    const slot = await prisma.parking_slots.create({
       data: {
         number,
         zone: zone || 'A',
@@ -186,15 +186,15 @@ export async function POST(request: NextRequest) {
         locationId: resolvedLocationId,
       },
       include: {
-        location: true,
+        parking_locations: true,
       },
     });
 
     // Keep ParkingLocation.totalSlots roughly in sync
-    const totalSlots = await prisma.parkingSlot.count({
+    const totalSlots = await prisma.parking_slots.count({
       where: { locationId: resolvedLocationId },
     });
-    await prisma.parkingLocation.update({
+    await prisma.parking_locations.update({
       where: { id: resolvedLocationId },
       data: { totalSlots },
     });
@@ -222,7 +222,7 @@ export async function PATCH(request: NextRequest) {
       return errorResponse('Invalid status');
     }
 
-    const updated = await prisma.parkingSlot.update({
+    const updated = await prisma.parking_slots.update({
       where: { id },
       data: { status: normalized as any },
     });
@@ -243,18 +243,18 @@ export async function DELETE(request: NextRequest) {
       return errorResponse('id is required');
     }
 
-    const slot = await prisma.parkingSlot.findUnique({
+    const slot = await prisma.parking_slots.findUnique({
       where: { id },
       select: { locationId: true },
     });
 
-    await prisma.parkingSlot.delete({ where: { id } });
+    await prisma.parking_slots.delete({ where: { id } });
 
     if (slot?.locationId) {
-      const totalSlots = await prisma.parkingSlot.count({
+      const totalSlots = await prisma.parking_slots.count({
         where: { locationId: slot.locationId },
       });
-      await prisma.parkingLocation.update({
+      await prisma.parking_locations.update({
         where: { id: slot.locationId },
         data: { totalSlots },
       });

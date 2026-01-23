@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest) {
     // Process each booking
     for (const id of ids) {
       try {
-        const booking = await prisma.washerBooking.findUnique({
+        const booking = await prisma.washer_bookings.findUnique({
           where: { id },
         });
 
@@ -117,7 +117,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         if (isValidTransition && newStatus!) {
-          const updatedBooking = await prisma.washerBooking.update({
+          const updatedBooking = await prisma.washer_bookings.update({
             where: { id },
             data: { status: newStatus as any },
           });

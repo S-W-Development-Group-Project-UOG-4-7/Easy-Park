@@ -7,7 +7,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
 
-    const users = await prisma.user.findMany({
+    const users = await prisma.users.findMany({
       where: role ? { role } : undefined,
       select: {
         id: true,
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     }
 
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { email },
     });
 
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.create({
+    const user = await prisma.users.create({
       data: {
         name,
         email,

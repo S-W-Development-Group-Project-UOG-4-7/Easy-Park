@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const customers = await prisma.washerCustomer.findMany({
+    const customers = await prisma.washer_customers.findMany({
       where: whereClause,
       include: {
         bookings: {
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if customer with same email already exists
-    const existingCustomer = await prisma.washerCustomer.findUnique({
+    const existingCustomer = await prisma.washer_customers.findUnique({
       where: { email },
     });
 
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the customer
-    const customer = await prisma.washerCustomer.create({
+    const customer = await prisma.washer_customers.create({
       data: {
         name,
         email,

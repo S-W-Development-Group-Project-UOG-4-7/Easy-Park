@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return unauthorizedResponse('Not authenticated');
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id: authUser.userId },
       select: {
         id: true,

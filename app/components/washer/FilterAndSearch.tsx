@@ -19,10 +19,6 @@ export const FilterAndSearch: React.FC<FilterAndSearchProps> = ({
     sortBy: 'earliest',
   });
 
-  // State for time range inputs
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
-
   const handleSearchChange = useCallback((query: string) => {
     const newFilters = { ...filters, searchQuery: query };
     setFilters(newFilters);
@@ -47,44 +43,40 @@ export const FilterAndSearch: React.FC<FilterAndSearchProps> = ({
     onFilterChange(newFilters);
   }, [filters, onFilterChange]);
 
-  const handleStartTimeChange = useCallback((time: string) => {
-    setStartTime(time);
-    if (time && endTime) {
-      const newFilters = { ...filters, timeRange: { start: time, end: endTime } };
-      setFilters(newFilters);
-      onFilterChange(newFilters);
-    } else if (time && !endTime) {
-      // If only start time is set, filter from that time onwards (set end to 23:59)
-      const newFilters = { ...filters, timeRange: { start: time, end: '23:59' } };
-      setFilters(newFilters);
-      onFilterChange(newFilters);
-    } else if (!time) {
-      // Clear time filter if start time is removed
-      const newFilters = { ...filters, timeRange: undefined };
-      setFilters(newFilters);
-      onFilterChange(newFilters);
-      setEndTime('');
-    }
-  }, [filters, onFilterChange, endTime]);
+  // Convert 24-hour time to 12-hour AM/PM format
+  const convertTo12HourFormat = (time24: string): string => {
+    if (!time24) return '';
+    const [hours, minutes] = time24.split(':').map(Number);
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12; // Convert 0 to 12 for midnight
+    return `${hours12.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
 
-  const handleEndTimeChange = useCallback((time: string) => {
-    setEndTime(time);
-    if (startTime && time) {
-      const newFilters = { ...filters, timeRange: { start: startTime, end: time } };
-      setFilters(newFilters);
-      onFilterChange(newFilters);
-    } else if (!startTime && time) {
-      // If only end time is set, filter from start of day (00:00) to that time
-      const newFilters = { ...filters, timeRange: { start: '00:00', end: time } };
-      setFilters(newFilters);
-      onFilterChange(newFilters);
-    }
-  }, [filters, onFilterChange, startTime]);
+  // Convert 12-hour AM/PM format to 24-hour for the input
+  const convertTo24HourFormat = (time12: string): string => {
+    if (!time12) return '';
+    const match = time12.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    if (!match) return '';
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+    const period = match[3].toUpperCase();
+    
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+  };
+
+  const handleTimeChange = useCallback((time: string) => {
+    // Convert the 24-hour input value to 12-hour AM/PM format for filtering
+    const time12 = time ? convertTo12HourFormat(time) : undefined;
+    const newFilters = { ...filters, timeFilter: time12 };
+    setFilters(newFilters);
+    onFilterChange(newFilters);
+  }, [filters, onFilterChange]);
 
   const clearTimeFilter = useCallback(() => {
-    setStartTime('');
-    setEndTime('');
-    const newFilters = { ...filters, timeRange: undefined };
+    const newFilters = { ...filters, timeFilter: undefined };
     setFilters(newFilters);
     onFilterChange(newFilters);
   }, [filters, onFilterChange]);
@@ -156,39 +148,23 @@ export const FilterAndSearch: React.FC<FilterAndSearchProps> = ({
           )}
         </div>
 
-        {/* Time Range Pickers */}
-        <div className="relative flex items-center gap-2">
-          <div className="relative flex-1">
-            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => handleStartTimeChange(e.target.value)}
-              disabled={isLoading}
-              placeholder="From"
-              className="w-full pl-9 pr-2 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-              style={{ colorScheme: 'dark' }}
-              title="Start time"
-            />
-          </div>
-          <span className="text-white/40 text-sm flex-shrink-0">to</span>
-          <div className="relative flex-1">
-            <input
-              type="time"
-              value={endTime}
-              onChange={(e) => handleEndTimeChange(e.target.value)}
-              disabled={isLoading}
-              placeholder="To"
-              className="w-full pl-3 pr-2 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-              style={{ colorScheme: 'dark' }}
-              title="End time"
-            />
-          </div>
-          {(startTime || endTime) && (
+        {/* Time Picker */}
+        <div className="relative">
+          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
+          <input
+            type="time"
+            value={filters.timeFilter ? convertTo24HourFormat(filters.timeFilter) : ''}
+            onChange={(e) => handleTimeChange(e.target.value)}
+            disabled={isLoading}
+            className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+            style={{ colorScheme: 'dark' }}
+            title={filters.timeFilter ? `Filter by time: ${filters.timeFilter}` : 'Filter by time'}
+          />
+          {filters.timeFilter && (
             <button
               onClick={clearTimeFilter}
               disabled={isLoading}
-              className="text-white/40 hover:text-white/80 transition disabled:opacity-50 flex-shrink-0"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition disabled:opacity-50"
               aria-label="Clear time filter"
             >
               <X size={16} />
