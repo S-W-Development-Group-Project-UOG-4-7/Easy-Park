@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../components/AuthProvider';
-import PaymentGatewayModal from '../../components/PaymentGatewayModal'; // Import the new component
+import PaymentGatewayModal from '../../components/PaymentGatewayModal';
 import { Calendar, Clock, MapPin, Zap, Car, Shield, AlertCircle, CheckCircle, Loader2, Star, Wifi, Camera, Cctv, Droplets, Battery, Lock } from 'lucide-react';
 
 // --- Interfaces ---
