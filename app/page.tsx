@@ -15,10 +15,10 @@ const steps = [
 ];
 
 const gallery = [
-  { title: "City Center", subtitle: "Premium downtown hubs" },
-  { title: "Smart Technology", subtitle: "Sensors & automation" },
-  { title: "Indoor Garage", subtitle: "Secure multi-level" },
-  { title: "Outdoor Lot", subtitle: "Wide & accessible" },
+  { title: "City Center", subtitle: "Premium downtown hubs", image: "/gallery1.jpeg" },
+  { title: "Smart Technology", subtitle: "Sensors & automation", image: "/gallery2.jpeg" },
+  { title: "Indoor Garage", subtitle: "Secure multi-level", image: "/gallery3.jpeg" },
+  { title: "Outdoor Lot", subtitle: "Wide & accessible", image: "/gallery4.jpeg" },
 ];
 
 const contactInfo = [
@@ -220,21 +220,29 @@ export default function Home() {
             {gallery.map((item, idx) => (
               <div
                 key={item.title}
-                className="group relative overflow-hidden rounded-3xl border border-slate-800/70 bg-gradient-to-br from-[#1E293B]/90 to-[#0F172A]/90 shadow-xl ring-1 ring-slate-900/60 backdrop-blur transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-2xl"
+                className="group relative overflow-hidden rounded-3xl border border-slate-800/70 shadow-xl ring-1 ring-slate-900/60 transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-2xl"
+                style={{
+                  backgroundImage: `url(${item.image})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-black/20 via-transparent to-black/20 opacity-60 transition duration-300 group-hover:opacity-40" />
-                <div className="h-40 w-full bg-gradient-to-br from-slate-800 to-slate-900" />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#84CC16_0%,transparent_40%)] opacity-30" />
-                <div className="relative space-y-1 p-5">
+                {/* Dark overlay for text readability */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 opacity-90 transition duration-300 group-hover:opacity-75" />
+                
+                {/* Card number - top left */}
+                <div className="absolute left-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-2xl bg-[#0F172A]/80 text-white shadow-md ring-1 ring-slate-900/60 backdrop-blur">
+                  <span className="text-sm font-semibold">0{idx + 1}</span>
+                </div>
+
+                {/* Content - bottom area */}
+                <div className="relative z-10 flex h-100 flex-col items-start justify-end space-y-1 p-5">
                   <h3 className="text-lg font-semibold text-white">{item.title}</h3>
-                  <p className="text-sm text-slate-300">{item.subtitle}</p>
-                  <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-300">
+                  <p className="text-sm text-slate-200">{item.subtitle}</p>
+                  <div className="mt-3 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-100">
                     <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-[#84CC16] to-[#BEF264]" />
                     Premium
                   </div>
-                </div>
-                <div className="absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-[#0F172A]/80 text-white shadow-md ring-1 ring-slate-900/60 backdrop-blur">
-                  <span className="text-sm font-semibold">0{idx + 1}</span>
                 </div>
               </div>
             ))}
