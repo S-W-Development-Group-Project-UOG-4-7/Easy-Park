@@ -84,7 +84,7 @@ export default function ViewBookingsPage() {
   ], []);
 
   const durationOptions = [1, 2, 3, 4, 5, 6, 7, 8];
-  const ADVANCE_FEE_PER_SLOT = 500;
+  const ADVANCE_FEE_PER_SLOT = 150;
   const TODAY = new Date().toISOString().split('T')[0];
 
   const filteredHubs = useMemo(() => {
