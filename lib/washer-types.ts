@@ -55,6 +55,9 @@ export interface BookingFilters {
   searchQuery: string;
   statusFilter: BookingStatus | 'ALL';
   dateFilter?: string; // YYYY-MM-DD format
-  timeFilter?: string; // Format: "HH:MM AM/PM" - matches bookings at exact time with AM/PM
+  timeRange?: {
+    start: string; // HH:MM format
+    end: string; // HH:MM format
+  };
   sortBy: 'earliest' | 'latest' | 'vehicle_type' | 'status';
 }

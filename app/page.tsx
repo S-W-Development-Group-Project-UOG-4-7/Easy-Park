@@ -339,28 +339,13 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="relative">
-            <div className="relative overflow-hidden rounded-[28px] border border-slate-800/70 bg-gradient-to-br from-[#1E293B]/90 to-[#0F172A]/90 p-6 shadow-2xl ring-1 ring-slate-900/60 backdrop-blur">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,#84CC16_0%,transparent_40%)] opacity-30" />
-              <div className="relative flex h-64 flex-col items-center justify-center">
-                <div className="absolute inset-6 rounded-3xl border-2 border-dashed border-slate-700" />
-                <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-[#84CC16] to-[#BEF264] text-slate-900 shadow-xl shadow-lime-200/60">
-                  <svg
-                    className="h-12 w-12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  >
-                    <path d="M7 15h10l-1-5H8l-1 5Z" />
-                    <path d="M9 10V7a3 3 0 0 1 6 0v3" />
-                    <path d="M12 3v2" />
-                  </svg>
-                </div>
-                <p className="mt-6 text-center text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
-                  Modern Automotive UI
-                </p>
-              </div>
+          <div className="relative flex items-center justify-center">
+            <div className="relative overflow-hidden rounded-[28px] border border-slate-800/70 shadow-2xl ring-1 ring-slate-900/60">
+              <img 
+                src="/About.png" 
+                alt="EasyPark Feature" 
+                className="h-auto w-full object-cover"
+              />
             </div>
           </div>
         </section>

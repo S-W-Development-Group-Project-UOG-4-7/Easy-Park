@@ -129,25 +129,30 @@ export default function WasherDashboard() {
       filtered = filtered.filter(booking => booking.slotDate === filters.dateFilter);
     }
 
-    // Apply time filter (exact match with AM/PM)
-    if (filters.timeFilter) {
+    // Apply time range filter
+    if (filters.timeRange) {
       filtered = filtered.filter(booking => {
-        // The booking slotTime is in 12-hour format with AM/PM (e.g., "10:30 AM")
-        // The filter timeFilter is also in 12-hour format with AM/PM
-        const bookingTime = booking.slotTime.trim().toUpperCase();
-        const filterTime = filters.timeFilter!.trim().toUpperCase();
+        // Parse booking time - handle various formats like "10:00", "10:00 AM", "1000"
+        let bookingTimeStr = booking.slotTime.replace(/\s/g, "").replace(/AM|PM/gi, "");
         
-        // Normalize both times for comparison (handle "09:00 AM" vs "9:00 AM")
-        const normalizeTime = (time: string): string => {
-          const match = time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-          if (!match) return time;
-          const hours = parseInt(match[1], 10);
-          const minutes = match[2];
-          const period = match[3].toUpperCase();
-          return `${hours.toString().padStart(2, '0')}:${minutes} ${period}`;
+        // Normalize to HH:MM format
+        if (!bookingTimeStr.includes(":")) {
+          // Handle format like "1000" -> "10:00"
+          bookingTimeStr = bookingTimeStr.padStart(4, "0");
+          bookingTimeStr = bookingTimeStr.slice(0, 2) + ":" + bookingTimeStr.slice(2);
+        }
+        
+        // Convert to minutes for comparison
+        const parseTimeToMinutes = (time: string): number => {
+          const [hours, minutes] = time.split(":").map(Number);
+          return hours * 60 + (minutes || 0);
         };
         
-        return normalizeTime(bookingTime) === normalizeTime(filterTime);
+        const bookingMinutes = parseTimeToMinutes(bookingTimeStr);
+        const startMinutes = parseTimeToMinutes(filters.timeRange!.start);
+        const endMinutes = parseTimeToMinutes(filters.timeRange!.end);
+        
+        return bookingMinutes >= startMinutes && bookingMinutes <= endMinutes;
       });
     }
 
