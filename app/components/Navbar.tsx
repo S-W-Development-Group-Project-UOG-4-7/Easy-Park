@@ -55,8 +55,6 @@ export default function Navbar() {
   const navLinks = [
     { href: '/customer/view-bookings', label: 'Book Now', icon: '📅' },
     { href: '/customer/my-bookings', label: 'My Bookings', icon: '📋' },
-    { href: '/customer/history', label: 'History', icon: '📊' },
- 
   ];
 
   // --- Scroll Effect ---
