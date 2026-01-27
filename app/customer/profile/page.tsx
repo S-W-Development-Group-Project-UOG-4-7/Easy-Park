@@ -39,7 +39,7 @@ export default function ProfilePage() {
         ...prev,
         fullName: user.fullName || '',
         email: user.email || '',
-        phone: user.contactNo || '',
+        phone: user.contactNo || ''
         vehicleNumber: user.vehicleNumber || '',
         nic: user.nic || '',
         // Add other fields if they exist in your user object

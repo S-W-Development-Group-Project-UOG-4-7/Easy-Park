@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../components/AuthProvider';
 import PaymentGatewayModal from '../../components/PaymentGatewayModal';
 import { 
-  Calendar, Clock, MapPin, Zap, Car, Shield, AlertCircle, 
-  Loader2, Star, Droplets, Lock, Search 
+  Calendar, Clock, MapPin, Zap, AlertCircle, 
+  Loader2, Search, Droplets
 } from 'lucide-react';
 
 // --- Interfaces ---
@@ -39,6 +39,61 @@ interface TimeSlot {
   isPeak: boolean;
 }
 
+// --- ✨ NEW: Premium "Black Sparkle" Background ---
+// A deep, dark background with subtle, slow-fading glimmers and texture.
+const BlackSparkleBackground = () => {
+  // Generate fixed particle data only once for SSR consistency
+  const particles = useMemo(() => {
+    return Array.from({ length: 40 }).map((_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      size: Math.random() * 2 + 0.5 + 'px', // Very small dots
+      delay: Math.random() * 5,
+      duration: Math.random() * 4 + 3, // Slow pulse (3-7s)
+    }));
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-[#020617]">
+      {/* 1. Deep Onyx Gradient Base */}
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-[#050a14] to-slate-950" />
+
+      {/* 2. The "Sparkles": Tiny, subtle gray/white glimmers fading in and out */}
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full bg-slate-300"
+          style={{
+            left: p.left,
+            top: p.top,
+            width: p.size,
+            height: p.size,
+            // Subtle glow, not too bright
+            boxShadow: '0 0 2px 1px rgba(255,255,255,0.1)' 
+          }}
+          initial={{ opacity: 0, scale: 0.5 }}
+          // Max opacity is low (0.4) to keep it subtle and "black" looking
+          animate={{ opacity: [0, 0.4, 0], scale: [0.5, 1.2, 0.5] }} 
+          transition={{
+            duration: p.duration,
+            repeat: Infinity,
+            delay: p.delay,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+
+      {/* 3. Fine Grain Texture Overlay for premium feel */}
+      {/* Using a standard SVG noise pattern via data URI for reliability without external files */}
+      <div 
+        className="absolute inset-0 opacity-[0.05] mix-blend-overlay pointer-events-none"
+        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}
+      />
+    </div>
+  );
+};
+
 export default function ViewBookingsPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -49,8 +104,7 @@ export default function ViewBookingsPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('1');
-  const [searchQuery, setSearchQuery] = useState('');
-
+  
   // --- Data State ---
   const [allSlots, setAllSlots] = useState<Slot[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
@@ -139,16 +193,15 @@ export default function ViewBookingsPage() {
       const json = await res.json();
       
       if (json.success) {
-        // Map backend slot data
         const mappedSlots: Slot[] = json.data.map((s: any) => ({
           id: s.id,
           number: s.number,
           type: s.type, 
-          status: s.status, // AVAILABLE, OCCUPIED, etc.
+          status: s.status, 
           pricePerHour: s.pricePerHour
         }));
         setAllSlots(mappedSlots);
-        setSelectedSlots([]); // Clear selections on new fetch
+        setSelectedSlots([]); 
       }
     } catch (err) {
       console.error("Slot fetch error", err);
@@ -170,14 +223,10 @@ export default function ViewBookingsPage() {
     const baseHourlyRate = selectedHubDetails.pricePerHour;
     const duration = Number(selectedDuration);
     
-    // Check if peak hour
     const isPeakHour = timeSlots.find(t => t.time === selectedTime)?.isPeak || false;
     const hourlyRate = isPeakHour ? Math.round(baseHourlyRate * 1.25) : baseHourlyRate;
     
-    // Total = Slots * Duration * Rate
     const totalPrice = selectedSlots.length * duration * hourlyRate;
-    
-    // Advance = Fixed Fee * Slots
     const advanceToPay = selectedSlots.length * ADVANCE_FEE_PER_SLOT;
 
     return { totalPrice, advanceToPay, hourlyRate, isPeakHour };
@@ -190,7 +239,9 @@ export default function ViewBookingsPage() {
   // --- Handlers ---
   const handleSlotClick = useCallback((slotId: string) => {
     const slot = allSlots.find(s => s.id === slotId);
-    if (!slot || slot.status !== 'AVAILABLE') return;
+    const isAvailable = slot && slot.status.toUpperCase() === 'AVAILABLE';
+    
+    if (!isAvailable) return;
 
     setSelectedSlots(prev => {
       if (prev.includes(slotId)) return prev.filter(id => id !== slotId);
@@ -221,7 +272,6 @@ export default function ViewBookingsPage() {
     setShowPaymentModal(true);
   };
 
-  // --- Payment & Booking Process ---
   const processBooking = async (paymentId?: string) => {
     if (!user) return;
 
@@ -234,7 +284,7 @@ export default function ViewBookingsPage() {
       slotIds: selectedSlots,
       totalAmount: calculateTotals.totalPrice,
       advanceAmount: calculateTotals.advanceToPay,
-      paymentId: paymentId || 'manual_bypass', // Link payment ID if available
+      paymentId: paymentId || 'manual_bypass',
     };
 
     try {
@@ -260,240 +310,250 @@ export default function ViewBookingsPage() {
   if (!mounted) return null;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-32">
-      
-      {/* --- HEADER --- */}
-      <motion.header 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative p-8 rounded-[2.5rem] bg-slate-900/60 border border-slate-800 backdrop-blur-xl overflow-hidden shadow-2xl"
-      >
-        <div className="absolute inset-0 bg-gradient-to-r from-lime-500/10 via-transparent to-transparent pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">
-              Select <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-400 to-emerald-400">Parking Space</span>
-            </h1>
-            <p className="text-slate-400 mt-2 text-sm">Real-time availability. Instant reservation.</p>
-          </div>
-          
-          {selectedSlots.length > 0 && (
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-              className="px-6 py-4 bg-slate-950/80 rounded-2xl border border-lime-500/30 text-right shadow-[0_0_20px_rgba(132,204,22,0.15)]"
-            >
-              <p className="text-[10px] uppercase text-lime-400 font-bold tracking-widest mb-1">Advance Payable</p>
-              <h3 className="text-3xl font-black text-white">Rs. {calculateTotals.advanceToPay}</h3>
-            </motion.div>
-          )}
-        </div>
-      </motion.header>
+    <>
+      {/* 1. Black Sparkle Background */}
+      <BlackSparkleBackground />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {/* 2. Main Content Layer */}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-32">
         
-        {/* --- LEFT PANEL: CONTROLS --- */}
-        <aside className="lg:col-span-4 space-y-6 lg:sticky lg:top-24 h-fit">
-          <div className="p-6 rounded-[2rem] bg-slate-900/40 border border-slate-800 backdrop-blur-md space-y-6 shadow-lg">
+        {/* Header */}
+        <motion.header 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative p-8 rounded-[2.5rem] bg-slate-900/60 border border-slate-800/60 backdrop-blur-2xl overflow-hidden shadow-2xl"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-lime-500/10 via-transparent to-transparent pointer-events-none" />
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+                Select <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-400 to-emerald-400">Parking Space</span>
+              </h1>
+              <p className="text-slate-400 mt-2 text-sm flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-lime-500 animate-pulse" /> Real-time availability
+              </p>
+            </div>
             
-            {/* Location */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                <MapPin className="w-3 h-3 text-lime-400"/> Location
-              </label>
-              {loadingHubs ? (
-                <div className="h-12 w-full bg-slate-800/50 rounded-xl animate-pulse"/>
-              ) : (
-                <div className="relative">
-                  <select
-                    value={selectedHubId}
-                    onChange={(e) => setSelectedHubId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white text-sm focus:border-lime-500/50 focus:ring-1 focus:ring-lime-500/50 outline-none appearance-none transition-all"
-                  >
-                    {hubs.map(h => (
-                      <option key={h.id} value={h.id}>{h.name} — {h.city}</option>
-                    ))}
-                  </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
-                </div>
-              )}
-            </div>
-
-            {/* Date & Duration */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                  <Calendar className="w-3 h-3 text-lime-400"/> Date
-                </label>
-                <input 
-                  type="date" 
-                  min={TODAY} 
-                  value={selectedDate} 
-                  onChange={e => setSelectedDate(e.target.value)} 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-white text-xs font-medium outline-none focus:border-lime-500/50" 
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                  <Clock className="w-3 h-3 text-lime-400"/> Duration
-                </label>
-                <select 
-                  value={selectedDuration} 
-                  onChange={e => setSelectedDuration(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-white text-xs font-medium outline-none focus:border-lime-500/50"
-                >
-                  {[1, 2, 3, 4, 5, 6].map(h => <option key={h} value={h}>{h} Hr{h > 1 ? 's' : ''}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Time Grid */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Start Time</label>
-              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                {timeSlots.map(t => (
-                  <button 
-                    key={t.time} 
-                    onClick={() => setSelectedTime(t.time)}
-                    className={`
-                      px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all
-                      ${selectedTime === t.time 
-                        ? 'bg-lime-400 text-slate-900 border-lime-400 shadow-[0_0_10px_rgba(132,204,22,0.4)]' 
-                        : t.isPeak 
-                          ? 'bg-slate-800/50 text-amber-400 border-amber-500/20 hover:border-amber-500/50' 
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-600 hover:text-white'
-                      }
-                    `}
-                  >
-                    {t.label}
-                    {t.isPeak && <span className="block text-[8px] opacity-60 font-normal mt-0.5">Peak</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button 
-              onClick={handleBookNow} 
-              disabled={!selectedTime || selectedSlots.length === 0}
-              className="w-full py-4 bg-gradient-to-r from-lime-400 to-emerald-400 text-slate-900 font-bold rounded-xl shadow-lg shadow-lime-500/20 hover:shadow-lime-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:scale-100"
-            >
-              Proceed to Payment
-            </button>
-
-          </div>
-        </aside>
-
-        {/* --- RIGHT PANEL: SLOTS --- */}
-        <main className="lg:col-span-8 space-y-6">
-          
-          {/* Filters */}
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-            {['ALL', 'NORMAL', 'EV', 'CAR_WASH'].map(t => (
-              <button 
-                key={t} 
-                onClick={() => setFilterType(t as any)}
-                className={`
-                  px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap
-                  ${filterType === t 
-                    ? 'bg-slate-800 text-white border-slate-600 shadow-md' 
-                    : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-900 hover:text-slate-300'
-                  }
-                `}
-              >
-                {t.replace('_', ' ')}
-              </button>
-            ))}
-          </div>
-
-          {/* Error Toast */}
-          <AnimatePresence>
-            {bookingError && (
+            {selectedSlots.length > 0 && (
               <motion.div 
-                initial={{ opacity: 0, y: -20 }} 
-                animate={{ opacity: 1, y: 0 }} 
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-center gap-3 text-rose-400 text-sm font-medium shadow-lg"
+                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                className="px-6 py-4 bg-slate-950/80 rounded-2xl border border-lime-500/30 text-right shadow-[0_0_20px_rgba(132,204,22,0.15)]"
               >
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                {bookingError}
+                <p className="text-[10px] uppercase text-lime-400 font-bold tracking-widest mb-1">Advance Payable</p>
+                <h3 className="text-3xl font-black text-white">Rs. {calculateTotals.advanceToPay}</h3>
               </motion.div>
             )}
-          </AnimatePresence>
+          </div>
+        </motion.header>
 
-          {/* Slot Grid (UPDATED: High Density) */}
-          <div className="p-6 rounded-[2.5rem] bg-slate-900/40 border border-slate-800 relative min-h-[500px]">
-            {loading ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                <Loader2 className="w-10 h-10 text-lime-400 animate-spin" />
-                <p className="text-slate-500 text-xs uppercase tracking-widest animate-pulse">Scanning Availability...</p>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Controls Panel */}
+          <aside className="lg:col-span-4 space-y-6 lg:sticky lg:top-24 h-fit">
+            <div className="p-6 rounded-[2rem] bg-slate-900/40 border border-slate-800/60 backdrop-blur-xl space-y-6 shadow-lg">
+              
+              {/* Location Selector */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <MapPin className="w-3 h-3 text-lime-400"/> Location
+                </label>
+                {loadingHubs ? (
+                  <div className="h-12 w-full bg-slate-800/50 rounded-xl animate-pulse"/>
+                ) : (
+                  <div className="relative">
+                    <select
+                      value={selectedHubId}
+                      onChange={(e) => setSelectedHubId(e.target.value)}
+                      className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3.5 text-white text-sm focus:border-lime-500/50 focus:ring-1 focus:ring-lime-500/50 outline-none appearance-none transition-all hover:bg-slate-900"
+                    >
+                      {hubs.map(h => (
+                        <option key={h.id} value={h.id}>{h.name} — {h.city}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
+                  </div>
+                )}
               </div>
-            ) : filteredSlots.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-600">
-                <Search className="w-12 h-12 mb-3 opacity-20" />
-                <p>No slots match criteria</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
-                {filteredSlots.map(slot => {
-                  const isSel = selectedSlots.includes(slot.id);
-                  const isAvail = slot.status === 'AVAILABLE';
-                  
-                  // Dynamic styles based on type/status
-                  let slotStyle = "bg-slate-950 border-slate-800 text-slate-500";
-                  if (slot.status === 'OCCUPIED') slotStyle = "bg-rose-950/20 border-rose-900/30 text-rose-800 opacity-60 cursor-not-allowed";
-                  else if (slot.status === 'MAINTENANCE') slotStyle = "bg-amber-950/20 border-amber-900/30 text-amber-800 opacity-60 cursor-not-allowed";
-                  else if (isSel) slotStyle = "bg-lime-400 border-lime-300 text-slate-900 shadow-[0_0_20px_rgba(132,204,22,0.4)] scale-105 z-10";
-                  else if (isAvail) slotStyle = "bg-slate-800/50 border-slate-700 text-slate-300 hover:border-lime-500/50 hover:text-white hover:bg-slate-800";
 
-                  return (
-                    <motion.button 
-                      key={slot.id} 
-                      disabled={!isAvail} 
-                      onClick={() => handleSlotClick(slot.id)}
-                      whileHover={isAvail ? { scale: 1.05 } : {}}
-                      whileTap={isAvail ? { scale: 0.95 } : {}}
+              {/* Date & Duration */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <Calendar className="w-3 h-3 text-lime-400"/> Date
+                  </label>
+                  <input 
+                    type="date" 
+                    min={TODAY} 
+                    value={selectedDate} 
+                    onChange={e => setSelectedDate(e.target.value)} 
+                    className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-3 text-white text-xs font-medium outline-none focus:border-lime-500/50 transition-all hover:bg-slate-900" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                    <Clock className="w-3 h-3 text-lime-400"/> Duration
+                  </label>
+                  <select 
+                    value={selectedDuration} 
+                    onChange={e => setSelectedDuration(e.target.value)}
+                    className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-3 text-white text-xs font-medium outline-none focus:border-lime-500/50 transition-all hover:bg-slate-900"
+                  >
+                    {[1, 2, 3, 4, 5, 6].map(h => <option key={h} value={h}>{h} Hr{h > 1 ? 's' : ''}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Time Grid */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Start Time</label>
+                <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {timeSlots.map(t => (
+                    <button 
+                      key={t.time} 
+                      onClick={() => setSelectedTime(t.time)}
                       className={`
-                        aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 relative transition-all duration-200
-                        ${slotStyle}
+                        px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all duration-200
+                        ${selectedTime === t.time 
+                          ? 'bg-lime-400 text-slate-900 border-lime-400 shadow-[0_0_15px_rgba(132,204,22,0.4)] scale-[1.02]' 
+                          : t.isPeak 
+                            ? 'bg-slate-900/50 text-amber-400 border-amber-500/20 hover:border-amber-500/50 hover:bg-slate-800' 
+                            : 'bg-slate-950/50 text-slate-400 border-slate-800 hover:border-slate-600 hover:text-white hover:bg-slate-800'
+                        }
                       `}
                     >
-                      <span className="text-[8px] font-bold uppercase tracking-wide opacity-70">
-                        {slot.type === 'NORMAL' ? 'STD' : slot.type}
-                      </span>
-                      <span className="text-sm font-black">{slot.number}</span>
-                      
-                      {/* Icons */}
-                      {slot.type === 'EV' && <Zap className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-emerald-400'}`} />}
-                      {slot.type === 'CAR_WASH' && <Droplets className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-cyan-400'}`} />}
-                      
-                      {/* Status Dot */}
-                      {!isAvail && <div className="absolute top-1.5 left-1.5 w-1 h-1 rounded-full bg-current opacity-50"/>}
-                    </motion.button>
-                  );
-                })}
+                      {t.label}
+                      {t.isPeak && <span className="block text-[8px] opacity-60 font-normal mt-0.5">Peak</span>}
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-            
-            {/* Legend */}
-            <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-6 text-[10px] uppercase font-bold text-slate-500">
-              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-700"/> Available</span>
-              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-lime-400 shadow-[0_0_5px_rgba(132,204,22,0.8)]"/> Selected</span>
-              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-900 opacity-50"/> Occupied</span>
-            </div>
-          </div>
-        </main>
-      </div>
 
-      {/* Payment Gateway Modal */}
-      <AnimatePresence>
-        {showPaymentModal && (
-          <PaymentGatewayModal 
-            amount={calculateTotals.advanceToPay} 
-            onSuccess={processBooking} 
-            onClose={() => setShowPaymentModal(false)} 
-          />
-        )}
-      </AnimatePresence>
-    </div>
+              {/* Submit Button */}
+              <button 
+                onClick={handleBookNow} 
+                disabled={!selectedTime || selectedSlots.length === 0}
+                className="w-full py-4 bg-gradient-to-r from-lime-400 to-emerald-400 text-slate-900 font-bold rounded-xl shadow-lg shadow-lime-500/20 hover:shadow-lime-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:scale-100 relative overflow-hidden group"
+              >
+                <span className="relative z-10">Proceed to Payment</span>
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+              </button>
+
+            </div>
+          </aside>
+
+          {/* --- SLOTS PANEL --- */}
+          <main className="lg:col-span-8 space-y-6">
+            
+            {/* Filters */}
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+              {['ALL', 'NORMAL', 'EV', 'CAR_WASH'].map(t => (
+                <button 
+                  key={t} 
+                  onClick={() => setFilterType(t as any)}
+                  className={`
+                    px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap
+                    ${filterType === t 
+                      ? 'bg-slate-800 text-white border-slate-600 shadow-[0_0_15px_rgba(255,255,255,0.1)]' 
+                      : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-900 hover:text-slate-300'
+                    }
+                  `}
+                >
+                  {t.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+
+            {/* Error Toast */}
+            <AnimatePresence>
+              {bookingError && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -20 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: -20 }}
+                  className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-center gap-3 text-rose-400 text-sm font-medium shadow-lg backdrop-blur-md"
+                >
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  {bookingError}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Slot Grid (High Density) */}
+            <div className="p-6 rounded-[2.5rem] bg-slate-900/40 border border-slate-800/60 relative min-h-[500px] backdrop-blur-sm">
+              {loading ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="w-10 h-10 text-lime-400 animate-spin" />
+                  <p className="text-slate-500 text-xs uppercase tracking-widest animate-pulse">Scanning Availability...</p>
+                </div>
+              ) : filteredSlots.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-600">
+                  <Search className="w-12 h-12 mb-3 opacity-20" />
+                  <p>No slots match criteria</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+                  {filteredSlots.map(slot => {
+                    const isSel = selectedSlots.includes(slot.id);
+                    // Safe status check
+                    const isAvail = slot.status && slot.status.toUpperCase() === 'AVAILABLE';
+                    
+                    // Dynamic styles
+                    let slotStyle = "bg-slate-950 border-slate-800 text-slate-500";
+                    if (!isAvail && slot.status === 'OCCUPIED') slotStyle = "bg-rose-950/20 border-rose-900/30 text-rose-800/50 cursor-not-allowed";
+                    else if (!isAvail) slotStyle = "bg-slate-950/50 border-slate-800 text-slate-700 cursor-not-allowed";
+                    else if (isSel) slotStyle = "bg-lime-400 border-lime-300 text-slate-900 shadow-[0_0_20px_rgba(132,204,22,0.6)] scale-110 z-10 font-bold";
+                    else slotStyle = "bg-slate-800/30 border-slate-700/50 text-slate-300 hover:border-lime-500/50 hover:text-white hover:bg-slate-800 hover:shadow-[0_0_10px_rgba(132,204,22,0.1)]";
+
+                    return (
+                      <motion.button 
+                        key={slot.id} 
+                        disabled={!isAvail} 
+                        onClick={() => handleSlotClick(slot.id)}
+                        whileHover={isAvail ? { scale: 1.1 } : {}}
+                        whileTap={isAvail ? { scale: 0.9 } : {}}
+                        className={`
+                          aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 relative transition-all duration-300
+                          ${slotStyle}
+                        `}
+                      >
+                        <span className="text-[8px] font-bold uppercase tracking-wide opacity-70">
+                          {slot.type === 'NORMAL' ? 'STD' : slot.type}
+                        </span>
+                        <span className="text-sm">{slot.number}</span>
+                        
+                        {/* Icons */}
+                        {slot.type === 'EV' && <Zap className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.8)]'}`} />}
+                        {slot.type === 'CAR_WASH' && <Droplets className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]'}`} />}
+                        
+                        {/* Status Dot */}
+                        {!isAvail && <div className="absolute top-1.5 left-1.5 w-1 h-1 rounded-full bg-current opacity-50"/>}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              )}
+              
+              {/* Legend */}
+              <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-6 text-[10px] uppercase font-bold text-slate-500">
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-700"/> Available</span>
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-lime-400 shadow-[0_0_5px_rgba(132,204,22,0.8)]"/> Selected</span>
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-900 opacity-50"/> Occupied</span>
+              </div>
+            </div>
+          </main>
+        </div>
+
+        {/* Payment Gateway Modal */}
+        <AnimatePresence>
+          {showPaymentModal && (
+            <PaymentGatewayModal 
+              amount={calculateTotals.advanceToPay} 
+              onSuccess={processBooking} 
+              onClose={() => setShowPaymentModal(false)} 
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </>
   );
 }
