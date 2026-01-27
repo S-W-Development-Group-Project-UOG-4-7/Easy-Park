@@ -56,7 +56,7 @@ export default function Navbar() {
     { href: '/customer/view-bookings', label: 'Book Now', icon: '📅' },
     { href: '/customer/my-bookings', label: 'My Bookings', icon: '📋' },
     { href: '/customer/history', label: 'History', icon: '📊' },
-    { href: '/customer/support', label: 'Support', icon: '💬' },
+ 
   ];
 
   // --- Scroll Effect ---
