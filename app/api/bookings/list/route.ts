@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
             }
           }
         },
-        payments: true
+        payments: true // Important: Fetch related payment records
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -39,7 +39,27 @@ export async function GET(request: NextRequest) {
         type: bs.parking_slots.type.toLowerCase(),
       }));
 
-      // Calculate totals if not stored
+      // --- DYNAMIC STATUS LOGIC ---
+
+      // 1. Calculate Real Paid Amount based on existing payment records
+      const paymentsList = Array.isArray(b.payments) ? b.payments : (b.payments ? [b.payments] : []);
+      const realPaidAmount = paymentsList.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+
+      // 2. Determine Status
+      let dynamicStatus = b.status.toLowerCase();
+
+      // Priority Rule: If DB explicitly says 'cancelled', respect it.
+      if (dynamicStatus === 'cancelled') {
+         // Do nothing, keep it as 'cancelled'
+      } 
+      // Revert Rule: If DB says 'paid' but money is missing (manual deletion), revert to 'pending'
+      else if (realPaidAmount <= 0 && (dynamicStatus === 'paid' || dynamicStatus === 'confirmed')) {
+        dynamicStatus = 'pending';
+      }
+
+      // --- END LOGIC ---
+
+      // Calculate total bill if not stored
       const calculatedTotal = b.totalAmount > 0 ? b.totalAmount : (b.duration * 300 * slots.length); 
 
       return {
@@ -49,12 +69,12 @@ export async function GET(request: NextRequest) {
         time: new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         duration: b.duration,
         slots: slots,
-        slotType: 'normal', // Simplified for list view
-        status: b.status.toLowerCase(),
+        slotType: 'normal',
+        status: dynamicStatus, // Use the robust status
         createdAt: b.createdAt.toISOString(),
         totalAmount: calculatedTotal,
-        paidAmount: b.paidAmount,
-        paymentId: b.payments?.id
+        paidAmount: realPaidAmount,
+        paymentId: paymentsList.length > 0 ? paymentsList[0].id : null
       };
     });
 
