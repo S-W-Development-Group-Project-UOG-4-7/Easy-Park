@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Building2, MapPin, Trash2, Eye, EyeOff, Plus, Zap, Car, Droplets } from 'lucide-react';
+import { Building2, MapPin, Trash2, Eye, EyeOff, Plus, Zap, Car, Droplets, Power, DollarSign, Edit2, Save, X } from 'lucide-react';
 import { propertiesApi } from '../../services/api';
 
 interface Slot {
@@ -21,6 +21,9 @@ interface Property {
   evSlots?: number;
   carWashSlots?: number;
   availableSlots: number;
+  pricePerHour: number;
+  pricePerDay: number;
+  status: 'ACTIVATED' | 'NOT_ACTIVATED';
   slots: Slot[];
   createdAt: string | Date;
 }
@@ -30,6 +33,14 @@ export default function ManagePropertiesPage() {
   const [loading, setLoading] = useState(true);
   const [expandedProperty, setExpandedProperty] = useState<string | number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | number | null>(null);
+  const [editingProperty, setEditingProperty] = useState<string | number | null>(null);
+  const [editForm, setEditForm] = useState<{ pricePerHour: number; pricePerDay: number; totalSlots: number }>({
+    pricePerHour: 0,
+    pricePerDay: 0,
+    totalSlots: 0,
+  });
+  const [togglingStatus, setTogglingStatus] = useState<string | number | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     fetchProperties();
@@ -60,6 +71,64 @@ export default function ManagePropertiesPage() {
 
   const toggleExpand = (id: string | number) => {
     setExpandedProperty(expandedProperty === id ? null : id);
+  };
+
+  // Toggle activation status
+  const handleToggleStatus = async (property: Property) => {
+    try {
+      setTogglingStatus(property.id);
+      const newStatus = property.status === 'ACTIVATED' ? 'NOT_ACTIVATED' : 'ACTIVATED';
+      await propertiesApi.toggleStatus(String(property.id), newStatus);
+      setProperties(properties.map(p => 
+        p.id === property.id ? { ...p, status: newStatus } : p
+      ));
+    } catch (error) {
+      console.error('Error toggling status:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update status';
+      alert(errorMessage);
+    } finally {
+      setTogglingStatus(null);
+    }
+  };
+
+  // Start editing a property
+  const startEditing = (property: Property) => {
+    setEditingProperty(property.id);
+    setEditForm({
+      pricePerHour: property.pricePerHour || 300,
+      pricePerDay: property.pricePerDay || 2000,
+      totalSlots: property.totalSlots || 0,
+    });
+  };
+
+  // Save edited property
+  const saveEdit = async (property: Property) => {
+    if (editForm.pricePerHour <= 0 || editForm.pricePerDay <= 0) {
+      alert('Prices must be greater than 0');
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      await propertiesApi.update(property.id, {
+        pricePerHour: editForm.pricePerHour,
+        pricePerDay: editForm.pricePerDay,
+        totalSlots: editForm.totalSlots,
+      });
+      setProperties(properties.map(p => 
+        p.id === property.id ? { ...p, ...editForm } : p
+      ));
+      setEditingProperty(null);
+    } catch (error) {
+      console.error('Error updating property:', error);
+      alert('Failed to update property. Only admins can update prices and slots.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingProperty(null);
   };
 
   // Group slots by type
@@ -271,13 +340,65 @@ export default function ManagePropertiesPage() {
                         <Building2 className="w-6 h-6 text-slate-950" />
                       </div>
                       <div>
-                        <h3 className="text-xl font-semibold dark:text-[#E5E7EB] text-[#111827]">
-                          {property.name}
-                        </h3>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-xl font-semibold dark:text-[#E5E7EB] text-[#111827]">
+                            {property.name}
+                          </h3>
+                          {/* Status Badge */}
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                            property.status === 'ACTIVATED'
+                              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                              : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                          }`}>
+                            {property.status === 'ACTIVATED' ? 'Activated' : 'Not Activated'}
+                          </span>
+                        </div>
                         <div className="flex items-center gap-1 mt-1 text-sm dark:text-[#94A3B8] text-[#6B7280]">
                           <MapPin className="w-4 h-4" />
                           {property.address}
                         </div>
+                        {/* Pricing Info */}
+                        {editingProperty === property.id ? (
+                          <div className="flex gap-4 mt-3">
+                            <div className="flex items-center gap-2">
+                              <DollarSign className="w-4 h-4 text-amber-400" />
+                              <input
+                                type="number"
+                                min="1"
+                                value={editForm.pricePerHour}
+                                onChange={(e) => setEditForm({ ...editForm, pricePerHour: parseFloat(e.target.value) || 0 })}
+                                className="w-24 px-2 py-1 rounded border dark:border-slate-600 dark:bg-slate-800 text-sm"
+                              />
+                              <span className="text-xs dark:text-[#94A3B8]">/hr</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <DollarSign className="w-4 h-4 text-amber-400" />
+                              <input
+                                type="number"
+                                min="1"
+                                value={editForm.pricePerDay}
+                                onChange={(e) => setEditForm({ ...editForm, pricePerDay: parseFloat(e.target.value) || 0 })}
+                                className="w-24 px-2 py-1 rounded border dark:border-slate-600 dark:bg-slate-800 text-sm"
+                              />
+                              <span className="text-xs dark:text-[#94A3B8]">/day</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-4 mt-3">
+                            <div className="flex items-center gap-2 text-sm">
+                              <DollarSign className="w-4 h-4 text-amber-400" />
+                              <span className="dark:text-[#94A3B8] text-[#6B7280]">
+                                <span className="text-amber-400 font-medium">LKR {property.pricePerHour || 300}</span>/hr
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <DollarSign className="w-4 h-4 text-amber-400" />
+                              <span className="dark:text-[#94A3B8] text-[#6B7280]">
+                                <span className="text-amber-400 font-medium">LKR {property.pricePerDay || 2000}</span>/day
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         <div className="flex gap-4 mt-3">
                           <div className="flex items-center gap-2 text-sm">
                             <Car className="w-4 h-4 text-blue-400" />
@@ -301,6 +422,55 @@ export default function ManagePropertiesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Toggle Status Button */}
+                      <button
+                        onClick={() => handleToggleStatus(property)}
+                        disabled={togglingStatus === property.id}
+                        className={`p-2 rounded-lg border transition-colors ${
+                          property.status === 'ACTIVATED'
+                            ? 'border-green-500/30 text-green-400 hover:bg-green-500/10'
+                            : 'border-red-500/30 text-red-400 hover:bg-red-500/10'
+                        } disabled:opacity-50`}
+                        title={property.status === 'ACTIVATED' ? 'Deactivate' : 'Activate'}
+                      >
+                        {togglingStatus === property.id ? (
+                          <div className="w-5 h-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        ) : (
+                          <Power className="w-5 h-5" />
+                        )}
+                      </button>
+                      {/* Edit Button */}
+                      {editingProperty === property.id ? (
+                        <>
+                          <button
+                            onClick={() => saveEdit(property)}
+                            disabled={savingEdit}
+                            className="p-2 rounded-lg border border-green-500/30 text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-50"
+                            title="Save changes"
+                          >
+                            {savingEdit ? (
+                              <div className="w-5 h-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            ) : (
+                              <Save className="w-5 h-5" />
+                            )}
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="p-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            title="Cancel"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => startEditing(property)}
+                          className="p-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          title="Edit prices & slots"
+                        >
+                          <Edit2 className="w-5 h-5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => toggleExpand(property.id)}
                         className="p-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"

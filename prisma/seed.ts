@@ -56,11 +56,14 @@ async function main() {
   });
   console.log('✅ Created land owner user:', landOwner.email);
 
-  // Create parking locations
+  // Create parking locations with different statuses
   const location1 = await prisma.parkingLocation.upsert({
     where: { id: 'loc-main' },
     update: {
       ownerId: landOwner.id,
+      pricePerHour: 300,
+      pricePerDay: 2000,
+      status: 'ACTIVATED',
     },
     create: {
       id: 'loc-main',
@@ -68,6 +71,9 @@ async function main() {
       address: '123 Main Street, Colombo',
       description: 'Main parking area with EV charging stations',
       totalSlots: 0,
+      pricePerHour: 300,
+      pricePerDay: 2000,
+      status: 'ACTIVATED',
       ownerId: landOwner.id,
     },
   });
@@ -76,6 +82,9 @@ async function main() {
     where: { id: 'loc-downtown' },
     update: {
       ownerId: landOwner.id,
+      pricePerHour: 350,
+      pricePerDay: 2500,
+      status: 'ACTIVATED',
     },
     create: {
       id: 'loc-downtown',
@@ -83,10 +92,36 @@ async function main() {
       address: '456 Downtown Road, Colombo',
       description: 'Convenient downtown parking with car wash service',
       totalSlots: 0,
+      pricePerHour: 350,
+      pricePerDay: 2500,
+      status: 'ACTIVATED',
       ownerId: landOwner.id,
     },
   });
-  console.log('✅ Created parking locations');
+
+  // Create a NOT_ACTIVATED parking location for testing
+  const location3 = await prisma.parkingLocation.upsert({
+    where: { id: 'loc-new-area' },
+    update: {
+      ownerId: landOwner.id,
+      pricePerHour: 250,
+      pricePerDay: 1800,
+      status: 'NOT_ACTIVATED',
+    },
+    create: {
+      id: 'loc-new-area',
+      name: 'New Parking Zone',
+      address: '789 Under Construction Ave, Colombo',
+      description: 'New parking area under preparation - not yet available for booking',
+      totalSlots: 0,
+      pricePerHour: 250,
+      pricePerDay: 1800,
+      status: 'NOT_ACTIVATED',
+      ownerId: landOwner.id,
+    },
+  });
+
+  console.log('✅ Created parking locations (with status: ACTIVATED/NOT_ACTIVATED)');
 
   // Create parking slots for land-owner testing
   // (zones A/B so the land-owner UI can group them)
@@ -123,12 +158,15 @@ async function main() {
   await createZoneSlots(location1.id, 'A', 8);
   await createZoneSlots(location1.id, 'B', 5);
   await createZoneSlots(location2.id, 'A', 6);
+  await createZoneSlots(location3.id, 'A', 4); // Slots for not-activated location
 
   // Keep totalSlots in sync
   const loc1Count = await prisma.parkingSlot.count({ where: { locationId: location1.id } });
   const loc2Count = await prisma.parkingSlot.count({ where: { locationId: location2.id } });
+  const loc3Count = await prisma.parkingSlot.count({ where: { locationId: location3.id } });
   await prisma.parkingLocation.update({ where: { id: location1.id }, data: { totalSlots: loc1Count } });
   await prisma.parkingLocation.update({ where: { id: location2.id }, data: { totalSlots: loc2Count } });
+  await prisma.parkingLocation.update({ where: { id: location3.id }, data: { totalSlots: loc3Count } });
 
   console.log('✅ Created land-owner parking slots');
 

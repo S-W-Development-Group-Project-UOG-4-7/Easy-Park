@@ -36,18 +36,27 @@ enum Role {
   WASHER
 }
 
+// Parking Location Status enum
+enum ParkingLocationStatus {
+  ACTIVATED
+  NOT_ACTIVATED
+}
+
 // Parking Location model - different parking areas
 model ParkingLocation {
-  id          String        @id @default(cuid())
-  name        String
-  address     String
-  description String?
-  totalSlots  Int
-  ownerId     String?
-  owner       User?         @relation("ParkingLocationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  slots       ParkingSlot[]
+  id           String                @id @default(cuid())
+  name         String
+  address      String
+  description  String?
+  totalSlots   Int
+  pricePerHour Float                 @default(300)
+  pricePerDay  Float                 @default(2000)
+  status       ParkingLocationStatus @default(NOT_ACTIVATED)
+  ownerId      String?
+  owner        User?                 @relation("ParkingLocationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  slots        ParkingSlot[]
 
   @@map("parking_locations")
 }
