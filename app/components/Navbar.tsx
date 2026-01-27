@@ -351,7 +351,7 @@ export default function Navbar() {
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
             <Link 
-              href="/customer/view-bookings" 
+              href="/customer" /* UPDATED: Changed from /customer/view-bookings to /customer */
               className="flex items-center gap-3 group"
             >
               <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-lime-400 via-emerald-400 to-cyan-400 text-slate-900 shadow-xl shadow-lime-500/20 ring-1 ring-lime-400/40 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
