@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../components/AuthProvider';
 import PaymentGatewayModal from '../../components/PaymentGatewayModal';
-import { Calendar, Clock, MapPin, Zap, Car, Shield, AlertCircle, CheckCircle, Loader2, Star, Wifi, Camera, Cctv, Droplets, Battery, Lock } from 'lucide-react';
+import { 
+  Calendar, Clock, MapPin, Zap, Car, Shield, AlertCircle, 
+  Loader2, Star, Droplets, Lock, Search 
+} from 'lucide-react';
 
 // --- Interfaces ---
 interface Hub {
@@ -17,7 +20,6 @@ interface Hub {
   totalSlots: number;
   availableSlots: number;
   amenities: string[];
-  distance?: number;
   rating?: number;
   openingHours: string;
   contact: string;
@@ -26,11 +28,9 @@ interface Hub {
 interface Slot {
   id: string;
   number: string;
-  type: 'EV' | 'CAR_WASH' | 'NORMAL' | 'PREMIUM' | 'DISABLED';
+  type: 'EV' | 'CAR_WASH' | 'NORMAL';
   status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE' | 'RESERVED';
   pricePerHour: number;
-  size?: 'SMALL' | 'MEDIUM' | 'LARGE';
-  features?: string[];
 }
 
 interface TimeSlot {
@@ -41,62 +41,52 @@ interface TimeSlot {
 
 export default function ViewBookingsPage() {
   const router = useRouter();
-  const auth = useAuth();
-  const user = auth?.user;
+  const { user } = useAuth();
 
-  // UI & Form State
+  // --- UI State ---
   const [hubs, setHubs] = useState<Hub[]>([]);
   const [selectedHubId, setSelectedHubId] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('1');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Data State
+  // --- Data State ---
   const [allSlots, setAllSlots] = useState<Slot[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
-  const [filterType, setFilterType] = useState<'ALL' | 'NORMAL' | 'EV' | 'PREMIUM' | 'DISABLED'>('ALL');
+  const [filterType, setFilterType] = useState<'ALL' | 'NORMAL' | 'EV' | 'CAR_WASH'>('ALL');
+  
+  // --- Loading & Status ---
   const [loading, setLoading] = useState(false);
   const [loadingHubs, setLoadingHubs] = useState(true);
   const [mounted, setMounted] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false); // Changed from confirmation modal
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [selectedHubDetails, setSelectedHubDetails] = useState<Hub | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Time slots config
-  const timeSlots: TimeSlot[] = useMemo(() => [
-    { time: '06:00 AM', label: '6:00 AM', isPeak: false },
-    { time: '07:00 AM', label: '7:00 AM', isPeak: true },
-    { time: '08:00 AM', label: '8:00 AM', isPeak: true },
-    { time: '09:00 AM', label: '9:00 AM', isPeak: true },
-    { time: '10:00 AM', label: '10:00 AM', isPeak: true },
-    { time: '11:00 AM', label: '11:00 AM', isPeak: false },
-    { time: '12:00 PM', label: '12:00 PM', isPeak: false },
-    { time: '01:00 PM', label: '1:00 PM', isPeak: false },
-    { time: '02:00 PM', label: '2:00 PM', isPeak: false },
-    { time: '03:00 PM', label: '3:00 PM', isPeak: false },
-    { time: '04:00 PM', label: '4:00 PM', isPeak: true },
-    { time: '05:00 PM', label: '5:00 PM', isPeak: true },
-    { time: '06:00 PM', label: '6:00 PM', isPeak: true },
-    { time: '07:00 PM', label: '7:00 PM', isPeak: true },
-    { time: '08:00 PM', label: '8:00 PM', isPeak: false },
-  ], []);
-
-  const durationOptions = [1, 2, 3, 4, 5, 6, 7, 8];
+  // --- Constants ---
   const ADVANCE_FEE_PER_SLOT = 150;
   const TODAY = new Date().toISOString().split('T')[0];
+  
+  const timeSlots: TimeSlot[] = useMemo(() => [
+    { time: '06:00', label: '06:00 AM', isPeak: false },
+    { time: '07:00', label: '07:00 AM', isPeak: true },
+    { time: '08:00', label: '08:00 AM', isPeak: true },
+    { time: '09:00', label: '09:00 AM', isPeak: true },
+    { time: '10:00', label: '10:00 AM', isPeak: true },
+    { time: '11:00', label: '11:00 AM', isPeak: false },
+    { time: '12:00', label: '12:00 PM', isPeak: false },
+    { time: '13:00', label: '01:00 PM', isPeak: false },
+    { time: '14:00', label: '02:00 PM', isPeak: false },
+    { time: '15:00', label: '03:00 PM', isPeak: false },
+    { time: '16:00', label: '04:00 PM', isPeak: true },
+    { time: '17:00', label: '05:00 PM', isPeak: true },
+    { time: '18:00', label: '06:00 PM', isPeak: true },
+    { time: '19:00', label: '07:00 PM', isPeak: true },
+    { time: '20:00', label: '08:00 PM', isPeak: false },
+  ], []);
 
-  const filteredHubs = useMemo(() => {
-    if (!searchQuery) return hubs;
-    const query = searchQuery.toLowerCase();
-    return hubs.filter(hub => 
-      hub.name.toLowerCase().includes(query) ||
-      hub.city.toLowerCase().includes(query)
-    );
-  }, [hubs, searchQuery]);
-
-  // 1. Fetch Hubs
+  // --- 1. Fetch Locations ---
   useEffect(() => {
     setMounted(true);
     const fetchHubs = async () => {
@@ -110,19 +100,18 @@ export default function ViewBookingsPage() {
             id: h.id,
             name: h.name,
             address: h.address || 'Sri Lanka',
-            city: h.name.split(' ')[0] || 'Colombo',
+            city: h.name.split(' ')[0] || 'City',
             pricePerHour: h.pricePerHour,
             totalSlots: h.totalSlots || 50,
-            availableSlots: Math.floor(Math.random() * 20) + 5,
-            amenities: ['CCTV', 'Security', 'Lighting'],
-            rating: 4.5,
+            availableSlots: h.availableSlots ?? 20,
+            amenities: ['CCTV', 'Security', 'EV'],
+            rating: 4.8,
             openingHours: '24/7',
-            contact: '011-2345678'
+            contact: h.contact || 'N/A'
           }));
           setHubs(mappedHubs);
           if (mappedHubs.length > 0) {
             setSelectedHubId(mappedHubs[0].id);
-            setSelectedHubDetails(mappedHubs[0]);
           }
         }
       } catch (err) {
@@ -133,15 +122,15 @@ export default function ViewBookingsPage() {
     };
     fetchHubs();
     setSelectedDate(TODAY);
-  }, [TODAY]);
+  }, []);
 
-  // Update selected hub details
+  // --- 2. Update Selected Hub ---
   useEffect(() => {
     const hub = hubs.find(h => h.id === selectedHubId);
     setSelectedHubDetails(hub || null);
   }, [selectedHubId, hubs]);
 
-  // 2. Fetch Slots
+  // --- 3. Fetch Slots ---
   const fetchSlots = useCallback(async () => {
     if (!selectedHubId || !selectedDate) return;
     setLoading(true);
@@ -150,17 +139,16 @@ export default function ViewBookingsPage() {
       const json = await res.json();
       
       if (json.success) {
+        // Map backend slot data
         const mappedSlots: Slot[] = json.data.map((s: any) => ({
           id: s.id,
           number: s.number,
           type: s.type, 
-          status: s.status,
-          pricePerHour: s.pricePerHour,
-          size: 'MEDIUM',
-          features: s.type === 'EV' ? ['Charging'] : []
+          status: s.status, // AVAILABLE, OCCUPIED, etc.
+          pricePerHour: s.pricePerHour
         }));
         setAllSlots(mappedSlots);
-        setSelectedSlots([]);
+        setSelectedSlots([]); // Clear selections on new fetch
       }
     } catch (err) {
       console.error("Slot fetch error", err);
@@ -173,41 +161,42 @@ export default function ViewBookingsPage() {
     fetchSlots();
   }, [fetchSlots]);
 
-  // Calculate totals
+  // --- Calculations ---
   const calculateTotals = useMemo(() => {
     if (!selectedHubDetails || selectedSlots.length === 0) {
-      return { totalPrice: 0, advanceToPay: 0, hourlyRate: 0, discount: 0 };
+      return { totalPrice: 0, advanceToPay: 0, hourlyRate: 0 };
     }
 
     const baseHourlyRate = selectedHubDetails.pricePerHour;
     const duration = Number(selectedDuration);
+    
+    // Check if peak hour
     const isPeakHour = timeSlots.find(t => t.time === selectedTime)?.isPeak || false;
-    
     const hourlyRate = isPeakHour ? Math.round(baseHourlyRate * 1.25) : baseHourlyRate;
-    const basePrice = selectedSlots.length * duration * hourlyRate;
-    const isEarlyBird = selectedTime && selectedTime.includes('AM') && parseInt(selectedTime) < 8;
-    const discount = isEarlyBird ? Math.round(basePrice * 0.1) : 0;
     
-    const totalPrice = basePrice - discount;
+    // Total = Slots * Duration * Rate
+    const totalPrice = selectedSlots.length * duration * hourlyRate;
+    
+    // Advance = Fixed Fee * Slots
     const advanceToPay = selectedSlots.length * ADVANCE_FEE_PER_SLOT;
 
-    return { totalPrice, advanceToPay, hourlyRate, discount, isPeakHour };
-  }, [selectedHubDetails, selectedSlots, selectedDuration, selectedTime, timeSlots]);
+    return { totalPrice, advanceToPay, hourlyRate, isPeakHour };
+  }, [selectedHubDetails, selectedSlots.length, selectedDuration, selectedTime, timeSlots]);
 
-  // Filter slots
   const filteredSlots = useMemo(() => {
     return filterType === 'ALL' ? allSlots : allSlots.filter(s => s.type === filterType);
   }, [allSlots, filterType]);
 
+  // --- Handlers ---
   const handleSlotClick = useCallback((slotId: string) => {
     const slot = allSlots.find(s => s.id === slotId);
     if (!slot || slot.status !== 'AVAILABLE') return;
 
     setSelectedSlots(prev => {
       if (prev.includes(slotId)) return prev.filter(id => id !== slotId);
-      if (prev.length >= 5) {
-        setBookingError('Maximum 5 slots');
-        setTimeout(() => setBookingError(null), 2000);
+      if (prev.length >= 3) {
+        setBookingError('Max 3 slots allowed per booking');
+        setTimeout(() => setBookingError(null), 3000);
         return prev;
       }
       return [...prev, slotId];
@@ -219,17 +208,22 @@ export default function ViewBookingsPage() {
       router.push('/sign-in');
       return;
     }
-    if (selectedSlots.length === 0) {
-      setBookingError('Select a slot');
-      setTimeout(() => setBookingError(null), 2000);
+    if (!selectedTime) {
+      setBookingError('Please select a start time');
+      setTimeout(() => setBookingError(null), 3000);
       return;
     }
-    setShowPaymentModal(true); // Open the Payment Gateway
+    if (selectedSlots.length === 0) {
+      setBookingError('Please select at least one slot');
+      setTimeout(() => setBookingError(null), 3000);
+      return;
+    }
+    setShowPaymentModal(true);
   };
 
-  // --- API CALL FOR BOOKING & PAYMENT ---
-  const processBooking = async () => {
-    if (!user) throw new Error("User not authenticated");
+  // --- Payment & Booking Process ---
+  const processBooking = async (paymentId?: string) => {
+    if (!user) return;
 
     const payload = {
       userId: user.id,
@@ -239,187 +233,253 @@ export default function ViewBookingsPage() {
       duration: Number(selectedDuration),
       slotIds: selectedSlots,
       totalAmount: calculateTotals.totalPrice,
-      advanceAmount: calculateTotals.advanceToPay, // This triggers the payment logic on backend
+      advanceAmount: calculateTotals.advanceToPay,
+      paymentId: paymentId || 'manual_bypass', // Link payment ID if available
     };
 
-    const res = await fetch('/api/bookings/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const res = await fetch('/api/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!data.success) {
-      throw new Error(data.error || 'Booking failed');
-    }
+      if (!data.success) {
+        throw new Error(data.error || 'Booking failed');
+      }
 
-    // Success! Redirect to my bookings
-    router.push('/customer/my-bookings');
-  };
-
-  // UI Components helpers...
-  const getSlotIcon = (type: Slot['type']) => {
-    switch (type) {
-      case 'EV': return <Zap className="w-3 h-3" />;
-      case 'CAR_WASH': return <Droplets className="w-3 h-3" />;
-      case 'PREMIUM': return <Shield className="w-3 h-3" />;
-      case 'DISABLED': return <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>;
-      default: return <Car className="w-3 h-3" />;
+      router.push('/customer/my-bookings');
+    } catch (err: any) {
+      setBookingError(err.message || 'Failed to create booking');
+      setTimeout(() => setBookingError(null), 4000);
     }
   };
-
-  const getSlotColor = (type: Slot['type']) => {
-    switch (type) {
-      case 'EV': return 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400';
-      case 'CAR_WASH': return 'bg-blue-500/20 border-blue-500/30 text-blue-400';
-      case 'PREMIUM': return 'bg-amber-500/20 border-amber-500/30 text-amber-400';
-      case 'DISABLED': return 'bg-purple-500/20 border-purple-500/30 text-purple-400';
-      default: return 'bg-slate-800/50 border-slate-700 text-slate-300';
-    }
-  };
-
-  const getAmenityIcon = (amenity: string) => {
-    switch (amenity.toLowerCase()) {
-      case 'security': return <Lock className="w-3 h-3" />;
-      case 'cctv': return <Cctv className="w-3 h-3" />;
-      default: return <Star className="w-3 h-3" />;
-    }
-  };
-
-  const formatCurrency = (amount: number) => `Rs. ${amount.toLocaleString('en-LK')}`;
 
   if (!mounted) return null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-32">
-      {/* Header */}
+      
+      {/* --- HEADER --- */}
       <motion.header 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative p-8 rounded-[3rem] bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 overflow-hidden shadow-2xl"
+        className="relative p-8 rounded-[2.5rem] bg-slate-900/60 border border-slate-800 backdrop-blur-xl overflow-hidden shadow-2xl"
       >
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-lime-500/10 via-transparent to-transparent" />
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="absolute inset-0 bg-gradient-to-r from-lime-500/10 via-transparent to-transparent pointer-events-none" />
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
             <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight">
-              Reserve <span className="text-lime-400">Parking</span>
+              Select <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-400 to-emerald-400">Parking Space</span>
             </h1>
-            <p className="text-slate-400 mt-2">Instant booking with secure advance payment.</p>
+            <p className="text-slate-400 mt-2 text-sm">Real-time availability. Instant reservation.</p>
           </div>
+          
           {selectedSlots.length > 0 && (
-            <div className="bg-slate-900/80 p-4 rounded-2xl border border-lime-400/30 text-right">
-              <p className="text-[10px] uppercase text-lime-400 font-bold tracking-widest">Advance Due</p>
-              <h3 className="text-2xl font-black text-white">Rs.{calculateTotals.advanceToPay}</h3>
-            </div>
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className="px-6 py-4 bg-slate-950/80 rounded-2xl border border-lime-500/30 text-right shadow-[0_0_20px_rgba(132,204,22,0.15)]"
+            >
+              <p className="text-[10px] uppercase text-lime-400 font-bold tracking-widest mb-1">Advance Payable</p>
+              <h3 className="text-3xl font-black text-white">Rs. {calculateTotals.advanceToPay}</h3>
+            </motion.div>
           )}
         </div>
       </motion.header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Panel */}
-        <aside className="lg:col-span-4 space-y-6 lg:sticky lg:top-24">
-          <div className="p-6 rounded-[2.5rem] bg-slate-900/50 border border-slate-800 backdrop-blur-xl space-y-6">
+        
+        {/* --- LEFT PANEL: CONTROLS --- */}
+        <aside className="lg:col-span-4 space-y-6 lg:sticky lg:top-24 h-fit">
+          <div className="p-6 rounded-[2rem] bg-slate-900/40 border border-slate-800 backdrop-blur-md space-y-6 shadow-lg">
             
-            {/* Hub Selector */}
+            {/* Location */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase">Location</label>
-              {loadingHubs ? <div className="text-lime-400 text-sm animate-pulse">Loading Hubs...</div> : (
-                <select
-                  value={selectedHubId}
-                  onChange={(e) => setSelectedHubId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-lime-400 outline-none"
-                >
-                  <option value="">Select a Hub</option>
-                  {filteredHubs.map(h => (
-                    <option key={h.id} value={h.id}>{h.name} ({h.city})</option>
-                  ))}
-                </select>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                <MapPin className="w-3 h-3 text-lime-400"/> Location
+              </label>
+              {loadingHubs ? (
+                <div className="h-12 w-full bg-slate-800/50 rounded-xl animate-pulse"/>
+              ) : (
+                <div className="relative">
+                  <select
+                    value={selectedHubId}
+                    onChange={(e) => setSelectedHubId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white text-sm focus:border-lime-500/50 focus:ring-1 focus:ring-lime-500/50 outline-none appearance-none transition-all"
+                  >
+                    {hubs.map(h => (
+                      <option key={h.id} value={h.id}>{h.name} — {h.city}</option>
+                    ))}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
+                </div>
               )}
             </div>
 
-            {/* Date & Time */}
+            {/* Date & Duration */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase">Date</label>
-                <input type="date" min={TODAY} value={selectedDate} onChange={e => setSelectedDate(e.target.value)} 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-lime-400" />
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <Calendar className="w-3 h-3 text-lime-400"/> Date
+                </label>
+                <input 
+                  type="date" 
+                  min={TODAY} 
+                  value={selectedDate} 
+                  onChange={e => setSelectedDate(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-white text-xs font-medium outline-none focus:border-lime-500/50" 
+                />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase">Duration</label>
-                <select value={selectedDuration} onChange={e => setSelectedDuration(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-lime-400">
-                  {durationOptions.map(h => <option key={h} value={h}>{h} Hour{h > 1 ? 's' : ''}</option>)}
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <Clock className="w-3 h-3 text-lime-400"/> Duration
+                </label>
+                <select 
+                  value={selectedDuration} 
+                  onChange={e => setSelectedDuration(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-white text-xs font-medium outline-none focus:border-lime-500/50"
+                >
+                  {[1, 2, 3, 4, 5, 6].map(h => <option key={h} value={h}>{h} Hr{h > 1 ? 's' : ''}</option>)}
                 </select>
               </div>
             </div>
 
             {/* Time Grid */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase">Start Time</label>
-              <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Start Time</label>
+              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                 {timeSlots.map(t => (
-                  <button key={t.time} onClick={() => setSelectedTime(t.time)}
-                    className={`px-2 py-2 rounded-lg text-[10px] font-bold border transition-all ${selectedTime === t.time ? 'bg-lime-400 text-slate-900 border-lime-400' : t.isPeak ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-slate-900 text-slate-400 border-slate-800'}`}>
+                  <button 
+                    key={t.time} 
+                    onClick={() => setSelectedTime(t.time)}
+                    className={`
+                      px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all
+                      ${selectedTime === t.time 
+                        ? 'bg-lime-400 text-slate-900 border-lime-400 shadow-[0_0_10px_rgba(132,204,22,0.4)]' 
+                        : t.isPeak 
+                          ? 'bg-slate-800/50 text-amber-400 border-amber-500/20 hover:border-amber-500/50' 
+                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-600 hover:text-white'
+                      }
+                    `}
+                  >
                     {t.label}
+                    {t.isPeak && <span className="block text-[8px] opacity-60 font-normal mt-0.5">Peak</span>}
                   </button>
                 ))}
               </div>
             </div>
 
-            <button onClick={handleBookNow} disabled={!selectedTime || selectedSlots.length === 0}
-              className="w-full py-4 bg-gradient-to-r from-lime-400 to-emerald-400 text-slate-900 font-bold rounded-xl hover:shadow-lg hover:shadow-lime-400/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-              Confirm & Pay Advance
+            {/* Submit Button */}
+            <button 
+              onClick={handleBookNow} 
+              disabled={!selectedTime || selectedSlots.length === 0}
+              className="w-full py-4 bg-gradient-to-r from-lime-400 to-emerald-400 text-slate-900 font-bold rounded-xl shadow-lg shadow-lime-500/20 hover:shadow-lime-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:scale-100"
+            >
+              Proceed to Payment
             </button>
+
           </div>
         </aside>
 
-        {/* Right Panel: Slots */}
+        {/* --- RIGHT PANEL: SLOTS --- */}
         <main className="lg:col-span-8 space-y-6">
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {['ALL', 'NORMAL', 'EV', 'PREMIUM'].map(t => (
-              <button key={t} onClick={() => setFilterType(t as any)}
-                className={`px-4 py-2 rounded-full text-xs font-bold border ${filterType === t ? 'bg-slate-800 text-white border-slate-700' : 'text-slate-500 border-transparent hover:text-white'}`}>
-                {t}
+          
+          {/* Filters */}
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {['ALL', 'NORMAL', 'EV', 'CAR_WASH'].map(t => (
+              <button 
+                key={t} 
+                onClick={() => setFilterType(t as any)}
+                className={`
+                  px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap
+                  ${filterType === t 
+                    ? 'bg-slate-800 text-white border-slate-600 shadow-md' 
+                    : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-900 hover:text-slate-300'
+                  }
+                `}
+              >
+                {t.replace('_', ' ')}
               </button>
             ))}
           </div>
 
-          {bookingError && (
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-red-500/10 border border-red-500/20 p-3 rounded-xl flex items-center gap-2 text-red-400 text-sm">
-              <AlertCircle className="w-4 h-4" />
-              {bookingError}
-            </motion.div>
-          )}
+          {/* Error Toast */}
+          <AnimatePresence>
+            {bookingError && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -20 }}
+                className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-center gap-3 text-rose-400 text-sm font-medium shadow-lg"
+              >
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                {bookingError}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <div className="p-8 rounded-[3rem] bg-slate-900/30 border border-slate-800 relative min-h-[400px]">
+          {/* Slot Grid (UPDATED: High Density) */}
+          <div className="p-6 rounded-[2.5rem] bg-slate-900/40 border border-slate-800 relative min-h-[500px]">
             {loading ? (
-              <div className="absolute inset-0 flex items-center justify-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
                 <Loader2 className="w-10 h-10 text-lime-400 animate-spin" />
+                <p className="text-slate-500 text-xs uppercase tracking-widest animate-pulse">Scanning Availability...</p>
               </div>
             ) : filteredSlots.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                <AlertCircle className="w-10 h-10 mb-2 opacity-50" />
-                <p>No slots available</p>
+              <div className="flex flex-col items-center justify-center h-full text-slate-600">
+                <Search className="w-12 h-12 mb-3 opacity-20" />
+                <p>No slots match criteria</p>
               </div>
             ) : (
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+              <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
                 {filteredSlots.map(slot => {
                   const isSel = selectedSlots.includes(slot.id);
                   const isAvail = slot.status === 'AVAILABLE';
+                  
+                  // Dynamic styles based on type/status
+                  let slotStyle = "bg-slate-950 border-slate-800 text-slate-500";
+                  if (slot.status === 'OCCUPIED') slotStyle = "bg-rose-950/20 border-rose-900/30 text-rose-800 opacity-60 cursor-not-allowed";
+                  else if (slot.status === 'MAINTENANCE') slotStyle = "bg-amber-950/20 border-amber-900/30 text-amber-800 opacity-60 cursor-not-allowed";
+                  else if (isSel) slotStyle = "bg-lime-400 border-lime-300 text-slate-900 shadow-[0_0_20px_rgba(132,204,22,0.4)] scale-105 z-10";
+                  else if (isAvail) slotStyle = "bg-slate-800/50 border-slate-700 text-slate-300 hover:border-lime-500/50 hover:text-white hover:bg-slate-800";
+
                   return (
-                    <button key={slot.id} disabled={!isAvail} onClick={() => handleSlotClick(slot.id)}
-                      className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center relative transition-all
-                        ${!isAvail ? 'bg-slate-950 border-slate-900 opacity-30 cursor-not-allowed' :
-                          isSel ? 'bg-lime-400 border-white scale-110 z-10 shadow-xl' :
-                          'bg-slate-800 border-slate-700 hover:border-lime-500/50'}`}>
-                      <span className={`text-xs font-bold ${isSel ? 'text-slate-900' : 'text-slate-300'}`}>{slot.number}</span>
-                      {slot.type === 'EV' && <Zap className={`w-3 h-3 absolute top-1 right-1 ${isSel ? 'text-slate-900' : 'text-lime-400'}`} />}
-                    </button>
+                    <motion.button 
+                      key={slot.id} 
+                      disabled={!isAvail} 
+                      onClick={() => handleSlotClick(slot.id)}
+                      whileHover={isAvail ? { scale: 1.05 } : {}}
+                      whileTap={isAvail ? { scale: 0.95 } : {}}
+                      className={`
+                        aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 relative transition-all duration-200
+                        ${slotStyle}
+                      `}
+                    >
+                      <span className="text-[8px] font-bold uppercase tracking-wide opacity-70">
+                        {slot.type === 'NORMAL' ? 'STD' : slot.type}
+                      </span>
+                      <span className="text-sm font-black">{slot.number}</span>
+                      
+                      {/* Icons */}
+                      {slot.type === 'EV' && <Zap className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-emerald-400'}`} />}
+                      {slot.type === 'CAR_WASH' && <Droplets className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-cyan-400'}`} />}
+                      
+                      {/* Status Dot */}
+                      {!isAvail && <div className="absolute top-1.5 left-1.5 w-1 h-1 rounded-full bg-current opacity-50"/>}
+                    </motion.button>
                   );
                 })}
               </div>
             )}
+            
+            {/* Legend */}
+            <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-6 text-[10px] uppercase font-bold text-slate-500">
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-700"/> Available</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-lime-400 shadow-[0_0_5px_rgba(132,204,22,0.8)]"/> Selected</span>
+              <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-900 opacity-50"/> Occupied</span>
+            </div>
           </div>
         </main>
       </div>
