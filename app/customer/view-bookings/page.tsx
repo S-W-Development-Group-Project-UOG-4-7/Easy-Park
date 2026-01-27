@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../components/AuthProvider';
 import PaymentGatewayModal from '../../components/PaymentGatewayModal';
 import { 
-  Calendar, Clock, MapPin, Zap, AlertCircle, 
+  Calendar, Clock, MapPin, Zap, Shield, AlertCircle, 
   Loader2, Search, Droplets
 } from 'lucide-react';
 
@@ -39,57 +39,50 @@ interface TimeSlot {
   isPeak: boolean;
 }
 
-// --- ✨ NEW: Premium "Black Sparkle" Background ---
-// A deep, dark background with subtle, slow-fading glimmers and texture.
-const BlackSparkleBackground = () => {
-  // Generate fixed particle data only once for SSR consistency
-  const particles = useMemo(() => {
-    return Array.from({ length: 40 }).map((_, i) => ({
-      id: i,
-      left: `${Math.random() * 100}%`,
+// --- ✨ NEW: Futuristic Background Component ---
+const FuturisticBackground = () => {
+  // Generate random stars only on client to avoid hydration mismatch
+  const [stars, setStars] = useState<{ top: string; left: string; delay: number; size: number }[]>([]);
+
+  useEffect(() => {
+    const starCount = 50;
+    const newStars = Array.from({ length: starCount }).map(() => ({
       top: `${Math.random() * 100}%`,
-      size: Math.random() * 2 + 0.5 + 'px', // Very small dots
+      left: `${Math.random() * 100}%`,
       delay: Math.random() * 5,
-      duration: Math.random() * 4 + 3, // Slow pulse (3-7s)
+      size: Math.random() * 2 + 1, // 1px to 3px
     }));
+    setStars(newStars);
   }, []);
 
   return (
-    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none bg-[#020617]">
-      {/* 1. Deep Onyx Gradient Base */}
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-[#050a14] to-slate-950" />
+    <div className="fixed inset-0 z-[-1] overflow-hidden bg-[#0a0a0f] pointer-events-none">
+      {/* 1. Cyber Grid */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,black,transparent)]" />
 
-      {/* 2. The "Sparkles": Tiny, subtle gray/white glimmers fading in and out */}
-      {particles.map((p) => (
+      {/* 2. Floating Nebula Orbs */}
+      <motion.div 
+        animate={{ x: [0, 100, 0], y: [0, -50, 0], opacity: [0.3, 0.6, 0.3] }}
+        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+        className="absolute top-[-10%] left-[-10%] w-[40vw] h-[40vw] bg-lime-500/10 rounded-full blur-[120px]"
+      />
+      <motion.div 
+        animate={{ x: [0, -100, 0], y: [0, 50, 0], opacity: [0.2, 0.5, 0.2] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] bg-cyan-500/10 rounded-full blur-[120px]"
+      />
+
+      {/* 3. Twinkling Stars */}
+      {stars.map((star, i) => (
         <motion.div
-          key={p.id}
-          className="absolute rounded-full bg-slate-300"
-          style={{
-            left: p.left,
-            top: p.top,
-            width: p.size,
-            height: p.size,
-            // Subtle glow, not too bright
-            boxShadow: '0 0 2px 1px rgba(255,255,255,0.1)' 
-          }}
-          initial={{ opacity: 0, scale: 0.5 }}
-          // Max opacity is low (0.4) to keep it subtle and "black" looking
-          animate={{ opacity: [0, 0.4, 0], scale: [0.5, 1.2, 0.5] }} 
-          transition={{
-            duration: p.duration,
-            repeat: Infinity,
-            delay: p.delay,
-            ease: "easeInOut",
-          }}
+          key={i}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 0] }}
+          transition={{ duration: 3, repeat: Infinity, delay: star.delay, ease: "easeInOut" }}
+          className="absolute rounded-full bg-white shadow-[0_0_4px_rgba(255,255,255,0.8)]"
+          style={{ top: star.top, left: star.left, width: star.size, height: star.size }}
         />
       ))}
-
-      {/* 3. Fine Grain Texture Overlay for premium feel */}
-      {/* Using a standard SVG noise pattern via data URI for reliability without external files */}
-      <div 
-        className="absolute inset-0 opacity-[0.05] mix-blend-overlay pointer-events-none"
-        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}
-      />
     </div>
   );
 };
@@ -104,7 +97,8 @@ export default function ViewBookingsPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('1');
-  
+  const [searchQuery, setSearchQuery] = useState('');
+
   // --- Data State ---
   const [allSlots, setAllSlots] = useState<Slot[]>([]);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
@@ -193,15 +187,16 @@ export default function ViewBookingsPage() {
       const json = await res.json();
       
       if (json.success) {
+        // Map backend slot data
         const mappedSlots: Slot[] = json.data.map((s: any) => ({
           id: s.id,
           number: s.number,
           type: s.type, 
-          status: s.status, 
+          status: s.status, // AVAILABLE, OCCUPIED, etc.
           pricePerHour: s.pricePerHour
         }));
         setAllSlots(mappedSlots);
-        setSelectedSlots([]); 
+        setSelectedSlots([]); // Clear selections on new fetch
       }
     } catch (err) {
       console.error("Slot fetch error", err);
@@ -223,10 +218,14 @@ export default function ViewBookingsPage() {
     const baseHourlyRate = selectedHubDetails.pricePerHour;
     const duration = Number(selectedDuration);
     
+    // Check if peak hour
     const isPeakHour = timeSlots.find(t => t.time === selectedTime)?.isPeak || false;
     const hourlyRate = isPeakHour ? Math.round(baseHourlyRate * 1.25) : baseHourlyRate;
     
+    // Total = Slots * Duration * Rate
     const totalPrice = selectedSlots.length * duration * hourlyRate;
+    
+    // Advance = Fixed Fee * Slots
     const advanceToPay = selectedSlots.length * ADVANCE_FEE_PER_SLOT;
 
     return { totalPrice, advanceToPay, hourlyRate, isPeakHour };
@@ -239,9 +238,7 @@ export default function ViewBookingsPage() {
   // --- Handlers ---
   const handleSlotClick = useCallback((slotId: string) => {
     const slot = allSlots.find(s => s.id === slotId);
-    const isAvailable = slot && slot.status.toUpperCase() === 'AVAILABLE';
-    
-    if (!isAvailable) return;
+    if (!slot || slot.status !== 'AVAILABLE') return;
 
     setSelectedSlots(prev => {
       if (prev.includes(slotId)) return prev.filter(id => id !== slotId);
@@ -272,6 +269,7 @@ export default function ViewBookingsPage() {
     setShowPaymentModal(true);
   };
 
+  // --- Payment & Booking Process ---
   const processBooking = async (paymentId?: string) => {
     if (!user) return;
 
@@ -311,19 +309,18 @@ export default function ViewBookingsPage() {
 
   return (
     <>
-      {/* 1. Black Sparkle Background */}
-      <BlackSparkleBackground />
-
-      {/* 2. Main Content Layer */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-32">
+      <FuturisticBackground />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-32">
         
-        {/* Header */}
+        {/* --- HEADER --- */}
         <motion.header 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative p-8 rounded-[2.5rem] bg-slate-900/60 border border-slate-800/60 backdrop-blur-2xl overflow-hidden shadow-2xl"
+          className="relative p-8 rounded-[2.5rem] bg-slate-900/40 border border-slate-800/60 backdrop-blur-2xl overflow-hidden shadow-2xl"
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-lime-500/10 via-transparent to-transparent pointer-events-none" />
+          {/* Subtle moving sheen */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_3s_infinite]" />
+          
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
             <div>
               <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
@@ -348,11 +345,11 @@ export default function ViewBookingsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Controls Panel */}
+          {/* --- LEFT PANEL: CONTROLS --- */}
           <aside className="lg:col-span-4 space-y-6 lg:sticky lg:top-24 h-fit">
             <div className="p-6 rounded-[2rem] bg-slate-900/40 border border-slate-800/60 backdrop-blur-xl space-y-6 shadow-lg">
               
-              {/* Location Selector */}
+              {/* Location */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                   <MapPin className="w-3 h-3 text-lime-400"/> Location
@@ -441,7 +438,7 @@ export default function ViewBookingsPage() {
             </div>
           </aside>
 
-          {/* --- SLOTS PANEL --- */}
+          {/* --- RIGHT PANEL: SLOTS --- */}
           <main className="lg:col-span-8 space-y-6">
             
             {/* Filters */}
@@ -494,15 +491,14 @@ export default function ViewBookingsPage() {
                 <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
                   {filteredSlots.map(slot => {
                     const isSel = selectedSlots.includes(slot.id);
-                    // Safe status check
-                    const isAvail = slot.status && slot.status.toUpperCase() === 'AVAILABLE';
+                    const isAvail = slot.status === 'AVAILABLE';
                     
                     // Dynamic styles
                     let slotStyle = "bg-slate-950 border-slate-800 text-slate-500";
-                    if (!isAvail && slot.status === 'OCCUPIED') slotStyle = "bg-rose-950/20 border-rose-900/30 text-rose-800/50 cursor-not-allowed";
-                    else if (!isAvail) slotStyle = "bg-slate-950/50 border-slate-800 text-slate-700 cursor-not-allowed";
+                    if (slot.status === 'OCCUPIED') slotStyle = "bg-rose-950/20 border-rose-900/30 text-rose-800/50 cursor-not-allowed";
+                    else if (slot.status === 'MAINTENANCE') slotStyle = "bg-amber-950/20 border-amber-900/30 text-amber-800/50 cursor-not-allowed";
                     else if (isSel) slotStyle = "bg-lime-400 border-lime-300 text-slate-900 shadow-[0_0_20px_rgba(132,204,22,0.6)] scale-110 z-10 font-bold";
-                    else slotStyle = "bg-slate-800/30 border-slate-700/50 text-slate-300 hover:border-lime-500/50 hover:text-white hover:bg-slate-800 hover:shadow-[0_0_10px_rgba(132,204,22,0.1)]";
+                    else if (isAvail) slotStyle = "bg-slate-800/30 border-slate-700/50 text-slate-300 hover:border-lime-500/50 hover:text-white hover:bg-slate-800 hover:shadow-[0_0_10px_rgba(132,204,22,0.1)]";
 
                     return (
                       <motion.button 
