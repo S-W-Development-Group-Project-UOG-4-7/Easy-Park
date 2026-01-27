@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #060d1f;
+  --foreground: #060D1F;
 }
 
 @theme inline {
@@ -14,7 +14,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #060d1f;
+    --background: #060D1F;
     --foreground: #ededed;
   }
 }
@@ -30,4 +30,4 @@ body {
   transition-property: background-color, border-color, color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 300ms;
-}  
+}

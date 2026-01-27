@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { AuthModalProvider } from "./components/AuthModalProvider";
+import { AuthProvider } from "./components/AuthProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,12 +34,16 @@ export default function RootLayout({
           antialiased
           min-h-screen
           bg-white text-slate-900
-          dark:bg-gradient-to-br dark:from-[#0F172A] dark:to-[#020617] dark:text-slate-100
+          dark:bg-linear-to-br dark:from-[#0F172A] dark:to-[#020617] dark:text-slate-100
           transition-colors duration-300
         `}
       >
         <ThemeProvider>
-          {children}
+          <AuthProvider>
+            <AuthModalProvider>
+              {children}
+            </AuthModalProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

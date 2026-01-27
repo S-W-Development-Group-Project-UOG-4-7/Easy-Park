@@ -1,345 +1,148 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-
-interface BookingSlot {
-  id: string;
-  number: string;
-  type: 'ev' | 'car-wash' | 'normal';
-}
-
-interface Booking {
-  bookingId: string;
-  date: string;
-  location: string;
-  time: string;
-  slots: BookingSlot[];
-  slotType: 'ev' | 'car-wash' | 'normal' | 'mixed';
-  status: 'pending' | 'paid' | 'completed' | 'cancelled';
-  createdAt: string;
-}
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 
 interface PaymentFormProps {
-  booking: Booking;
-  total: number; // Rs.150
+  booking: any;
+  total: number;
   onSuccess: (paymentId: string) => void;
   onClose: () => void;
 }
 
 export default function PaymentForm({ booking, total, onSuccess, onClose }: PaymentFormProps) {
-  const [formData, setFormData] = useState({
-    cardNumber: '',
-    cardName: '',
-    expiryDate: '',
-    cvv: '',
-    email: '',
-    phone: '',
-  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  // Form State
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [cvc, setCvc] = useState('');
 
-  const [agreed, setAgreed] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const dateLabel = useMemo(() => {
-    try {
-      return new Date(booking.date).toLocaleDateString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    } catch {
-      return booking.date;
-    }
-  }, [booking.date]);
-
-  const slotsLabel = useMemo(() => booking.slots.map((s) => s.number).join(', '), [booking.slots]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-
-    if (name === 'cardNumber') {
-      const digits = value.replace(/\D/g, '').slice(0, 16);
-      const spaced = digits.replace(/(.{4})/g, '$1 ').trim();
-      setFormData((p) => ({ ...p, cardNumber: spaced }));
-      return;
-    }
-
-    if (name === 'expiryDate') {
-      const digits = value.replace(/\D/g, '').slice(0, 4);
-      const formatted = digits.length <= 2 ? digits : `${digits.slice(0, 2)}/${digits.slice(2)}`;
-      setFormData((p) => ({ ...p, expiryDate: formatted }));
-      return;
-    }
-
-    if (name === 'cvv') {
-      setFormData((p) => ({ ...p, cvv: value.replace(/\D/g, '').slice(0, 3) }));
-      return;
-    }
-
-    setFormData((p) => ({ ...p, [name]: value }));
+  const formatCardNumber = (value: string) => {
+    return value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim().slice(0, 19);
   };
 
-  const canPay =
-    agreed &&
-    !isProcessing &&
-    formData.cardNumber.replace(/\s/g, '').length === 16 &&
-    formData.expiryDate.length === 5 &&
-    formData.cvv.length === 3 &&
-    formData.cardName.trim().length >= 2 &&
-    formData.email.trim().length >= 5 &&
-    formData.phone.trim().length >= 7;
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!agreed) return;
+    setError('');
+    setLoading(true);
 
-    setIsProcessing(true);
-    setTimeout(() => {
-      const paymentId = `PAY-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-      setIsProcessing(false);
-      onSuccess(paymentId);
-    }, 1000);
+    // Simple validation
+    if (cardNumber.length < 19 || cvc.length < 3 || expiry.length < 5) {
+      setError('Please enter valid card details');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/payments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookingId: booking.bookingId,
+          amount: total,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        onSuccess(data.data.id); // Pass the new payment ID back to parent
+      } else {
+        setError(data.error || 'Payment failed. Please try again.');
+      }
+    } catch (err) {
+      setError('Network error occurred.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/55"
-      onMouseDown={(e) => {
-        // close when clicking backdrop
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="
-          w-full sm:max-w-3xl
-          max-h-[92vh] sm:max-h-none
-          overflow-y-auto sm:overflow-visible
-          rounded-t-2xl sm:rounded-2xl
-          border border-slate-200/70 dark:border-slate-700/70
-          bg-white dark:bg-slate-900
-          shadow-2xl
-        "
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }} 
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden"
       >
-        {/* Header */}
-        <div className="px-4 sm:px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Pay Booking Fee</h2>
-          </div>
+        {/* Glow Effect */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-lime-500/10 blur-[80px] rounded-full -z-10" />
 
-          <button
-            onClick={onClose}
-            className="h-10 w-10 rounded-xl grid place-items-center hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-            aria-label="Close"
-          >
-            <svg
-              className="h-5 w-5 text-slate-600 dark:text-slate-300"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-white">Secure Payment</h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-white transition">✕</button>
         </div>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 md:grid-cols-[320px_1fr]">
-            {/* Left: Summary (compact) */}
-            <div className="border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 p-4 sm:p-5 bg-slate-50 dark:bg-slate-950/40">
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/40 p-4">
-                <p className="text-xs text-slate-500 dark:text-slate-400">Booking</p>
-                <p className="text-base font-bold text-slate-900 dark:text-white mt-1 truncate">
-                  {booking.location}
-                </p>
+        <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/50 mb-6 flex justify-between items-center">
+          <div>
+            <p className="text-xs text-slate-400">Total Amount</p>
+            <p className="text-lg font-bold text-white">Rs.{total}</p>
+          </div>
+          <div className="h-8 w-12 bg-white/10 rounded flex items-center justify-center text-xs font-mono text-slate-300">
+            VISA
+          </div>
+        </div>
 
-                <div className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                  <Row label="Date" value={dateLabel} />
-                  <Row label="Time" value={booking.time} />
-                  <Row label="Slots" value={slotsLabel} />
-                  <Row label="ID" value={booking.bookingId} mono />
-                </div>
+        <form onSubmit={handlePayment} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Card Number</label>
+            <input 
+              type="text" 
+              placeholder="0000 0000 0000 0000"
+              value={cardNumber}
+              onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono focus:border-lime-500 outline-none transition-colors"
+            />
+          </div>
 
-                <div className="mt-4 rounded-xl bg-lime-50 dark:bg-lime-500/10 border border-lime-200 dark:border-lime-400/20 p-3">
-                  <p className="text-xs text-slate-600 dark:text-slate-300">Pay now</p>
-                  <p className="text-2xl font-extrabold text-lime-700 dark:text-lime-300 leading-tight">
-                    Rs.{total}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Non-refundable booking fee
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-50 dark:bg-rose-950/20 p-3">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={agreed}
-                    onChange={(e) => setAgreed(e.target.checked)}
-                    className="mt-1 h-5 w-5"
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
-                      Non-refundable fee
-                    </p>
-                    <p className="text-xs text-rose-700/80 dark:text-rose-300/80 mt-1">
-                      You agree Rs.150 is not refunded if cancelled.
-                    </p>
-                  </div>
-                </label>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Expiry</label>
+              <input 
+                type="text" 
+                placeholder="MM/YY"
+                maxLength={5}
+                value={expiry}
+                onChange={(e) => setExpiry(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono focus:border-lime-500 outline-none transition-colors"
+              />
             </div>
-
-            {/* Right: Form (tight, 2 columns) */}
-            <div className="p-4 sm:p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Card Number"
-                  name="cardNumber"
-                  value={formData.cardNumber}
-                  onChange={handleInputChange}
-                  placeholder="1234 5678 9012 3456"
-                  inputMode="numeric"
-                  autoComplete="cc-number"
-                  maxLength={19}
-                />
-
-                <Input
-                  label="Cardholder Name"
-                  name="cardName"
-                  value={formData.cardName}
-                  onChange={handleInputChange}
-                  placeholder="Name on card"
-                  autoComplete="cc-name"
-                />
-
-                <Input
-                  label="Expiry"
-                  name="expiryDate"
-                  value={formData.expiryDate}
-                  onChange={handleInputChange}
-                  placeholder="MM/YY"
-                  inputMode="numeric"
-                  autoComplete="cc-exp"
-                  maxLength={5}
-                />
-
-                <Input
-                  label="CVV"
-                  name="cvv"
-                  value={formData.cvv}
-                  onChange={handleInputChange}
-                  placeholder="123"
-                  inputMode="numeric"
-                  autoComplete="cc-csc"
-                  maxLength={3}
-                />
-
-                <Input
-                  label="Email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  placeholder="you@email.com"
-                  type="email"
-                  autoComplete="email"
-                />
-
-                <Input
-                  label="Phone"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  placeholder="+94 7X XXX XXXX"
-                  autoComplete="tel"
-                />
-              </div>
-
-              <p className="mt-4 text-[11px] text-slate-500 dark:text-slate-400">
-                Tip: Press <span className="font-semibold">ESC</span> to close.
-              </p>
+            <div className="space-y-2">
+              <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">CVC</label>
+              <input 
+                type="password" 
+                placeholder="123"
+                maxLength={3}
+                value={cvc}
+                onChange={(e) => setCvc(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono focus:border-lime-500 outline-none transition-colors"
+              />
             </div>
           </div>
 
-          {/* Sticky footer actions (MOST convenient) */}
-          <div className="px-4 sm:px-5 py-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full sm:w-36 px-5 py-2.5 rounded-xl font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-            >
-              Cancel
-            </button>
+          {error && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-center">
+              <p className="text-xs text-rose-400 font-medium">{error}</p>
+            </div>
+          )}
 
-            <button
-              type="submit"
-              disabled={!canPay}
-              className={`w-full sm:w-44 px-5 py-2.5 rounded-xl font-semibold transition
-                ${
-                  canPay
-                    ? 'bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 hover:shadow-lg'
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
-                }`}
-            >
-              {isProcessing ? 'Processing…' : `Pay Now`}
-            </button>
-          </div>
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full py-4 bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 rounded-xl font-bold uppercase tracking-wide text-xs hover:shadow-[0_0_20px_rgba(132,204,22,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-4"
+          >
+            {loading ? (
+              <>
+                <div className="h-4 w-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                Processing...
+              </>
+            ) : (
+              `Pay Rs.${total}`
+            )}
+          </button>
         </form>
-      </div>
-    </div>
-  );
-}
-
-/* ---------- small helpers ---------- */
-
-function Row({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
-      <span
-        className={`text-xs text-right text-slate-700 dark:text-slate-200 ${
-          mono ? 'font-mono' : ''
-        }`}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function Input(props: any) {
-  const { label, ...rest } = props;
-  return (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-        {label}
-      </label>
-      <input
-        {...rest}
-        required
-        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700
-                   bg-white dark:bg-slate-900 text-slate-900 dark:text-white
-                   placeholder:text-slate-400 dark:placeholder:text-slate-500
-                   focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent transition"
-      />
+      </motion.div>
     </div>
   );
 }
