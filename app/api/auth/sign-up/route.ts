@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
 import prisma from '@/lib/prisma';
 import { hashPassword, generateToken } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
@@ -46,13 +47,15 @@ export async function POST(request: NextRequest) {
     // Create user
     const user = await prisma.users.create({
       data: {
+        id: uuidv4(),
         email: email.toLowerCase(),
         password: hashedPassword,
         fullName,
-        contactNo,
-        vehicleNumber,
-        nic,
+        contactNo: contactNo || null,
+        vehicleNumber: vehicleNumber || null,
+        nic: nic || null,
         role: userRole,
+        updatedAt: new Date(),
       },
       select: {
         id: true,
@@ -77,7 +80,8 @@ export async function POST(request: NextRequest) {
         user,
         token,
       },
-      'Account created successfully'
+      'Account created successfully',
+      201
     );
 
     // Set cookie
