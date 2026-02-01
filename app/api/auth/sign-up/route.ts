@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import prisma from '@/lib/prisma';
 import { hashPassword, generateToken } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
+import { ensureAdminSeeded } from '@/lib/admin-seed';
 
 /**
  * POST /api/auth/sign-up
@@ -10,8 +11,9 @@ import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-r
  */
 export async function POST(request: NextRequest) {
   try {
+    await ensureAdminSeeded();
     const body = await request.json();
-    const { email, password, fullName, contactNo, vehicleNumber, nic, role } = body;
+    const { email, password, fullName, contactNo, vehicleNumber, nic } = body;
 
     // 1. Basic Validation
     if (!email || !password || !fullName) {
@@ -44,10 +46,6 @@ export async function POST(request: NextRequest) {
     // 3. Hash password
     const hashedPassword = await hashPassword(password);
 
-    // 4. Validate role
-    const validRoles = ['ADMIN', 'CUSTOMER', 'COUNTER', 'LAND_OWNER', 'WASHER'];
-    const userRole = role && validRoles.includes(role) ? role : 'CUSTOMER';
-
     // 5. Create user
     // Added updatedAt: new Date() to satisfy the Prisma validation
     const user = await prisma.users.create({
@@ -59,7 +57,7 @@ export async function POST(request: NextRequest) {
         contactNo,
         vehicleNumber,
         nic,
-        role: userRole,
+        role: 'CUSTOMER',
         updatedAt: new Date(), // Manually providing current timestamp
       },
       select: {

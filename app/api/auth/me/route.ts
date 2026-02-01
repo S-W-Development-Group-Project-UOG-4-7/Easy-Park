@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { successResponse, unauthorizedResponse, serverErrorResponse } from '@/lib/api-response';
+import { ensureAdminSeeded } from '@/lib/admin-seed';
 
 /**
  * GET /api/auth/me
@@ -9,6 +10,7 @@ import { successResponse, unauthorizedResponse, serverErrorResponse } from '@/li
  */
 export async function GET(request: NextRequest) {
   try {
+    await ensureAdminSeeded();
     // 1. Get authenticated user payload from the request (Cookies/Header)
     const authUser = getAuthUser(request);
     

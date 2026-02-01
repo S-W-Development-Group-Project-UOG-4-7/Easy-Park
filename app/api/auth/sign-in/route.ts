@@ -2,9 +2,11 @@ import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
 import { verifyPassword, generateToken } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
+import { ensureAdminSeeded } from '@/lib/admin-seed';
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureAdminSeeded();
     const body = await request.json();
     const { email, password } = body;
 
@@ -49,10 +51,19 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
+    const emailLower = email.toLowerCase();
+    const adminEmail = (process.env.ADMIN_EMAIL || '').toLowerCase();
+
     // Find user in database
-    const user = await prisma.users.findUnique({
-      where: { email: email.toLowerCase() },
+    let user = await prisma.users.findUnique({
+      where: { email: emailLower },
     });
+
+    // If admin is trying to log in and isn't found, retry after seeding.
+    if (!user && adminEmail && emailLower === adminEmail) {
+      await ensureAdminSeeded();
+      user = await prisma.users.findUnique({ where: { email: emailLower } });
+    }
 
     if (!user) {
       return errorResponse('Invalid email or password', 401);

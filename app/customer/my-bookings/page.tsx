@@ -187,7 +187,7 @@ export default function MyBookingsPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5">
+    <div className="pt-20 sm:pt-24 space-y-4 sm:space-y-5">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3 sm:gap-4">
         <div>
