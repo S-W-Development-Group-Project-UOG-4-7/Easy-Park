@@ -34,6 +34,7 @@ interface FormData {
   role: 'COUNTER' | 'WASHER' | 'LAND_OWNER';
 }
 
+  // validations
 interface ValidationErrors {
   fullName?: string;
   email?: string;
