@@ -30,6 +30,18 @@ export interface DashboardStats {
   cancelledBookings: number;
 }
 
+export interface FullDashboardStats {
+  today: DashboardStats;
+  allTime: {
+    total: number;
+    pending: number;
+    accepted: number;
+    completed: number;
+    cancelled: number;
+  };
+  totalCustomers: number;
+}
+
 export interface NotificationAlert {
   id: string;
   type: 'new_booking' | 'urgent_reminder' | 'upcoming_slot';

@@ -419,6 +419,233 @@ async function main() {
 
   console.log('✅ Created payments');
 
+  // ==========================================
+  // WASHER DASHBOARD SEED DATA
+  // ==========================================
+
+  // Create Washer Customers (using emails matching the UI)
+  const washerCustomer1 = await prisma.washerCustomer.upsert({
+    where: { email: 'john@example.com' },
+    update: {},
+    create: {
+      name: 'John Doe',
+      email: 'john@example.com',
+      phone: '+94 77 123 4567',
+      vehicleDetails: 'AB-1234 - Sedan',
+      otherRelevantInfo: 'Regular customer, prefers interior detailing',
+    },
+  });
+
+  const washerCustomer2 = await prisma.washerCustomer.upsert({
+    where: { email: 'jane@example.com' },
+    update: {},
+    create: {
+      name: 'Jane Smith',
+      email: 'jane@example.com',
+      phone: '+94 77 234 5678',
+      vehicleDetails: 'CD-5678 - SUV',
+      otherRelevantInfo: 'Prefers eco-friendly products',
+    },
+  });
+
+  const washerCustomer3 = await prisma.washerCustomer.upsert({
+    where: { email: 'robert@example.com' },
+    update: {},
+    create: {
+      name: 'Robert Johnson',
+      email: 'robert@example.com',
+      phone: '+94 77 345 6789',
+      vehicleDetails: 'EF-9012 - Hatchback',
+    },
+  });
+
+  const washerCustomer4 = await prisma.washerCustomer.upsert({
+    where: { email: 'sarah@example.com' },
+    update: {},
+    create: {
+      name: 'Sarah Williams',
+      email: 'sarah@example.com',
+      phone: '+94 77 456 7890',
+      vehicleDetails: 'GH-3456 - Truck',
+      otherRelevantInfo: 'Heavy duty cleaning needed',
+    },
+  });
+
+  const washerCustomer5 = await prisma.washerCustomer.upsert({
+    where: { email: 'michael@example.com' },
+    update: {},
+    create: {
+      name: 'Michael Brown',
+      email: 'michael@example.com',
+      phone: '+94 77 567 8901',
+      vehicleDetails: 'IJ-7890 - Van',
+    },
+  });
+
+  console.log('✅ Created washer customers');
+
+  // Create Washer Bookings matching the UI screenshot
+  const washerNow = new Date();
+  
+  // Booking times for 2026-01-21
+  const slot0900 = new Date(washerNow.getFullYear(), washerNow.getMonth(), washerNow.getDate(), 9, 0, 0);
+  const slot1030 = new Date(washerNow.getFullYear(), washerNow.getMonth(), washerNow.getDate(), 10, 30, 0);
+  const slot1200 = new Date(washerNow.getFullYear(), washerNow.getMonth(), washerNow.getDate(), 12, 0, 0);
+  const slot1400 = new Date(washerNow.getFullYear(), washerNow.getMonth(), washerNow.getDate(), 14, 0, 0);
+  const slot1530 = new Date(washerNow.getFullYear(), washerNow.getMonth(), washerNow.getDate(), 15, 30, 0);
+
+  // John Doe - 09:00 AM - AB-1234 Sedan - PENDING
+  await prisma.washerBooking.upsert({
+    where: { id: 'wb-001' },
+    update: {
+      slotTime: slot0900,
+      vehicle: 'AB-1234',
+      serviceType: 'Full Car Wash',
+      status: 'PENDING',
+    },
+    create: {
+      id: 'wb-001',
+      customerId: washerCustomer1.id,
+      slotTime: slot0900,
+      vehicle: 'AB-1234',
+      serviceType: 'Full Car Wash',
+      status: 'PENDING',
+      notes: 'Sedan - Please clean the interior thoroughly',
+    },
+  });
+
+  // Jane Smith - 10:30 AM - CD-5678 SUV - ACCEPTED
+  await prisma.washerBooking.upsert({
+    where: { id: 'wb-002' },
+    update: {
+      slotTime: slot1030,
+      vehicle: 'CD-5678',
+      serviceType: 'Premium Detailing',
+      status: 'ACCEPTED',
+    },
+    create: {
+      id: 'wb-002',
+      customerId: washerCustomer2.id,
+      slotTime: slot1030,
+      vehicle: 'CD-5678',
+      serviceType: 'Premium Detailing',
+      status: 'ACCEPTED',
+      notes: 'SUV - Use eco-friendly products',
+    },
+  });
+
+  // Robert Johnson - 12:00 PM - EF-9012 Hatchback - COMPLETED
+  await prisma.washerBooking.upsert({
+    where: { id: 'wb-003' },
+    update: {
+      slotTime: slot1200,
+      vehicle: 'EF-9012',
+      serviceType: 'Quick Wash',
+      status: 'COMPLETED',
+    },
+    create: {
+      id: 'wb-003',
+      customerId: washerCustomer3.id,
+      slotTime: slot1200,
+      vehicle: 'EF-9012',
+      serviceType: 'Quick Wash',
+      status: 'COMPLETED',
+      notes: 'Hatchback',
+    },
+  });
+
+  // Sarah Williams - 02:00 PM - GH-3456 Truck - PENDING
+  await prisma.washerBooking.upsert({
+    where: { id: 'wb-004' },
+    update: {
+      slotTime: slot1400,
+      vehicle: 'GH-3456',
+      serviceType: 'Truck Wash',
+      status: 'PENDING',
+    },
+    create: {
+      id: 'wb-004',
+      customerId: washerCustomer4.id,
+      slotTime: slot1400,
+      vehicle: 'GH-3456',
+      serviceType: 'Truck Wash',
+      status: 'PENDING',
+      notes: 'Truck - Heavy mud needs extra cleaning',
+    },
+  });
+
+  // Michael Brown - 03:30 PM - IJ-7890 Van - PENDING
+  await prisma.washerBooking.upsert({
+    where: { id: 'wb-005' },
+    update: {
+      slotTime: slot1530,
+      vehicle: 'IJ-7890',
+      serviceType: 'Full Car Wash',
+      status: 'PENDING',
+    },
+    create: {
+      id: 'wb-005',
+      customerId: washerCustomer5.id,
+      slotTime: slot1530,
+      vehicle: 'IJ-7890',
+      serviceType: 'Full Car Wash',
+      status: 'PENDING',
+      notes: 'Van',
+    },
+  });
+
+  console.log('✅ Created washer bookings');
+
+  // Create Washer Notifications
+  await prisma.washerNotification.upsert({
+    where: { id: 'wn-001' },
+    update: {},
+    create: {
+      id: 'wn-001',
+      type: 'new_booking',
+      message: 'New booking from John Doe for Full Car Wash at 9:00 AM',
+      bookingId: 'wb-001',
+      read: false,
+    },
+  });
+
+  await prisma.washerNotification.upsert({
+    where: { id: 'wn-002' },
+    update: {},
+    create: {
+      id: 'wn-002',
+      type: 'upcoming_slot',
+      message: 'Upcoming slot in 30 minutes: Jane Smith - Premium Detailing',
+      bookingId: 'wb-002',
+      read: false,
+    },
+  });
+
+  await prisma.washerNotification.upsert({
+    where: { id: 'wn-003' },
+    update: {},
+    create: {
+      id: 'wn-003',
+      type: 'new_booking',
+      message: 'New booking from Sarah Williams for Truck Wash at 2:30 PM',
+      bookingId: 'wb-004',
+      read: true,
+    },
+  });
+
+  await prisma.washerNotification.upsert({
+    where: { id: 'wn-004' },
+    update: {},
+    create: {
+      id: 'wn-004',
+      type: 'urgent_reminder',
+      message: 'Reminder: You have 3 pending bookings for today!',
+      read: true,
+    },
+  });
+
+  console.log('✅ Created washer notifications');
+
   console.log('🎉 Seed completed successfully!');
 }
 
