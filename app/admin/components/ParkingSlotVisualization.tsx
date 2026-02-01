@@ -24,6 +24,7 @@ export default function ParkingSlotVisualization({ slots, propertyName }: Parkin
   const bookedSlots = slots.filter(s => s.isBooked).length;
   const availableSlots = slots.length - bookedSlots;
 
+{/* get colours */}
   const getSlotColor = (slot: ParkingSlot) => {
     if (slot.isBooked) {
       return 'bg-red-500 hover:bg-red-600 border-red-600';

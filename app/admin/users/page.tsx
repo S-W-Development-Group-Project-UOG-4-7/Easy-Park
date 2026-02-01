@@ -108,7 +108,7 @@ export default function AddUsersPage() {
   const fetchUsers = async () => {
     try {
       setLoadingUsers(true);
-      const response = await fetch('/api/users?roles=COUNTER,WASHER,LAND_OWNER', {
+      const response = await fetch('/api/users', {
         credentials: 'include',
       });
       const data = await response.json();
@@ -250,6 +250,10 @@ export default function AddUsersPage() {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
+      case 'ADMIN':
+        return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'CUSTOMER':
+        return 'bg-green-500/20 text-green-400 border-green-500/30';
       case 'COUNTER':
         return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
       case 'WASHER':
@@ -657,16 +661,26 @@ export default function AddUsersPage() {
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center gap-2">
                               <button
-                                onClick={() => handleDeleteUser(u.id, u.fullName)}
-                                disabled={deletingId === u.id}
-                                className="p-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                                title="Delete user"
+                                onClick={() => alert(`View user: ${u.fullName}\nEmail: ${u.email}\nRole: ${u.role}\nMobile: ${u.contactNo || 'N/A'}\nNIC: ${u.nic || 'N/A'}`)}
+                                className="px-3 py-1 rounded text-xs font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
+                                title="View user"
                               >
-                                {deletingId === u.id ? (
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-4 h-4" />
-                                )}
+                                View
+                              </button>
+                              <button
+                                onClick={() => alert('Edit functionality coming soon!')}
+                                className="px-3 py-1 rounded text-xs font-medium text-yellow-400 hover:bg-yellow-500/10 transition-colors"
+                                title="Edit user"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(u.id, u.fullName)}
+                                disabled={deletingId === u.id || u.role === 'ADMIN'}
+                                className="px-3 py-1 rounded text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={u.role === 'ADMIN' ? 'Cannot delete admin' : 'Delete user'}
+                              >
+                                {deletingId === u.id ? 'Deleting...' : 'Delete'}
                               </button>
                             </div>
                           </td>
