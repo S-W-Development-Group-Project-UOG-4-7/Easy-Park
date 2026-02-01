@@ -16,6 +16,7 @@ interface ParkingSlotVisualizationProps {
   propertyName: string;
 }
 
+{/* Parking Slot Visualization */}
 export default function ParkingSlotVisualization({ slots, propertyName }: ParkingSlotVisualizationProps) {
   const [selectedSlot, setSelectedSlot] = useState<ParkingSlot | null>(null);
   const [showModal, setShowModal] = useState(false);
