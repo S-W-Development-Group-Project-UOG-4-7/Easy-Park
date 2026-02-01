@@ -25,11 +25,10 @@ export async function GET(request: NextRequest) {
         fullName: true,
         contactNo: true,
         nic: true,
-        address: true,
         vehicleNumber: true,
-        vehicleType: true,
-        vehicleModel: true,
-        vehicleColor: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
         // Exclude password
       }
     });
@@ -61,11 +60,7 @@ export async function PUT(request: NextRequest) {
       fullName, 
       contactNo, 
       nic, 
-      address, 
-      vehicleNumber, 
-      vehicleType, 
-      vehicleModel, 
-      vehicleColor 
+      vehicleNumber
     } = body;
 
     // Determine user ID (using email from token to be safe)
@@ -82,11 +77,7 @@ export async function PUT(request: NextRequest) {
         fullName,
         contactNo,
         nic,
-        address,
         vehicleNumber,
-        vehicleType,
-        vehicleModel,
-        vehicleColor,
         updatedAt: new Date(),
       },
     });
@@ -139,7 +130,7 @@ export async function PATCH(request: NextRequest) {
     // Update password
     await prisma.users.update({
       where: { id: user.id },
-      data: { password: hashedPassword },
+      data: { password: hashedPassword, updatedAt: new Date() },
     });
 
     return successResponse(null, 'Password changed successfully');

@@ -69,12 +69,19 @@ export default function ProfilePage() {
         credentials: 'include',
       });
 
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      const data = contentType.includes('application/json')
+        ? await response.json()
+        : { success: false, error: await response.text() };
 
-      if (data.success) {
+      if (response.ok && data.success) {
         alert("Profile updated successfully!");
       } else {
-        alert("Failed to update profile: " + (data.error || "Unknown error"));
+        const msg =
+          data.error ||
+          data.message ||
+          (response.status === 401 ? 'Please sign in again.' : 'Unknown error');
+        alert("Failed to update profile: " + msg);
       }
     } catch (error) {
       console.error("Error saving profile:", error);

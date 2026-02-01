@@ -1,5 +1,9 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Navigation } from "./components/Navigation";
+import { AuthModalProvider } from "./components/AuthModalProvider";
+
+export const dynamic = "force-static";
 
 const stats = [
   { label: "Parking Spots", value: "10,000+" },
@@ -44,10 +48,11 @@ const features = [
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col text-slate-100">
-      <Navigation />
+    <AuthModalProvider>
+      <div className="flex min-h-screen flex-col text-slate-100">
+        <Navigation />
 
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-4 py-12 sm:px-6 lg:px-8">
+        <main className="mx-auto flex w-full max-w-6xl flex-col gap-20 px-4 py-12 sm:px-6 lg:px-8">
         {/* Hero */}
         <section
           id="home"
@@ -221,12 +226,14 @@ export default function Home() {
               <div
                 key={item.title}
                 className="group relative overflow-hidden rounded-3xl border border-slate-800/70 shadow-xl ring-1 ring-slate-900/60 transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-2xl"
-                style={{
-                  backgroundImage: `url(${item.image})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }}
               >
+                <Image
+                  src={item.image}
+                  alt={item.title}
+                  fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
+                  className="object-cover"
+                />
                 {/* Dark overlay for text readability */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 opacity-90 transition duration-300 group-hover:opacity-75" />
                 
@@ -349,9 +356,12 @@ export default function Home() {
 
           <div className="relative flex items-center justify-center">
             <div className="relative overflow-hidden rounded-[28px] border border-slate-800/70 shadow-2xl ring-1 ring-slate-900/60">
-              <img 
-                src="/About.png" 
-                alt="EasyPark Feature" 
+              <Image
+                src="/About.png"
+                alt="EasyPark Feature"
+                width={1200}
+                height={800}
+                sizes="(max-width: 1024px) 100vw, 50vw"
                 className="h-auto w-full object-cover"
               />
             </div>
@@ -373,9 +383,9 @@ export default function Home() {
             </div>
           ))}
         </section>
-      </main>
+        </main>
 
-      <footer className="mt-12 border-t border-slate-900 bg-[#000000] py-8 text-slate-200">
+        <footer className="mt-12 border-t border-slate-900 bg-[#000000] py-8 text-slate-200">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 px-4 sm:flex-row sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#84CC16] to-[#BEF264] text-slate-900 shadow-lg shadow-lime-200/60">
@@ -417,6 +427,7 @@ export default function Home() {
           <p className="text-sm font-semibold text-slate-400">© 2025 EasyPark</p>
         </div>
       </footer>
-    </div>
+      </div>
+    </AuthModalProvider>
   );
 }

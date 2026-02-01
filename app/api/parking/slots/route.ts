@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { errorResponse, serverErrorResponse } from '@/lib/api-response';
 
+// This endpoint depends on query params (locationId/date) so it must remain dynamic.
+// We still apply short caching via Cache-Control headers on the response.
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
@@ -72,7 +74,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ success: true, data: formattedSlots });
+    return NextResponse.json(
+      { success: true, data: formattedSlots },
+      { headers: { 'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=30' } }
+    );
 
   } catch (error: any) {
     console.error('[SLOTS_API_ERROR]', error);

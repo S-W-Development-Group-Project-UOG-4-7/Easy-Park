@@ -1,7 +1,7 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface User {
   id: string;
@@ -9,6 +9,7 @@ interface User {
   fullName: string;
   contactNo?: string;
   vehicleNumber?: string;
+  nic?: string;
   role: string;
 }
 
@@ -21,36 +22,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Role to redirect path mapping
-const ROLE_REDIRECT_MAP: Record<string, string> = {
-  ADMIN: '/admin',
-  CUSTOMER: '/customer',
-  COUNTER: '/counter',
-  LAND_OWNER: '/land-owner',
-  WASHER: '/washer',
-};
-
-// Protected route patterns
-const PROTECTED_ROUTES = ['/admin', '/counter', '/land-owner', '/washer'];
-
-// Public routes that don't require authentication
-const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up', '/customer'];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
-
-  // Check if current route is protected
-  const isProtectedRoute = PROTECTED_ROUTES.some(route => pathname.startsWith(route));
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const initializedRef = useRef(false);
+  const inFlightRef = useRef<AbortController | null>(null);
 
   // Fetch current user from API
   const refreshUser = useCallback(async () => {
     try {
+      inFlightRef.current?.abort();
+      const controller = new AbortController();
+      inFlightRef.current = controller;
+
       const response = await fetch('/api/auth/me', {
         credentials: 'include',
+        signal: controller.signal,
       });
       
       if (response.ok) {
@@ -63,6 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       return null;
     } catch (error) {
+      // Ignore aborted requests during fast navigation/unmounts.
+      if (error instanceof DOMException && error.name === 'AbortError') return null;
       console.error('Error fetching user:', error);
       setUser(null);
       return null;
@@ -93,35 +83,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [router]);
 
-  // Check authentication on mount and route changes
+  // Initial auth check (do it once; middleware handles route protection/redirects).
   useEffect(() => {
-    const checkAuth = async () => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    (async () => {
       setLoading(true);
-      const currentUser = await refreshUser();
-      
-      // If on a protected route and not authenticated, redirect to sign-in
-      if (isProtectedRoute && !currentUser) {
-        router.replace('/sign-in');
-      }
-      
+      await refreshUser();
       setLoading(false);
+    })();
+
+    return () => {
+      inFlightRef.current?.abort();
     };
-
-    checkAuth();
-  }, [pathname, isProtectedRoute, refreshUser, router]);
-
-  // Handle browser back/forward navigation
-  useEffect(() => {
-    const handlePopState = async () => {
-      const currentUser = await refreshUser();
-      if (isProtectedRoute && !currentUser) {
-        router.replace('/sign-in');
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [isProtectedRoute, refreshUser, router]);
+  }, [refreshUser, router]);
 
   return (
     <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>

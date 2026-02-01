@@ -189,7 +189,7 @@ export default function ViewBookingDetailsPage() {
     if (!matchesProperty) {
       const selectedProp = properties.find(p => p.id === selectedProperty);
       matchesProperty = booking.propertyId === selectedProperty || 
-        (selectedProp && booking.propertyName === selectedProp.name);
+        (selectedProp ? booking.propertyName === selectedProp.name : false);
     }
     
     // Date filter (client-side backup)

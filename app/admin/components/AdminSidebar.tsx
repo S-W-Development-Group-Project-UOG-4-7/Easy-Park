@@ -61,6 +61,7 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
                 onClick={onLinkClick}
                 className={`flex items-center space-x-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
                   active

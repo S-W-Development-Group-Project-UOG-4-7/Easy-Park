@@ -155,12 +155,14 @@ export async function POST(request: NextRequest) {
     // Create the booking with default PENDING status
     const booking = await prisma.washer_bookings.create({
       data: {
+        id: crypto.randomUUID(),
         customerId,
         slotTime: new Date(slotTime),
         vehicle,
         serviceType,
         notes,
         status: 'PENDING',
+        updatedAt: new Date(),
       },
       include: {
         washer_customers: {
@@ -178,10 +180,12 @@ export async function POST(request: NextRequest) {
     // Create notification for new booking
     await prisma.washer_notifications.create({
       data: {
+        id: crypto.randomUUID(),
         type: 'new_booking',
         message: `New booking from ${customer.name} for ${serviceType}`,
         bookingId: booking.id,
         read: false,
+        updatedAt: new Date(),
       },
     });
 

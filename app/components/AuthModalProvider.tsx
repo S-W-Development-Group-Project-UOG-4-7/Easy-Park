@@ -1,8 +1,18 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { SignInCard } from './auth/SignInCard';
-import { SignUpCard } from './auth/SignUpCard';
+import dynamic from 'next/dynamic';
+
+// Lazy-load heavy auth forms so they don't inflate every page's JS bundle.
+const SignInCard = dynamic(() => import('./auth/SignInCard').then((m) => m.SignInCard), {
+  ssr: false,
+  loading: () => <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-8 text-slate-300">Loading...</div>,
+});
+
+const SignUpCard = dynamic(() => import('./auth/SignUpCard').then((m) => m.SignUpCard), {
+  ssr: false,
+  loading: () => <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-8 text-slate-300">Loading...</div>,
+});
 
 type AuthModalMode = 'sign-in' | 'sign-up';
 

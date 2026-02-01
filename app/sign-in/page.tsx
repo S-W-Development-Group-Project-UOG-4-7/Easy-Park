@@ -1,5 +1,7 @@
 import { SignInCard } from "../components/auth/SignInCard";
 
+export const dynamic = "force-static";
+
 export default function SignInPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-b from-[#0F172A] to-[#020617]">

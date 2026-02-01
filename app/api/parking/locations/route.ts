@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { serverErrorResponse } from '@/lib/api-response';
 
-export const dynamic = 'force-dynamic';
+// Parking hub list changes infrequently; cache for fast navigation + fewer DB hits.
+export const revalidate = 60;
 
 export async function GET() {
   try {
@@ -21,7 +22,10 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ success: true, data: locations });
+    return NextResponse.json(
+      { success: true, data: locations },
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } }
+    );
 
   } catch (error: any) {
     console.error('[LOCATIONS_API_ERROR]', error);

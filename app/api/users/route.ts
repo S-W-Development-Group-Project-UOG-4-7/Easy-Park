@@ -1,19 +1,22 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { hashPassword } from '@/lib/auth';
 
 // GET all users
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
+    const normalizedRole = role ? role.toUpperCase() : null;
 
     const users = await prisma.users.findMany({
-      where: role ? { role } : undefined,
+      where: normalizedRole ? { role: normalizedRole as any } : undefined,
       select: {
         id: true,
-        name: true,
+        fullName: true,
         email: true,
-        phone: true,
+        contactNo: true,
+        vehicleNumber: true,
         role: true,
         createdAt: true,
         _count: {
@@ -29,9 +32,13 @@ export async function GET(request: Request) {
 
     const transformedUsers = users.map((user) => ({
       id: user.id,
-      name: user.name,
+      // Keep both keys to avoid breaking older UI code.
+      name: user.fullName,
+      fullName: user.fullName,
       email: user.email,
-      phone: user.phone,
+      phone: user.contactNo,
+      contactNo: user.contactNo,
+      vehicleNumber: user.vehicleNumber,
       role: user.role,
       createdAt: user.createdAt,
       totalBookings: user._count.bookings,
@@ -51,11 +58,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, email, phone, role } = body;
+    const { fullName, email, password, contactNo, vehicleNumber, role } = body;
 
-    if (!name || !email) {
+    if (!fullName || !email || !password) {
       return NextResponse.json(
-        { error: 'Name and email are required' },
+        { error: 'fullName, email, and password are required' },
         { status: 400 }
       );
     }
@@ -72,12 +79,29 @@ export async function POST(request: Request) {
       );
     }
 
+    const hashedPassword = await hashPassword(password);
+    const now = new Date();
+
     const user = await prisma.users.create({
       data: {
-        name,
+        id: crypto.randomUUID(),
+        fullName,
         email,
-        phone,
-        role: role || 'customer',
+        password: hashedPassword,
+        contactNo,
+        vehicleNumber,
+        role: (role ? String(role).toUpperCase() : 'CUSTOMER') as any,
+        updatedAt: now,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        contactNo: true,
+        vehicleNumber: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 

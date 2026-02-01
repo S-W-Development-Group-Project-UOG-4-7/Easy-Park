@@ -71,7 +71,7 @@ export const WasherBookingsTable: React.FC<WasherBookingsTableProps> = ({
     }
   };
 
-  const handleBulkAction = async (action: 'accept' | 'complete') => {
+  const handleBulkAction = async (action: 'accept' | 'confirm') => {
     if (selectedBookings.size === 0) return;
     
     try {
@@ -148,7 +148,7 @@ export const WasherBookingsTable: React.FC<WasherBookingsTableProps> = ({
               {actionInProgress === 'bulk' ? 'Processing...' : 'Accept All'}
             </button>
             <button
-              onClick={() => handleBulkAction('complete')}
+              onClick={() => handleBulkAction('confirm')}
               disabled={actionInProgress === 'bulk'}
               className="px-4 py-2 rounded-lg bg-green-500 text-white font-medium text-sm hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >

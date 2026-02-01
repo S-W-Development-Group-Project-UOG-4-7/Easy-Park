@@ -41,6 +41,7 @@ export function SignInCard() {
     try {
       const response = await fetch('/api/auth/sign-in', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },

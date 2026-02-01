@@ -96,12 +96,14 @@ export async function POST(request: NextRequest) {
     const result = await prisma.$transaction(async (tx) => {
       const payment = await tx.payments.create({
         data: {
-          bookingId,
+          id: crypto.randomUUID(),
+          bookings: { connect: { id: bookingId } },
           amount,
           method: method || 'CARD',
           status: 'COMPLETED',
           transactionId,
           paidAt: new Date(),
+          updatedAt: new Date(),
         },
       });
 
@@ -110,6 +112,7 @@ export async function POST(request: NextRequest) {
         data: {
           status: 'PAID',
           paidAmount: amount,
+          updatedAt: new Date(),
         },
       });
 

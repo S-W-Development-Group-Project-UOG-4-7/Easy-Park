@@ -1,10 +1,11 @@
+'use client';
+
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
 import AdminSidebar from './AdminSidebar';
 import { useTheme } from '../context/ThemeContext';
 import { Moon, Sun, Menu, X } from 'lucide-react';
 
-export default function AdminLayout() {
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -40,7 +41,7 @@ export default function AdminLayout() {
           </div>
         </div>
         <main className="p-4 md:p-6">
-          <Outlet />
+          {children}
         </main>
       </div>
     </div>

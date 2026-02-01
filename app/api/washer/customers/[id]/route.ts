@@ -35,11 +35,11 @@ export async function GET(
     const customer = await prisma.washer_customers.findUnique({
       where: { id },
       include: {
-        bookings: {
+        washer_bookings: {
           orderBy: { slotTime: 'desc' },
         },
         _count: {
-          select: { bookings: true },
+          select: { washer_bookings: true },
         },
       },
     });
@@ -56,7 +56,7 @@ export async function GET(
     });
 
     const stats = {
-      total: customer.bookings.length,
+      total: customer.washer_bookings.length,
       pending: 0,
       accepted: 0,
       completed: 0,
@@ -134,12 +134,13 @@ export async function PATCH(
     if (phone !== undefined) updateData.phone = phone;
     if (vehicleDetails !== undefined) updateData.vehicleDetails = vehicleDetails;
     if (otherRelevantInfo !== undefined) updateData.otherRelevantInfo = otherRelevantInfo;
+    updateData.updatedAt = new Date();
 
     const updatedCustomer = await prisma.washer_customers.update({
       where: { id },
       data: updateData,
       include: {
-        bookings: {
+        washer_bookings: {
           orderBy: { slotTime: 'desc' },
           take: 5,
         },
@@ -179,7 +180,7 @@ export async function DELETE(
       where: { id },
       include: {
         _count: {
-          select: { bookings: true },
+          select: { washer_bookings: true },
         },
       },
     });
@@ -189,7 +190,7 @@ export async function DELETE(
     }
 
     // Check if customer has any bookings
-    if (customer._count.bookings > 0) {
+    if (customer._count.washer_bookings > 0) {
       return errorResponse(
         'Cannot delete customer with existing bookings. Delete all bookings first.',
         400

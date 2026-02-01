@@ -67,6 +67,7 @@ export function SignUpCard() {
     try {
       const response = await fetch('/api/auth/sign-up', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },

@@ -31,7 +31,7 @@ type Filter = 'all' | 'pending' | 'paid' | 'completed' | 'cancelled';
 
 export default function MyBookingsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   
   // State
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -65,13 +65,23 @@ export default function MyBookingsPage() {
 
   // --- Fetch Bookings ---
   const fetchBookings = async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     try {
       if (bookings.length === 0) setLoading(true); 
-      const res = await fetch('/api/bookings/list');
-      const data = await res.json();
-      if (data.success) {
-        setBookings(data.data);
+      const res = await fetch('/api/bookings/list', { credentials: 'include' });
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json')
+        ? await res.json()
+        : { success: false, error: await res.text() };
+      if (res.ok && data.success) {
+        setBookings(data.data || []);
+      } else if (res.status === 401) {
+        router.replace('/sign-in');
+      } else {
+        console.error('Failed to load bookings', data.error || data.message || res.statusText);
       }
     } catch (error) {
       console.error("Failed to load bookings", error);
@@ -81,8 +91,9 @@ export default function MyBookingsPage() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
     fetchBookings();
-  }, [user]);
+  }, [authLoading, user]);
 
   // --- Handlers ---
 

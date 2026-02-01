@@ -4,20 +4,32 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useAuth } from '../components/AuthProvider'; 
 import { ArrowRight, Plus, Calendar, Settings, Car, MapPin } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function CustomerDashboard() {
   const { user } = useAuth();
-  const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    setMounted(true);
+    // Avoid hydration mismatches from Date() while still rendering instantly.
+    setNow(new Date());
   }, []);
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
+  const greeting = useMemo(() => {
+    if (!now) return 'Welcome';
+    const hour = now.getHours();
+    return hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
+  }, [now]);
 
-  if (!mounted) return null;
+  const todayText = useMemo(() => {
+    if (!now) return '';
+    return now.toLocaleDateString(undefined, {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }, [now]);
 
   return (
     <div className="relative min-h-screen bg-slate-950 overflow-hidden flex flex-col">
@@ -66,7 +78,7 @@ export default function CustomerDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
             {/* 1. Book a Slot */}
-            <Link href="/customer/view-bookings" className="group">
+            <Link href="/customer/view-bookings" prefetch className="group">
               <div className="h-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-lime-400/50 backdrop-blur-md p-8 rounded-3xl transition-all duration-300 relative overflow-hidden group-hover:-translate-y-1 group-hover:shadow-2xl group-hover:shadow-lime-900/20">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
                   <MapPin className="w-32 h-32 text-lime-400" />
@@ -87,7 +99,7 @@ export default function CustomerDashboard() {
             </Link>
 
             {/* 2. My Bookings */}
-            <Link href="/customer/my-bookings" className="group">
+            <Link href="/customer/my-bookings" prefetch className="group">
               <div className="h-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-blue-400/50 backdrop-blur-md p-8 rounded-3xl transition-all duration-300 relative overflow-hidden group-hover:-translate-y-1 group-hover:shadow-2xl group-hover:shadow-blue-900/20">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Calendar className="w-32 h-32 text-blue-400" />
@@ -108,7 +120,7 @@ export default function CustomerDashboard() {
             </Link>
 
             {/* 3. My Profile */}
-            <Link href="/customer/profile" className="group">
+            <Link href="/customer/profile" prefetch className="group">
               <div className="h-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-400/50 backdrop-blur-md p-8 rounded-3xl transition-all duration-300 relative overflow-hidden group-hover:-translate-y-1 group-hover:shadow-2xl group-hover:shadow-emerald-900/20">
                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
                   <Car className="w-32 h-32 text-emerald-400" />
@@ -140,7 +152,9 @@ export default function CustomerDashboard() {
             System Operational
           </div>
           <div className="hidden sm:block">EasyPark Sri Lanka © {new Date().getFullYear()}</div>
-          <div className="text-slate-400 font-bold">{new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+          <div className="text-slate-400 font-bold" suppressHydrationWarning>
+            {todayText}
+          </div>
         </div>
       </div>
 

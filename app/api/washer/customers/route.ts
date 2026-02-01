@@ -62,12 +62,12 @@ export async function GET(request: NextRequest) {
     const customers = await prisma.washer_customers.findMany({
       where: whereClause,
       include: {
-        bookings: {
+        washer_bookings: {
           orderBy: { createdAt: 'desc' },
           take: 5, // Include only recent bookings
         },
         _count: {
-          select: { bookings: true },
+          select: { washer_bookings: true },
         },
       },
       orderBy: { name: 'asc' },
@@ -117,11 +117,13 @@ export async function POST(request: NextRequest) {
     // Create the customer
     const customer = await prisma.washer_customers.create({
       data: {
+        id: crypto.randomUUID(),
         name,
         email,
         phone,
         vehicleDetails,
         otherRelevantInfo,
+        updatedAt: new Date(),
       },
     });
 

@@ -68,9 +68,9 @@ export async function GET(request: NextRequest) {
 
     // Filter by property
     if (propertyId) {
-      whereClause.slots = {
+      whereClause.booking_slots = {
         some: {
-          slot: {
+          parking_slots: {
             locationId: propertyId,
           },
         },
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     // Search by customer name or email
     if (search) {
-      whereClause.user = {
+      whereClause.users = {
         OR: [
           { fullName: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
@@ -144,8 +144,10 @@ export async function GET(request: NextRequest) {
 
     // Transform to Admin Booking Details format
     const adminBookings = filteredBookings.map((booking) => {
-      const firstSlot = booking.slots[0]?.slot;
-      const property = firstSlot?.location;
+      const firstSlot = booking.booking_slots[0]?.parking_slots;
+      const property = firstSlot?.parking_locations;
+      const user = booking.users;
+      const payment = booking.payments;
 
       return {
         // View Booking Details Table Fields
@@ -159,23 +161,23 @@ export async function GET(request: NextRequest) {
         endTime: booking.endTime,
         slotNumber: firstSlot?.number || 'N/A',
         slotZone: firstSlot?.zone || 'A',
-        userId: booking.user.id,
-        customerName: booking.user.fullName,
-        customerEmail: booking.user.email,
-        customerPhone: booking.user.contactNo,
-        vehicleNumber: booking.user.vehicleNumber,
+        userId: user.id,
+        customerName: user.fullName,
+        customerEmail: user.email,
+        customerPhone: user.contactNo,
+        vehicleNumber: user.vehicleNumber,
         bookingStatus: booking.status,
         // Additional useful fields
         duration: booking.duration,
         totalAmount: booking.totalAmount,
         paidAmount: booking.paidAmount,
-        paymentStatus: booking.payment?.status || 'PENDING',
-        paymentMethod: booking.payment?.method || null,
-        allSlots: booking.slots.map(bs => ({
-          id: bs.slot.id,
-          number: bs.slot.number,
-          zone: bs.slot.zone,
-          type: bs.slot.type,
+        paymentStatus: payment?.status || 'PENDING',
+        paymentMethod: payment?.method || null,
+        allSlots: booking.booking_slots.map((bs) => ({
+          id: bs.parking_slots.id,
+          number: bs.parking_slots.number,
+          zone: bs.parking_slots.zone,
+          type: bs.parking_slots.type,
         })),
         createdAt: booking.createdAt,
         updatedAt: booking.updatedAt,

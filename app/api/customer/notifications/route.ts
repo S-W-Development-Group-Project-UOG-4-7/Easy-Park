@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
 
     // 5. Check for washer-relevant notifications (car wash service)
     const washerServices = bookings.filter(b => 
-      b.booking_slots.some(bs => bs.parking_slots.type === 'car-wash')
+      b.booking_slots.some(bs => bs.parking_slots.type === 'CAR_WASH')
     );
     
     washerServices.forEach((booking, index) => {

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Calendar, Clipboard, LogOut } from 'lucide-react';
 
 // --- Types ---
 interface Notification {
@@ -42,7 +43,8 @@ export default function Navbar() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
-  const [notificationSound, setNotificationSound] = useState<HTMLAudioElement | null>(null);
+  const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
+  const notificationsRef = useRef<Notification[]>([]);
   
   // Toast State
   const [latestNotification, setLatestNotification] = useState<Notification | null>(null);
@@ -58,8 +60,8 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
 
   const navLinks = [
-    { href: '/customer/view-bookings', label: 'Book Now', icon: '📅' },
-    { href: '/customer/my-bookings', label: 'My Bookings', icon: '📋' },
+    { href: '/customer/view-bookings', label: 'Book Now', icon: Calendar },
+    { href: '/customer/my-bookings', label: 'My Bookings', icon: Clipboard },
   ];
 
   // --- Effects ---
@@ -78,9 +80,13 @@ export default function Navbar() {
     if (typeof window !== 'undefined') {
       const audio = new Audio('/notification.mp3');
       audio.volume = 0.4;
-      setNotificationSound(audio);
+      notificationSoundRef.current = audio;
     }
   }, []);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -102,7 +108,8 @@ export default function Navbar() {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      if (notifications.length === 0) setLoadingNotifications(true);
+      const prevNotifications = notificationsRef.current;
+      if (prevNotifications.length === 0) setLoadingNotifications(true);
       
       const res = await fetch('/api/customer/notifications');
       const data = await res.json();
@@ -111,11 +118,11 @@ export default function Navbar() {
         const newNotifications: Notification[] = data.data;
         const newUnreadCount = newNotifications.filter((n) => !n.read).length;
         
-        if (newNotifications.length > notifications.length && notifications.length > 0) {
+        if (newNotifications.length > prevNotifications.length && prevNotifications.length > 0) {
            const newest = newNotifications[0];
-           if (!newest.read && newest.id !== notifications[0]?.id) {
+           if (!newest.read && newest.id !== prevNotifications[0]?.id) {
              setLatestNotification(newest);
-             if (notificationSound) notificationSound.play().catch(() => {});
+             notificationSoundRef.current?.play().catch(() => {});
              setTimeout(() => setLatestNotification(null), 5000);
            }
         }
@@ -128,11 +135,14 @@ export default function Navbar() {
     } finally {
       setLoadingNotifications(false);
     }
-  }, [notifications.length, notificationSound]);
+  }, []);
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000);
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchNotifications();
+    }, 30000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
@@ -184,16 +194,25 @@ export default function Navbar() {
     setSigningOut(true);
     setShowSignOutModal(false);
     try {
-      await fetch('/api/auth/sign-out', { method: 'POST' });
+      await fetch('/api/auth/sign-out', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      if ('caches' in window) {
-        caches.keys().then(names => names.forEach(name => caches.delete(name)));
-      }
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+
       router.replace('/');
-      router.refresh();
     } catch (error) {
       console.error('Sign out error:', error);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
       router.replace('/');
     } finally {
       setSigningOut(false);
@@ -233,27 +252,39 @@ export default function Navbar() {
     return date.toLocaleDateString();
   };
 
-  const renderLinks = (direction: 'row' | 'col') => (
-    <div className={direction === 'row' ? 'hidden items-center gap-1 md:flex' : 'flex flex-col gap-2 md:hidden'}>
-      {navLinks.map((link) => {
-        const isActive = pathname.startsWith(link.href);
-        return (
-          <Link
-            key={`${link.href}-${link.label}`}
-            href={link.href}
-            onClick={() => setOpen(false)}
-            className={`${direction === 'col' ? `relative w-full rounded-2xl px-4 py-3 text-base font-semibold border transition-all duration-300 flex items-center gap-3 ${isActive ? 'border-lime-500/50 bg-gradient-to-r from-lime-500/10 to-emerald-500/10 text-lime-300' : 'border-slate-800/70 bg-[#111827]/40 text-slate-100 hover:bg-[#111827]/60'}` : `relative px-4 py-2.5 text-sm font-semibold transition-all duration-300 rounded-xl ${isActive ? 'bg-gradient-to-r from-lime-500/20 to-emerald-500/20 text-white border border-lime-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}`}
-          >
-            <span className="flex items-center gap-2">
-              <span className="text-base">{link.icon}</span>{link.label}
-              {isActive && direction === 'col' && <span className="ml-auto text-xs font-bold px-2 py-1 rounded-full bg-lime-500/20 text-lime-300">ACTIVE</span>}
-            </span>
-            {isActive && direction === 'row' && <motion.span layoutId="nav-underline" className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-lime-400 to-emerald-400 rounded-full" />}
-          </Link>
-        );
-      })}
-    </div>
-  );
+  const renderLinks = (direction: 'row' | 'col') => {
+    const isCustomerRoute = pathname.startsWith('/customer');
+    return (
+      <div className={direction === 'row' ? 'hidden items-center gap-1 md:flex' : 'flex flex-col gap-2 md:hidden'}>
+        {navLinks.map((link) => {
+          const isActive = pathname.startsWith(link.href);
+          const Icon = link.icon as any;
+
+          // Icon color classes: only apply custom customer palette on customer dashboard
+          const iconBase = isCustomerRoute ? 'text-lime-400' : 'text-slate-400';
+          const iconHover = isCustomerRoute ? 'hover:text-lime-300' : 'hover:text-white';
+          const iconActive = isCustomerRoute ? 'text-lime-200' : 'text-white';
+          const iconClasses = `${iconBase} ${iconHover} transition-colors duration-200 ease-in-out` + (isActive ? ` ${iconActive}` : '');
+
+          return (
+            <Link
+              key={`${link.href}-${link.label}`}
+              href={link.href}
+              prefetch
+              onClick={() => setOpen(false)}
+              className={`${direction === 'col' ? `relative w-full rounded-2xl px-4 py-3 text-base font-semibold border transition-all duration-300 flex items-center gap-3 ${isActive ? 'border-lime-500/50 bg-gradient-to-r from-lime-500/10 to-emerald-500/10 text-lime-300' : 'border-slate-800/70 bg-[#111827]/40 text-slate-100 hover:bg-[#111827]/60'}` : `relative px-4 py-2.5 text-sm font-semibold transition-all duration-300 rounded-xl ${isActive ? 'bg-gradient-to-r from-lime-500/20 to-emerald-500/20 text-white border border-lime-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}`}
+            >
+              <span className="flex items-center gap-2">
+                <span className={`text-base ${iconClasses}`}><Icon className="h-5 w-5" /></span>{link.label}
+                {isActive && direction === 'col' && <span className="ml-auto text-xs font-bold px-2 py-1 rounded-full bg-lime-500/20 text-lime-300">ACTIVE</span>}
+              </span>
+              {isActive && direction === 'row' && <motion.span layoutId="nav-underline" className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-lime-400 to-emerald-400 rounded-full" />}
+            </Link>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -261,14 +292,27 @@ export default function Navbar() {
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
-            <Link href="/customer" className="flex items-center gap-3 group">
-              <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-lime-400 via-emerald-400 to-cyan-400 text-slate-900 shadow-xl shadow-lime-500/20 ring-1 ring-lime-400/40 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
-                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 16h14l-1.5-7H6.5L5 16Z" /><path d="M7 16v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" /><path d="M9 11h6" /></svg>
-                <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-rose-500 animate-pulse" />
+            <Link href="/customer" prefetch className="flex items-center gap-3 group">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-linear-to-br from-[#84CC16] to-[#BEF264] text-slate-900 shadow-lg shadow-lime-200/40 ring-1 ring-lime-200/60 transition-transform duration-300 group-hover:scale-105">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                >
+                  <path d="M5 16h14l-1.5-7H6.5L5 16Z" />
+                  <path d="M7 16v2a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" />
+                  <path d="M9 11h6" />
+                </svg>
               </div>
               <div className="flex flex-col">
-                <span className="text-lg font-bold leading-tight bg-gradient-to-r from-lime-300 to-emerald-300 bg-clip-text text-transparent">EasyPark</span>
-                <span className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">SMART PARKING</span>
+                <span className="text-lg font-bold leading-tight text-slate-900 dark:text-white">
+                  EasyPark
+                </span>
+                <span className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                  Smart Parking
+                </span>
               </div>
             </Link>
 
@@ -383,11 +427,14 @@ export default function Navbar() {
 
               {/* ✅ ADDED: Desktop Sign Out Button */}
               <button 
+                type="button"
                 onClick={openSignOutModal}
-                className="hidden md:flex items-center justify-center h-10 w-10 rounded-xl border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 transition-all duration-300"
-                title="Sign Out"
+                disabled={signingOut}
+                className="hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/50 bg-red-500/10 text-red-400 font-medium text-sm transition hover:bg-red-500/20 hover:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Sign Out"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                <LogOut size={18} />
+                <span className="hidden lg:inline">Sign Out</span>
               </button>
 
               {/* Mobile Toggle */}
@@ -409,8 +456,16 @@ export default function Navbar() {
                 </div>
                 {renderLinks('col')}
                 <div className="pt-4 border-t border-slate-800 mt-2 space-y-2">
-                  <Link href="/customer/profile" onClick={() => setOpen(false)} className="block px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800">Profile</Link>
-                  <button onClick={() => { setOpen(false); setShowSignOutModal(true); }} className="w-full text-left px-3 py-2 rounded-lg text-red-400 hover:bg-red-500/10">Sign Out</button>
+                  <Link href="/customer/profile" prefetch onClick={() => setOpen(false)} className="block px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800">Profile</Link>
+                  <button
+                    type="button"
+                    onClick={() => { setOpen(false); setShowSignOutModal(true); }}
+                    disabled={signingOut}
+                    className="inline-flex w-full items-center gap-2 px-4 py-2 rounded-lg border border-red-500/50 bg-red-500/10 text-red-400 font-medium text-sm transition hover:bg-red-500/20 hover:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <LogOut size={18} />
+                    <span>Sign Out</span>
+                  </button>
                 </div>
               </div>
             </motion.div>

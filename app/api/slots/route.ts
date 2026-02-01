@@ -136,11 +136,13 @@ export async function POST(request: NextRequest) {
       const newSlotsData = Array.from({ length: createCount }, (_, i) => {
         const next = maxNumeric + i + 1;
         return {
+          id: crypto.randomUUID(),
           number: `${zone}${next}`,
           zone,
           type: 'NORMAL' as const,
           pricePerHour: pricePerHour ?? 300,
           locationId: resolvedLocationId,
+          updatedAt: new Date(),
         };
       });
 
@@ -179,11 +181,13 @@ export async function POST(request: NextRequest) {
 
     const slot = await prisma.parking_slots.create({
       data: {
+        id: crypto.randomUUID(),
         number,
         zone: zone || 'A',
         type: type || 'NORMAL',
         pricePerHour: pricePerHour || 300,
         locationId: resolvedLocationId,
+        updatedAt: new Date(),
       },
       include: {
         parking_locations: true,

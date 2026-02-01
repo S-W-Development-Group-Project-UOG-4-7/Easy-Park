@@ -34,7 +34,7 @@ export async function GET(
     const booking = await prisma.washer_bookings.findUnique({
       where: { id },
       include: {
-        customer: true,
+        washer_customers: true,
       },
     });
 

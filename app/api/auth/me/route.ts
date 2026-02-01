@@ -34,6 +34,19 @@ export async function GET(request: NextRequest) {
 
     // 4. Handle case where user exists in token but not in database
     if (!user) {
+      // Allow demo user sessions created by the sign-in shortcut.
+      if (authUser.email === 'customer@gmail.com' && authUser.role === 'CUSTOMER') {
+        return successResponse({
+          id: authUser.userId,
+          email: authUser.email,
+          fullName: 'Demo Customer',
+          contactNo: '0000000000',
+          vehicleNumber: 'ABC-1234',
+          nic: null,
+          role: 'CUSTOMER',
+          createdAt: new Date(0),
+        });
+      }
       return unauthorizedResponse('User not found');
     }
 

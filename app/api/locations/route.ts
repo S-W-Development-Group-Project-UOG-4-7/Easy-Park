@@ -7,6 +7,9 @@ import {
   serverErrorResponse,
 } from '@/lib/api-response';
 
+// The full location list is read-heavy; cache briefly for snappy UX.
+export const revalidate = 30;
+
 // GET all parking locations
 export async function GET() {
   try {
@@ -44,7 +47,9 @@ export async function GET() {
       };
     });
 
-    return successResponse(locationsWithStats);
+    return successResponse(locationsWithStats, 'Success', 200, {
+      'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+    });
   } catch (error) {
     console.error('Get locations error:', error);
     return serverErrorResponse('Failed to fetch locations');
@@ -64,10 +69,12 @@ export async function POST(request: NextRequest) {
 
     const location = await prisma.parking_locations.create({
       data: {
+        id: crypto.randomUUID(),
         name,
         address,
         description,
         totalSlots: totalSlots || 0,
+        updatedAt: new Date(),
       },
     });
 

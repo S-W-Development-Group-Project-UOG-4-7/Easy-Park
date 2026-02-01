@@ -15,14 +15,19 @@ export interface ApiResponse<T = unknown> {
  * Returns a 200 OK success response.
  * Used for general data retrieval and successful operations.
  */
-export function successResponse<T>(data: T, message: string = 'Success', status: number = 200) {
+export function successResponse<T>(
+  data: T,
+  message: string = 'Success',
+  status: number = 200,
+  headers?: HeadersInit
+) {
   return NextResponse.json<ApiResponse<T>>(
     {
       success: true,
       message,
       data,
     },
-    { status }
+    { status, headers }
   );
 }
 
@@ -30,14 +35,14 @@ export function successResponse<T>(data: T, message: string = 'Success', status:
  * Returns a 400 Bad Request response.
  * Used for validation errors or invalid user input.
  */
-export function errorResponse(message: string, status: number = 400) {
+export function errorResponse(message: string, status: number = 400, headers?: HeadersInit) {
   return NextResponse.json<ApiResponse>(
     {
       success: false,
       message, // Using message instead of error for frontend consistency
       error: message,
     },
-    { status }
+    { status, headers }
   );
 }
 
