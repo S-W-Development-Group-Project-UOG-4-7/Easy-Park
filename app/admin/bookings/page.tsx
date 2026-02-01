@@ -61,7 +61,7 @@ export default function AdminBookingsPage() {
     setTheme(theme === "dark" ? "light" : "dark");
   };
 
-  // Open sign out confirmation modal
+  // Open sign out confirmation modal with page
   const openSignOutModal = () => {
     setMobileMenuOpen(false); // Close mobile menu if open
     setShowSignOutModal(true);
