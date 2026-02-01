@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Loader2, Menu, X } from "lucide-react";
 import AdminSidebar from "../../../components/AdminSidebar";
 
@@ -19,8 +19,9 @@ type UserDetails = {
   role: string;
 };
 
-export default function AdminUserEditPage({ params }: { params: Promise<{ id: string }> }) {
+export default function AdminUserEditPage() {
   const router = useRouter();
+  const params = useParams();
   const [userId, setUserId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{ fullName: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,9 +47,14 @@ export default function AdminUserEditPage({ params }: { params: Promise<{ id: st
     let active = true;
     const load = async () => {
       try {
-        const resolved = await params;
+        const rawId = (params as { id?: string | string[] } | null)?.id;
+        const resolvedId = Array.isArray(rawId) ? rawId[0] : rawId;
+        if (!resolvedId) {
+          setError("Missing user id");
+          return;
+        }
         if (!active) return;
-        setUserId(resolved.id);
+        setUserId(resolvedId);
         const authRes = await fetch("/api/auth/me", { credentials: "include" });
         const authData = await authRes.json();
         if (!authRes.ok || !authData.success || authData.data?.role !== "ADMIN") {
@@ -57,7 +63,7 @@ export default function AdminUserEditPage({ params }: { params: Promise<{ id: st
         }
         setCurrentUser(authData.data);
 
-        const res = await fetch(`/api/admin/users/${resolved.id}`, { credentials: "include" });
+        const res = await fetch(`/api/admin/users/${resolvedId}`, { credentials: "include" });
         const data = await res.json();
         if (!res.ok || !data.success) {
           setError(data.error || "Failed to load user");

@@ -1,19 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type RoleOption = 'COUNTER' | 'WASHER' | 'LAND_OWNER';
-
-type AdminUser = {
-  id: string;
-  fullName: string;
-  email: string;
-  role: string;
-  contactNo: string | null;
-  nic: string | null;
-  createdAt: string;
-};
 
 const ROLE_OPTIONS: RoleOption[] = ['COUNTER', 'WASHER', 'LAND_OWNER'];
 
@@ -30,34 +20,10 @@ const initialForm = {
 
 export default function AdminUsersPage() {
   const router = useRouter();
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState(initialForm);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/admin/users', { credentials: 'include' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setUsers(data.data || []);
-      } else {
-        setError(data.error || 'Failed to load users');
-      }
-    } catch (err) {
-      console.error('Failed to load users', err);
-      setError('Failed to load users');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
 
   const onChange = (field: keyof typeof formData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -103,7 +69,7 @@ export default function AdminUsersPage() {
       }
       setFormData(initialForm);
       setFieldErrors({});
-      await fetchUsers();
+      setError('');
     } catch (err) {
       console.error('Create user error', err);
       setError('Failed to create user');
@@ -111,28 +77,6 @@ export default function AdminUsersPage() {
       setSubmitting(false);
     }
   };
-
-  const handleDelete = async (id: string) => {
-    const confirmed = window.confirm('Delete this user? This action cannot be undone.');
-    if (!confirmed) return;
-    try {
-      const res = await fetch(`/api/admin/users/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        setError(data.error || 'Failed to delete user');
-        return;
-      }
-      await fetchUsers();
-    } catch (err) {
-      console.error('Delete user error', err);
-      setError('Failed to delete user');
-    }
-  };
-
-  const rows = useMemo(() => users, [users]);
 
   return (
     <div className="space-y-6">
@@ -174,7 +118,14 @@ export default function AdminUsersPage() {
 
         {error && <div className="text-sm text-rose-400">{error}</div>}
 
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/admin/view-users')}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/60 dark:bg-slate-900/60 px-6 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            View Users
+          </button>
           <button
             type="submit"
             disabled={submitting}
@@ -184,76 +135,6 @@ export default function AdminUsersPage() {
           </button>
         </div>
       </form>
-
-      <div className="rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 p-6 shadow-lg">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Added Users</h2>
-          <button
-            onClick={fetchUsers}
-            className="text-xs font-semibold text-lime-500 hover:text-lime-400 transition"
-          >
-            Refresh
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="py-10 text-center text-sm text-slate-500">Loading users...</div>
-        ) : rows.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-500">No users added yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-slate-500">
-                <tr className="border-b border-slate-200/60 dark:border-slate-800/60">
-                  <th className="py-3 pr-4">Full Name</th>
-                  <th className="py-3 pr-4">Email</th>
-                  <th className="py-3 pr-4">Role</th>
-                  <th className="py-3 pr-4">Mobile</th>
-                  <th className="py-3 pr-4">NIC</th>
-                  <th className="py-3 pr-4">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((user) => (
-                  <tr key={user.id} className="border-b border-slate-200/40 dark:border-slate-800/40">
-                    <td className="py-3 pr-4 font-medium text-slate-900 dark:text-slate-100">{user.fullName}</td>
-                    <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{user.email}</td>
-                    <td className="py-3 pr-4">
-                      <span className="rounded-full bg-slate-200/60 dark:bg-slate-800/60 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{user.contactNo || '-'}</td>
-                    <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{user.nic || '-'}</td>
-                    <td className="py-3 pr-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => router.push(`/admin/users/${user.id}`)}
-                          className="rounded-lg border border-slate-200/60 dark:border-slate-700/60 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={() => router.push(`/admin/users/${user.id}/edit`)}
-                          className="rounded-lg border border-slate-200/60 dark:border-slate-700/60 px-3 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(user.id)}
-                          className="rounded-lg border border-red-500/40 px-3 py-1 text-xs font-semibold text-red-500 hover:bg-red-500/10 transition"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

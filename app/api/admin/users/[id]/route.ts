@@ -3,6 +3,18 @@ import prisma from '@/lib/prisma';
 import { getAuthUser, hashPassword } from '@/lib/auth';
 
 const ALLOWED_ROLES = new Set(['COUNTER', 'WASHER', 'LAND_OWNER']);
+let cachedUserColumns: Set<string> | null = null;
+
+async function getUserColumns() {
+  if (cachedUserColumns) return cachedUserColumns;
+  const rows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name = 'users'
+  `;
+  cachedUserColumns = new Set(rows.map((row) => row.column_name));
+  return cachedUserColumns;
+}
 
 function requireAdmin(request: NextRequest) {
   const user = getAuthUser(request);
@@ -25,24 +37,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
   try {
+    const columns = await getUserColumns();
+    const select: Record<string, boolean> = {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+      createdAt: true,
+      updatedAt: true,
+    };
+    if (columns.has('address')) select.address = true;
+    if (columns.has('nic')) select.nic = true;
+    if (columns.has('contactNo')) select.contactNo = true;
+
     const user = await prisma.users.findUnique({
       where: { id },
-      select: {
-        id: true,
-        fullName: true,
-        address: true,
-        nic: true,
-        contactNo: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: select as any,
     });
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
-    return NextResponse.json({ success: true, data: user });
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...user,
+        address: (user as any).address ?? null,
+        nic: (user as any).nic ?? null,
+        contactNo: (user as any).contactNo ?? null,
+      },
+    });
   } catch (error) {
     console.error('Admin get user error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch user' }, { status: 500 });
@@ -100,13 +123,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const emailLower = email ? String(email).toLowerCase() : undefined;
+    const columns = await getUserColumns();
     if (emailLower || nic || mobileNumber) {
       const duplicate = await prisma.users.findFirst({
         where: {
           OR: [
             emailLower ? { email: emailLower } : undefined,
-            nic ? { nic } : undefined,
-            mobileNumber ? { contactNo: mobileNumber } : undefined,
+            nic && columns.has('nic') ? { nic } : undefined,
+            mobileNumber && columns.has('contactNo') ? { contactNo: mobileNumber } : undefined,
           ].filter(Boolean) as any,
           NOT: { id },
         },
@@ -121,9 +145,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updatedAt: new Date(),
     };
     if (fullName !== undefined) updateData.fullName = fullName;
-    if (address !== undefined) updateData.address = address;
-    if (nic !== undefined) updateData.nic = nic;
-    if (mobileNumber !== undefined) updateData.contactNo = mobileNumber;
+    if (columns.has('address') && address !== undefined) updateData.address = address;
+    if (columns.has('nic') && nic !== undefined) updateData.nic = nic;
+    if (columns.has('contactNo') && mobileNumber !== undefined) updateData.contactNo = mobileNumber;
     if (emailLower !== undefined) updateData.email = emailLower;
     if (normalizedRole !== undefined) updateData.role = normalizedRole;
     if (password) updateData.password = await hashPassword(password);
