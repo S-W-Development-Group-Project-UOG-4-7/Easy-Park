@@ -89,7 +89,7 @@ export default function AdminUsersPage() {
 
       <form
         onSubmit={handleSubmit}
-        className="rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6] space-y-4"
+        className="rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 p-6 shadow-lg space-y-4"
       >
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Full Name" value={formData.fullName} error={fieldErrors.fullName} onChange={(v) => onChange('fullName', v)} />
@@ -98,11 +98,11 @@ export default function AdminUsersPage() {
           <Field label="Mobile Number" value={formData.mobileNumber} error={fieldErrors.mobileNumber} onChange={(v) => onChange('mobileNumber', v)} />
           <Field label="Email" value={formData.email} error={fieldErrors.email} onChange={(v) => onChange('email', v)} type="email" />
           <div className="space-y-2">
-            <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">Role</label>
+            <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Role</label>
             <select
               value={formData.role}
               onChange={(e) => onChange('role', e.target.value)}
-              className="w-full rounded-lg border bg-linear-to-b px-3 py-2 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+              className="w-full rounded-lg border border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
             >
               {ROLE_OPTIONS.map((role) => (
                 <option key={role} value={role}>
@@ -122,14 +122,14 @@ export default function AdminUsersPage() {
           <button
             type="button"
             onClick={() => router.push('/admin/view-users')}
-            className="px-5 py-2.5 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-sm font-semibold"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/60 dark:bg-slate-900/60 px-6 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             View Users
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-linear-to-r from-[#84CC16] to-[#BEF264] px-6 py-2.5 text-sm font-semibold text-slate-950 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-lime-500 to-emerald-500 px-6 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-lime-500/20 transition hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Creating...' : 'Create User'}
           </button>
@@ -154,12 +154,12 @@ function Field({
 }) {
   return (
     <div className="space-y-2">
-      <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">{label}</label>
+      <label className="text-sm font-medium text-slate-600 dark:text-slate-300">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border bg-linear-to-b px-3 py-2 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400"
+        className="w-full rounded-lg border border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
       />
       {error && <p className="text-xs text-rose-400">{error}</p>}
     </div>

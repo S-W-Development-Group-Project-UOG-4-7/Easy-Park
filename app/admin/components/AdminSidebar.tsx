@@ -33,7 +33,7 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 border-r transition-colors duration-300 dark:border-slate-800/60 border-slate-200/60 bg-gradient-to-b dark:from-[#1E293B] dark:to-[#0F172A] from-white to-[#F3F4F6] z-30">
+    <aside className="fixed left-0 top-0 h-screen w-64 border-r transition-colors duration-300 dark:border-slate-800/60 border-slate-200/60 bg-white/70 dark:bg-slate-900/60 backdrop-blur z-30">
       <div className="flex h-full flex-col p-6">
         {/* Logo/Title */}
         <div className="mb-8">

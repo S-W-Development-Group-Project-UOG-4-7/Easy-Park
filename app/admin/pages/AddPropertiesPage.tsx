@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, MapPin, Plus, X, Car, Zap, Droplets, ArrowLeft, Trash2, RefreshCw, DollarSign, Power, AlertCircle } from 'lucide-react';
 import { propertiesApi } from '../../services/api';
+import {
+  adminCard,
+  adminInput,
+  adminInputWithIcon,
+  adminPrimaryButton,
+  adminSecondaryButton,
+} from '../components/adminTheme';
 
 interface Property {
   id: number;
@@ -220,10 +227,10 @@ export default function AddPropertiesPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+        <div className={adminCard}>
           {/* Property Name */}
           <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+            <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
               Property Name
             </label>
             <div className="relative">
@@ -237,7 +244,7 @@ export default function AddPropertiesPage() {
                   if (errors.propertyName) setErrors({ ...errors, propertyName: undefined });
                 }}
                 placeholder="Enter property name"
-                className={`w-full rounded-lg border bg-linear-to-b pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400 ${errors.propertyName ? 'border-red-500' : ''}`}
+                className={`${adminInputWithIcon} ${errors.propertyName ? 'border-red-500' : ''}`}
               />
             </div>
             {errors.propertyName && (
@@ -250,7 +257,7 @@ export default function AddPropertiesPage() {
 
           {/* Address */}
           <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+            <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
               Location / Address
             </label>
             <div className="relative">
@@ -264,7 +271,7 @@ export default function AddPropertiesPage() {
                   if (errors.address) setErrors({ ...errors, address: undefined });
                 }}
                 placeholder="Enter property address"
-                className={`w-full rounded-lg border bg-linear-to-b pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400 ${errors.address ? 'border-red-500' : ''}`}
+                className={`${adminInputWithIcon} ${errors.address ? 'border-red-500' : ''}`}
               />
             </div>
             {errors.address && (
@@ -278,7 +285,7 @@ export default function AddPropertiesPage() {
           {/* Pricing Section */}
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+              <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
                 Price Per Hour (LKR)
               </label>
               <div className="relative">
@@ -293,7 +300,7 @@ export default function AddPropertiesPage() {
                     if (errors.pricePerHour) setErrors({ ...errors, pricePerHour: undefined });
                   }}
                   placeholder="300"
-                  className={`w-full rounded-lg border bg-linear-to-b pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400 ${errors.pricePerHour ? 'border-red-500' : ''}`}
+                  className={`${adminInputWithIcon} ${errors.pricePerHour ? 'border-red-500' : ''}`}
                 />
               </div>
               {errors.pricePerHour && (
@@ -304,7 +311,7 @@ export default function AddPropertiesPage() {
               )}
             </div>
             <div>
-              <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+              <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
                 Price Per Day (LKR)
               </label>
               <div className="relative">
@@ -319,7 +326,7 @@ export default function AddPropertiesPage() {
                     if (errors.pricePerDay) setErrors({ ...errors, pricePerDay: undefined });
                   }}
                   placeholder="2000"
-                  className={`w-full rounded-lg border bg-linear-to-b pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400 ${errors.pricePerDay ? 'border-red-500' : ''}`}
+                  className={`${adminInputWithIcon} ${errors.pricePerDay ? 'border-red-500' : ''}`}
                 />
               </div>
               {errors.pricePerDay && (
@@ -333,7 +340,7 @@ export default function AddPropertiesPage() {
 
           {/* Status Selection */}
           <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+            <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
               Parking Area Status
             </label>
             <div className="flex gap-4">
@@ -369,7 +376,7 @@ export default function AddPropertiesPage() {
 
           {/* Quick Add Presets */}
           <div className="mb-6">
-            <label className="mb-3 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+            <label className="mb-3 block text-sm font-medium text-slate-600 dark:text-slate-300">
               Quick Add Slots
             </label>
             <div className="grid grid-cols-3 gap-3">
@@ -403,7 +410,7 @@ export default function AddPropertiesPage() {
           {/* Parking Slots */}
           <div>
             <div className="mb-4 flex items-center justify-between">
-              <label className="block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">
                 Parking Slots Configuration
               </label>
               <button
@@ -447,8 +454,8 @@ export default function AddPropertiesPage() {
                     <select
                       value={slot.type}
                       onChange={(e) => handleSlotChange(index, 'type', e.target.value as ParkingSlot['type'])}
-                      className="flex-1 rounded-lg border bg-linear-to-b px-3 py-2 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
-                    >
+                    className={adminInput}
+                  >
                       {parkingTypes.map((type) => (
                         <option key={type} value={type}>
                           {type === 'EV' ? 'EV Charging' : type}
@@ -461,7 +468,7 @@ export default function AddPropertiesPage() {
                       value={slot.count}
                       onChange={(e) => handleSlotChange(index, 'count', parseInt(e.target.value) || 1)}
                       placeholder="Count"
-                      className="w-24 rounded-lg border bg-linear-to-b px-3 py-2 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+                      className="w-24 rounded-lg border border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                     />
                     <button
                       type="button"
@@ -583,7 +590,7 @@ export default function AddPropertiesPage() {
           <button
             type="submit"
             disabled={loading || formData.parkingSlots.length === 0}
-            className="rounded-lg bg-linear-to-r from-[#84CC16] to-[#BEF264] px-6 py-3 font-medium text-slate-950 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={adminPrimaryButton}
           >
             {loading ? 'Adding...' : 'Add Property'}
           </button>
@@ -597,7 +604,7 @@ export default function AddPropertiesPage() {
       </form>
 
       {/* Existing Properties List with Delete */}
-      <div className="mt-8 rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+      <div className={`mt-8 ${adminCard}`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold dark:text-[#E5E7EB] text-[#111827]">
             Existing Properties
@@ -605,7 +612,7 @@ export default function AddPropertiesPage() {
           <button
             onClick={fetchProperties}
             disabled={loadingProperties}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className={`${adminSecondaryButton} disabled:opacity-50`}
           >
             <RefreshCw className={`w-4 h-4 ${loadingProperties ? 'animate-spin' : ''}`} />
             <span className="text-sm">Refresh</span>

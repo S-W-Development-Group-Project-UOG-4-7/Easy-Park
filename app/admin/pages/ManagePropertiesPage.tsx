@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Building2, MapPin, Trash2, Eye, EyeOff, Plus, Zap, Car, Droplets, Power, DollarSign, Edit2, Save, X } from 'lucide-react';
 import { propertiesApi } from '../../services/api';
+import { adminCard, adminInput, adminInputCompact, adminPrimaryButton, adminSecondaryButton, adminIconButton } from '../components/adminTheme';
 
 interface Slot {
   id: string | number;
@@ -292,7 +293,7 @@ export default function ManagePropertiesPage() {
         </div>
         <a
           href="/admin/properties/add"
-          className="flex items-center gap-2 rounded-lg bg-linear-to-r from-[#84CC16] to-[#BEF264] px-4 py-2.5 font-medium text-slate-950 transition-all hover:scale-105"
+          className={`flex items-center gap-2 ${adminPrimaryButton}`}
         >
           <Plus className="w-5 h-5" />
           Add Property
@@ -304,12 +305,12 @@ export default function ManagePropertiesPage() {
           {[1, 2].map((i) => (
             <div
               key={i}
-              className="h-48 animate-pulse rounded-xl bg-linear-to-br dark:from-[#1E293B] dark:to-[#0F172A] from-white to-[#F3F4F6]"
+              className="h-48 animate-pulse rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60"
             />
           ))}
         </div>
       ) : properties.length === 0 ? (
-        <div className="text-center py-16 rounded-xl border dark:border-slate-800/60 border-slate-200/60 bg-linear-to-br dark:from-[#1E293B] dark:to-[#0F172A] from-white to-[#F3F4F6]">
+        <div className={`text-center py-16 ${adminCard}`}>
           <Building2 className="w-16 h-16 mx-auto text-slate-400 mb-4" />
           <h3 className="text-lg font-medium dark:text-[#E5E7EB] text-[#111827]">No Properties Yet</h3>
           <p className="text-sm dark:text-[#94A3B8] text-[#6B7280] mt-2">
@@ -330,7 +331,7 @@ export default function ManagePropertiesPage() {
             return (
               <div
                 key={property.id}
-                className="rounded-xl border bg-linear-to-br dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6] overflow-hidden"
+                className="rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 overflow-hidden"
               >
                 {/* Property Header */}
                 <div className="p-6">
@@ -367,7 +368,7 @@ export default function ManagePropertiesPage() {
                                 min="1"
                                 value={editForm.pricePerHour}
                                 onChange={(e) => setEditForm({ ...editForm, pricePerHour: parseFloat(e.target.value) || 0 })}
-                                className="w-24 px-2 py-1 rounded border dark:border-slate-600 dark:bg-slate-800 text-sm"
+                                className={`w-24 ${adminInputCompact}`}
                               />
                               <span className="text-xs dark:text-[#94A3B8]">/hr</span>
                             </div>
@@ -378,7 +379,7 @@ export default function ManagePropertiesPage() {
                                 min="1"
                                 value={editForm.pricePerDay}
                                 onChange={(e) => setEditForm({ ...editForm, pricePerDay: parseFloat(e.target.value) || 0 })}
-                                className="w-24 px-2 py-1 rounded border dark:border-slate-600 dark:bg-slate-800 text-sm"
+                                className={`w-24 ${adminInputCompact}`}
                               />
                               <span className="text-xs dark:text-[#94A3B8]">/day</span>
                             </div>
@@ -456,7 +457,7 @@ export default function ManagePropertiesPage() {
                           </button>
                           <button
                             onClick={cancelEdit}
-                            className="p-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            className={adminIconButton}
                             title="Cancel"
                           >
                             <X className="w-5 h-5" />
@@ -465,7 +466,7 @@ export default function ManagePropertiesPage() {
                       ) : (
                         <button
                           onClick={() => startEditing(property)}
-                          className="p-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          className={adminIconButton}
                           title="Edit prices & slots"
                         >
                           <Edit2 className="w-5 h-5" />
@@ -473,7 +474,7 @@ export default function ManagePropertiesPage() {
                       )}
                       <button
                         onClick={() => toggleExpand(property.id)}
-                        className="p-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        className={adminIconButton}
                         title={isExpanded ? 'Hide slots' : 'View slots'}
                       >
                         {isExpanded ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -488,7 +489,7 @@ export default function ManagePropertiesPage() {
                           </button>
                           <button
                             onClick={() => setDeleteConfirm(null)}
-                            className="px-3 py-2 rounded-lg border dark:border-slate-700 border-slate-200 text-sm font-medium dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            className={adminSecondaryButton}
                           >
                             Cancel
                           </button>
@@ -496,7 +497,7 @@ export default function ManagePropertiesPage() {
                       ) : (
                         <button
                           onClick={() => setDeleteConfirm(property.id)}
-                          className="p-2 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10 transition-colors"
+                          className="p-2 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 transition-colors"
                           title="Delete property"
                         >
                           <Trash2 className="w-5 h-5" />
