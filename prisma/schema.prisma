@@ -11,7 +11,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -19,4 +18,81 @@ model User {
   name      String
   email     String   @unique
   createdAt DateTime @default(now())
+  vehicles  Vehicle[]
+  bookings  Booking[]
+}
+
+model Vehicle {
+  id           Int    @id @default(autoincrement())
+  userId       Int
+  licensePlate String @unique
+  make         String
+  model        String
+  color        String?
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings     Booking[]
+}
+
+model ParkingLot {
+  id       Int           @id @default(autoincrement())
+  name     String
+  location String
+  capacity Int
+  spots    ParkingSpot[]
+}
+
+model ParkingSpot {
+  id         Int         @id @default(autoincrement())
+  lotId      Int
+  spotNumber String
+  status     SpotStatus  @default(AVAILABLE)
+  lot        ParkingLot  @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  bookings   Booking[]
+}
+
+model Booking {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  vehicleId Int
+  spotId    Int
+  startTime DateTime
+  endTime   DateTime
+  status    BookingStatus @default(PENDING)
+  totalCost Float?
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  spot      ParkingSpot   @relation(fields: [spotId], references: [id], onDelete: Cascade)
+  payment   Payment?
+}
+
+model Payment {
+  id        Int           @id @default(autoincrement())
+  bookingId Int           @unique
+  amount    Float
+  status    PaymentStatus @default(PENDING)
+  method    String?
+  createdAt DateTime      @default(now())
+  booking   Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+enum SpotStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  MAINTENANCE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
 }

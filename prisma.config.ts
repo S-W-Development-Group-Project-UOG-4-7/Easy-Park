@@ -1,9 +1,8 @@
-import "dotenv/config";
+import { defineConfig } from '@prisma/cli';
+import 'dotenv/config';
 
-export default {
-  schema: "./prisma/schema.prisma",
+export default defineConfig({
   datasource: {
-    adapter: "postgresql",
     url: process.env.DATABASE_URL,
   },
-};
+});
