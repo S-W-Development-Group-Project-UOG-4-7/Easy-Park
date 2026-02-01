@@ -18,8 +18,9 @@ interface AddedUser {
   fullName: string;
   email: string;
   role: string;
-  contactNo: string | null;
-  nic: string | null;
+  mobileNumber: string;
+  address: string | null;
+  nic: string;
   createdAt: string;
 }
 
@@ -109,7 +110,7 @@ export default function AddUsersPage() {
   const fetchUsers = async () => {
     try {
       setLoadingUsers(true);
-      const response = await fetch('/api/users', {
+      const response = await fetch('/api/admin-users', {
         credentials: 'include',
       });
       const data = await response.json();
@@ -131,7 +132,7 @@ export default function AddUsersPage() {
 
     try {
       setDeletingId(id);
-      const response = await fetch(`/api/users/${id}`, {
+      const response = await fetch(`/api/admin-users/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -202,7 +203,7 @@ export default function AddUsersPage() {
     setSuccess(false);
 
     try {
-      const response = await fetch('/api/users', {
+      const response = await fetch('/api/admin-users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -212,7 +213,7 @@ export default function AddUsersPage() {
           fullName: formData.fullName,
           email: formData.email,
           password: formData.password,
-          contactNo: formData.contactNo,
+          mobileNumber: formData.contactNo,
           nic: formData.nic,
           address: formData.address,
           role: formData.role,
@@ -657,12 +658,12 @@ export default function AddUsersPage() {
                               {u.role}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm dark:text-[#E5E7EB] text-[#111827]">{u.contactNo || '-'}</td>
+                          <td className="px-4 py-3 text-sm dark:text-[#E5E7EB] text-[#111827]">{u.mobileNumber || '-'}</td>
                           <td className="px-4 py-3 text-sm dark:text-[#E5E7EB] text-[#111827]">{u.nic || '-'}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center gap-2">
                               <button
-                                onClick={() => alert(`View user: ${u.fullName}\nEmail: ${u.email}\nRole: ${u.role}\nMobile: ${u.contactNo || 'N/A'}\nNIC: ${u.nic || 'N/A'}`)}
+                                onClick={() => alert(`View user: ${u.fullName}\nEmail: ${u.email}\nRole: ${u.role}\nMobile: ${u.mobileNumber || 'N/A'}\nNIC: ${u.nic || 'N/A'}\nAddress: ${u.address || 'N/A'}`)}
                                 className="px-3 py-1 rounded text-xs font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
                                 title="View user"
                               >
