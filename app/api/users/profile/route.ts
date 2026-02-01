@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser, hashPassword, verifyPassword } from '@/lib/auth';
 import {
@@ -8,16 +8,31 @@ import {
   serverErrorResponse,
 } from '@/lib/api-response';
 
-// GET user profile
+// GET: Fetch user profile
 export async function GET(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
+    const authUser = await getAuthUser(request); // Added await
     
-    if (!authUser) {
+    if (!authUser || !authUser.email) {
       return unauthorizedResponse();
     }
 
     const user = await prisma.users.findUnique({
+      where: { email: authUser.email }, // Fixed: Added where clause
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        contactNo: true,
+        nic: true,
+        address: true,
+        vehicleNumber: true,
+        vehicleType: true,
+        vehicleModel: true,
+        vehicleColor: true,
+        // Exclude password
+      }
+    });
 
     if (!user) {
       return unauthorizedResponse('User not found');
@@ -30,31 +45,63 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH update user profile
-export async function PATCH(request: NextRequest) {
+// PUT: Update User Profile (Matches your Frontend 'PUT' call)
+export async function PUT(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
+    const authUser = await getAuthUser(request); // Added await
     
-    if (!authUser) {
+    if (!authUser || !authUser.email) {
       return unauthorizedResponse();
     }
 
     const body = await request.json();
-    const { fullName, contactNo, vehicleNumber } = body;
+    
+    // Extract all fields sent from the frontend
+    const { 
+      fullName, 
+      contactNo, 
+      nic, 
+      address, 
+      vehicleNumber, 
+      vehicleType, 
+      vehicleModel, 
+      vehicleColor 
+    } = body;
 
-    const user = await prisma.users.update({
+    // Determine user ID (using email from token to be safe)
+    const existingUser = await prisma.users.findUnique({
+        where: { email: authUser.email }
+    });
 
-    return successResponse(user, 'Profile updated successfully');
+    if (!existingUser) return unauthorizedResponse('User not found');
+
+    // Perform the Update
+    const updatedUser = await prisma.users.update({
+      where: { id: existingUser.id },
+      data: {
+        fullName,
+        contactNo,
+        nic,
+        address,
+        vehicleNumber,
+        vehicleType,
+        vehicleModel,
+        vehicleColor,
+        updatedAt: new Date(),
+      },
+    });
+
+    return successResponse(updatedUser, 'Profile updated successfully');
   } catch (error) {
     console.error('Update profile error:', error);
     return serverErrorResponse('Failed to update profile');
   }
 }
 
-// PUT change password
-export async function PUT(request: NextRequest) {
+// PATCH: Change Password (Optional - moved here to avoid conflict)
+export async function PATCH(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
+    const authUser = await getAuthUser(request); // Added await
     
     if (!authUser) {
       return unauthorizedResponse();
@@ -73,7 +120,7 @@ export async function PUT(request: NextRequest) {
 
     // Get user with password
     const user = await prisma.users.findUnique({
-      where: { id: authUser.userId },
+      where: { email: authUser.email },
     });
 
     if (!user) {
@@ -91,7 +138,7 @@ export async function PUT(request: NextRequest) {
 
     // Update password
     await prisma.users.update({
-      where: { id: authUser.userId },
+      where: { id: user.id },
       data: { password: hashedPassword },
     });
 

@@ -13,7 +13,43 @@ export async function POST(request: NextRequest) {
       return errorResponse('Email and password are required');
     }
 
-    // Find user
+    // Allow a hardcoded demo customer login
+    if (email === 'customer@gmail.com' && password === '123456') {
+      const demoUser = {
+        id: 'hardcoded-customer',
+        email: 'customer@gmail.com',
+        fullName: 'Demo Customer',
+        contactNo: '0000000000',
+        vehicleNumber: 'ABC-1234',
+        role: 'CUSTOMER',
+      } as any;
+
+      const token = generateToken({
+        userId: demoUser.id,
+        email: demoUser.email,
+        role: demoUser.role,
+      });
+
+      const response = successResponse(
+        {
+          user: demoUser,
+          token,
+        },
+        'Signed in successfully (demo)'
+      );
+
+      response.cookies.set('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7,
+        path: '/',
+      });
+
+      return response;
+    }
+
+    // Find user in database
     const user = await prisma.users.findUnique({
       where: { email: email.toLowerCase() },
     });

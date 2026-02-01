@@ -1,57 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth'; // Assuming you have this helper from previous steps
+import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // 1. Authenticate (Get User ID)
     const authUser = await getAuthUser(request);
     if (!authUser || !authUser.email) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 2. Resolve User ID from DB
     const user = await prisma.users.findUnique({ where: { email: authUser.email } });
     if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
 
-    // 3. Fetch Bookings with Relations
     const bookings = await prisma.bookings.findMany({
       where: { userId: user.id },
       include: {
         booking_slots: {
           include: {
             parking_slots: {
-              include: {
-                parking_locations: true // To get Location Name
-              }
+              include: { parking_locations: true }
             }
           }
         },
-        payments: true // Include payment info if needed
+        payments: true // Important: Fetch related payment records
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    // 4. Transform Data for Frontend
     const data = bookings.map((b) => {
-      // Extract location name from the first slot (assuming all slots in a booking are in same hub)
       const firstSlot = b.booking_slots[0]?.parking_slots;
       const locationName = firstSlot?.parking_locations?.name || 'Unknown Location';
 
-      // Map slots
       const slots = b.booking_slots.map((bs) => ({
         id: bs.parking_slots.id,
         number: bs.parking_slots.number,
-        type: bs.parking_slots.type.toLowerCase(), // ENUM -> lowercase string
+        type: bs.parking_slots.type.toLowerCase(),
       }));
 
-      // Determine overall type (EV, Normal, etc)
-      const uniqueTypes = new Set(slots.map(s => s.type));
-      let slotType = 'normal';
-      if (uniqueTypes.has('ev')) slotType = 'ev';
-      else if (uniqueTypes.has('car_wash')) slotType = 'car-wash';
+      // --- DYNAMIC STATUS LOGIC ---
+
+      // 1. Calculate Real Paid Amount based on existing payment record
+      const realPaidAmount = b.payments?.amount || 0;
+
+      // 2. Determine Status
+      let dynamicStatus = b.status.toLowerCase();
+
+      // Priority Rule: If DB explicitly says 'cancelled', respect it.
+      if (dynamicStatus === 'cancelled') {
+         // Do nothing, keep it as 'cancelled'
+      } 
+      // Revert Rule: If DB says 'paid' but money is missing (manual deletion), revert to 'pending'
+      else if (realPaidAmount <= 0 && (dynamicStatus === 'paid' || dynamicStatus === 'confirmed')) {
+        dynamicStatus = 'pending';
+      }
+
+      // --- END LOGIC ---
+
+      // Calculate total bill if not stored
+      const calculatedTotal = b.totalAmount > 0 ? b.totalAmount : (b.duration * 300 * slots.length); 
 
       return {
         bookingId: b.id,
@@ -60,12 +68,12 @@ export async function GET(request: NextRequest) {
         time: new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         duration: b.duration,
         slots: slots,
-        slotType: slotType,
-        status: b.status.toLowerCase(), // 'PENDING' -> 'pending'
+        slotType: 'normal',
+        status: dynamicStatus, // Use the robust status
         createdAt: b.createdAt.toISOString(),
-        totalAmount: b.totalAmount,
-        paidAmount: b.paidAmount,
-        paymentId: b.payments?.id
+        totalAmount: calculatedTotal,
+        paidAmount: realPaidAmount,
+        paymentId: b.payments?.id || null
       };
     });
 

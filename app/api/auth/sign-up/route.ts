@@ -1,15 +1,19 @@
 import { NextRequest } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto'; 
 import prisma from '@/lib/prisma';
 import { hashPassword, generateToken } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
 
+/**
+ * POST /api/auth/sign-up
+ * Handles new user registration, hashes passwords, and sets an auth cookie.
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, password, fullName, contactNo, vehicleNumber, nic, role } = body;
 
-    // Validation
+    // 1. Basic Validation
     if (!email || !password || !fullName) {
       return errorResponse('Email, password, and full name are required');
     }
@@ -18,7 +22,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Password must be at least 6 characters');
     }
 
-    // Check if user already exists
+    // 2. Check if user already exists
     const existingUser = await prisma.users.findFirst({
       where: {
         OR: [
@@ -37,25 +41,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Hash password
+    // 3. Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Validate role
+    // 4. Validate role
     const validRoles = ['ADMIN', 'CUSTOMER', 'COUNTER', 'LAND_OWNER', 'WASHER'];
     const userRole = role && validRoles.includes(role) ? role : 'CUSTOMER';
 
-    // Create user
+    // 5. Create user
+    // Added updatedAt: new Date() to satisfy the Prisma validation
     const user = await prisma.users.create({
       data: {
-        id: uuidv4(),
+        id: randomUUID(), 
         email: email.toLowerCase(),
         password: hashedPassword,
         fullName,
-        contactNo: contactNo || null,
-        vehicleNumber: vehicleNumber || null,
-        nic: nic || null,
+        contactNo,
+        vehicleNumber,
+        nic,
         role: userRole,
-        updatedAt: new Date(),
+        updatedAt: new Date(), // Manually providing current timestamp
       },
       select: {
         id: true,
@@ -68,11 +73,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Generate JWT token
+    // 6. Generate JWT token
     const token = generateToken({
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role || 'CUSTOMER',
     });
 
     const response = successResponse(
@@ -80,11 +85,10 @@ export async function POST(request: NextRequest) {
         user,
         token,
       },
-      'Account created successfully',
-      201
+      'Account created successfully'
     );
 
-    // Set cookie
+    // 7. Set cookie
     response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

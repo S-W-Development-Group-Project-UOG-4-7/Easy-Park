@@ -31,10 +31,10 @@ const ROLE_REDIRECT_MAP: Record<string, string> = {
 };
 
 // Protected route patterns
-const PROTECTED_ROUTES = ['/customer', '/admin', '/counter', '/land-owner', '/washer'];
+const PROTECTED_ROUTES = ['/admin', '/counter', '/land-owner', '/washer'];
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up'];
+const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up', '/customer'];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
