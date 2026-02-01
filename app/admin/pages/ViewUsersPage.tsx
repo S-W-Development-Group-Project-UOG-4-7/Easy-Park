@@ -75,7 +75,7 @@ export default function ViewUsersPage() {
         <button
           type="button"
           onClick={() => router.push('/admin/users')}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/60 dark:bg-slate-900/60 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="px-4 py-2 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-sm font-semibold"
         >
           Back to Add Users
         </button>
