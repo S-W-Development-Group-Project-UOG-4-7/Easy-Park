@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Calendar, Building2, User, Settings, LogOut } from 'lucide-react';
+import { Home, Calendar, Building2, User, Settings, LogOut, UserPlus } from 'lucide-react';
 
 interface AdminSidebarProps {
   adminName?: string;
@@ -18,6 +18,7 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
     { href: '/admin/bookings', label: 'View Booking Details', icon: Calendar },
     { href: '/admin/properties', label: 'Manage Properties', icon: Building2 },
     { href: '/admin/properties/add', label: 'Add Properties', icon: Settings },
+    { href: '/admin/users', label: 'Add Users', icon: UserPlus },
   ];
 
   const isActive = (path: string) => {

@@ -72,7 +72,7 @@ export default function AdminBookingsPage() {
     setShowSignOutModal(false);
   };
 
-  // Handle Sign Out
+  // Handle  the Sign Out
   const handleSignOut = async () => {
     if (signingOut) return;
     
