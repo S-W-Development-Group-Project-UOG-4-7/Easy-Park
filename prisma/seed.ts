@@ -23,7 +23,7 @@ async function main() {
   });
   console.log('✅ Created test user:', user.email);
 
-  // Create admin user
+  // Create admin users
   const adminPassword = await bcrypt.hash('admin123', 12);
   const admin = await prisma.user.upsert({
     where: { email: 'admin@easypark.com' },
