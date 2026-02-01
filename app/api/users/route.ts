@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
-<<<<<<< HEAD
 import { ensureAdminSeeded } from '@/lib/admin-seed';
-=======
->>>>>>> cbc58aae1c6a88e9982801329a34b61c69dbca56
 
 // GET all users
 export async function GET(request: Request) {
@@ -64,11 +61,7 @@ export async function POST(request: Request) {
   try {
     await ensureAdminSeeded();
     const body = await request.json();
-<<<<<<< HEAD
     const { fullName, email, password, contactNo, vehicleNumber } = body;
-=======
-    const { fullName, email, password, contactNo, vehicleNumber, role } = body;
->>>>>>> cbc58aae1c6a88e9982801329a34b61c69dbca56
 
     if (!fullName || !email || !password) {
       return NextResponse.json(
@@ -96,19 +89,11 @@ export async function POST(request: Request) {
       data: {
         id: crypto.randomUUID(),
         fullName,
-<<<<<<< HEAD
         email: email.toLowerCase(),
         password: hashedPassword,
         contactNo,
         vehicleNumber,
         role: 'CUSTOMER',
-=======
-        email,
-        password: hashedPassword,
-        contactNo,
-        vehicleNumber,
-        role: (role ? String(role).toUpperCase() : 'CUSTOMER') as any,
->>>>>>> cbc58aae1c6a88e9982801329a34b61c69dbca56
         updatedAt: now,
       },
       select: {

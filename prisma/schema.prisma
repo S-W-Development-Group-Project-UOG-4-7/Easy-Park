@@ -139,7 +139,8 @@ model users {
   email             String              @unique
   password          String
   fullName          String
-  contactNo         String?
+  contactNo         String?             @unique
+  address           String?
   vehicleNumber     String?
   nic               String?             @unique
   role              Role                @default(CUSTOMER)
