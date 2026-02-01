@@ -4,6 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { Search, Calendar, Building2, Eye, Clock, DollarSign, BookOpen } from 'lucide-react';
 import ParkingSlotVisualization from '../components/ParkingSlotVisualization';
 import { propertiesApi, bookingsApi } from '../../services/api';
+import {
+  adminCard,
+  adminInputWithIcon,
+  adminPrimaryButtonSm,
+  adminSecondaryButton,
+} from '../components/adminTheme';
 
 interface Booking {
   id: string;
@@ -176,12 +182,39 @@ export default function ViewBookingDetailsPage() {
 
   const filteredBookings = sortedBookings.filter((booking) => {
     const searchLower = searchTerm.toLowerCase();
-    return (
+    
+    // Search filter
+    const matchesSearch = !searchTerm || 
       (booking.name || '').toLowerCase().includes(searchLower) ||
       (booking.customerId || '').toLowerCase().includes(searchLower) ||
       (booking.propertyName || '').toLowerCase().includes(searchLower) ||
-      (booking.parkingSlot || '').toLowerCase().includes(searchLower)
-    );
+      (booking.parkingSlot || '').toLowerCase().includes(searchLower);
+    
+    // Property filter - match by ID or by name
+    let matchesProperty = selectedProperty === 'all';
+    if (!matchesProperty) {
+      const selectedProp = properties.find(p => p.id === selectedProperty);
+      matchesProperty = booking.propertyId === selectedProperty || 
+        (selectedProp ? booking.propertyName === selectedProp.name : false);
+    }
+    
+    // Date filter (client-side backup)
+    let matchesDate = true;
+    if (selectedDate) {
+      const bookingDate = booking.date ? new Date(booking.date).toISOString().split('T')[0] : '';
+      matchesDate = bookingDate === selectedDate;
+    }
+    
+    // Time filter (client-side backup)
+    let matchesTime = true;
+    if (selectedTime && booking.time) {
+      const bookingTime = booking.time.includes('T') 
+        ? booking.time.split('T')[1]?.substring(0, 5) 
+        : booking.time.substring(0, 5);
+      matchesTime = bookingTime === selectedTime;
+    }
+    
+    return matchesSearch && matchesProperty && matchesDate && matchesTime;
   });
 
   const paginatedBookings = filteredBookings.slice(
@@ -200,7 +233,7 @@ export default function ViewBookingDetailsPage() {
     if (selectedProperty === 'all') return null;
     
     const property = properties.find(p => p.id === selectedProperty);
-    if (!property) return null;
+    if (!property || !property.slots) return null;
 
     const bookedSlotIds = new Set(
       bookings
@@ -243,7 +276,7 @@ export default function ViewBookingDetailsPage() {
               setSelectedProperty(e.target.value);
               setShowSlotVisualization(e.target.value !== 'all');
             }}
-            className="w-full rounded-lg border bg-linear-to-br pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+            className={adminInputWithIcon}
           >
             <option value="all">All Properties</option>
             {properties.map((prop) => (
@@ -260,7 +293,7 @@ export default function ViewBookingDetailsPage() {
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full rounded-lg border bg-linear-to-br pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+            className={adminInputWithIcon}
           />
         </div>
 
@@ -270,7 +303,7 @@ export default function ViewBookingDetailsPage() {
             type="time"
             value={selectedTime}
             onChange={(e) => setSelectedTime(e.target.value)}
-            className="w-full rounded-lg border bg-linear-to-br pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+            className={adminInputWithIcon}
           />
         </div>
 
@@ -281,7 +314,7 @@ export default function ViewBookingDetailsPage() {
             placeholder="Search bookings..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-lg border bg-linear-to-br pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400"
+            className={adminInputWithIcon}
           />
         </div>
       </div>
@@ -289,7 +322,7 @@ export default function ViewBookingDetailsPage() {
       {/* Filter Stats */}
       {(selectedProperty !== 'all' || selectedDate || selectedTime) && (
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+          <div className={adminCard}>
             <div className="flex items-center space-x-3">
               <div className="rounded-lg bg-linear-to-br from-[#84CC16] to-[#BEF264] p-3">
                 <DollarSign className="h-6 w-6 text-slate-950" />
@@ -305,7 +338,7 @@ export default function ViewBookingDetailsPage() {
               </div>
             </div>
           </div>
-          <div className="rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+          <div className={adminCard}>
             <div className="flex items-center space-x-3">
               <div className="rounded-lg bg-linear-to-br from-[#84CC16] to-[#BEF264] p-3">
                 <BookOpen className="h-6 w-6 text-slate-950" />
@@ -326,7 +359,7 @@ export default function ViewBookingDetailsPage() {
 
       {/* Parking Slot Visualization */}
       {showSlotVisualization && parkingSlots && selectedProperty !== 'all' && (
-        <div className="rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+        <div className={adminCard}>
           <h2 className="mb-4 text-xl font-semibold dark:text-[#E5E7EB] text-[#111827]">
             Parking Slots - {selectedPropertyName}
           </h2>
@@ -335,7 +368,7 @@ export default function ViewBookingDetailsPage() {
       )}
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border bg-linear-to-br dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 shadow-lg">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -351,7 +384,7 @@ export default function ViewBookingDetailsPage() {
                 ].map((col) => (
                   <th
                     key={col.key}
-                    className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider dark:text-[#E5E7EB] text-[#111827] ${
+                    className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 ${
                       col.sortable ? 'cursor-pointer hover:bg-slate-100/50 dark:hover:bg-slate-800/50' : ''
                     }`}
                     onClick={() => col.sortable && handleSort(col.key as keyof Booking)}
@@ -385,16 +418,16 @@ export default function ViewBookingDetailsPage() {
                     <tr
                       className="transition-colors hover:bg-slate-100/50 dark:hover:bg-slate-800/30"
                     >
-                      <td className="px-6 py-4 text-sm dark:text-[#E5E7EB] text-[#111827]">{booking.customerId}</td>
-                      <td className="px-6 py-4 text-sm dark:text-[#E5E7EB] text-[#111827]">{booking.name}</td>
-                      <td className="px-6 py-4 text-sm dark:text-[#E5E7EB] text-[#111827]">{booking.address}</td>
-                      <td className="px-6 py-4 text-sm dark:text-[#E5E7EB] text-[#111827]">{booking.propertyName}</td>
-                      <td className="px-6 py-4 text-sm dark:text-[#E5E7EB] text-[#111827]">{booking.parkingSlot}</td>
-                      <td className="px-6 py-4 text-sm dark:text-[#E5E7EB] text-[#111827]">{booking.date}</td>
+                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.customerId}</td>
+                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.name}</td>
+                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.address}</td>
+                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.propertyName}</td>
+                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.parkingSlot}</td>
+                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.date}</td>
                       <td className="px-6 py-4 text-sm">
                         <button
                           onClick={() => viewBookingDetails(booking.id)}
-                          className="flex items-center space-x-2 rounded-lg bg-linear-to-r from-[#84CC16] to-[#BEF264] px-3 py-1.5 text-xs font-medium text-slate-950 transition-all hover:scale-105"
+                          className={`flex items-center space-x-2 ${adminPrimaryButtonSm}`}
                         >
                           <Eye className="h-4 w-4" />
                           <span>View</span>
@@ -403,7 +436,7 @@ export default function ViewBookingDetailsPage() {
                     </tr>
                     {expandedBooking === booking.id && (
                       <tr>
-                        <td colSpan={7} className="px-6 py-6 bg-slate-50/50 dark:bg-slate-900/30">
+                        <td colSpan={7} className="px-6 py-6 bg-slate-50/50 dark:bg-slate-950/40">
                           <div className="grid gap-4 md:grid-cols-2">
                             <div>
                               <h4 className="mb-3 text-sm font-semibold dark:text-[#E5E7EB] text-[#111827]">Customer Information</h4>
@@ -452,14 +485,14 @@ export default function ViewBookingDetailsPage() {
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+                  className={`${adminSecondaryButton} disabled:opacity-50`}
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+                  className={`${adminSecondaryButton} disabled:opacity-50`}
                 >
                   Next
                 </button>

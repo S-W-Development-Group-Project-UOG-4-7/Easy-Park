@@ -31,44 +31,92 @@ async function apiRequest<T>(
   return data;
 }
 
-// Properties API (using parking-lots endpoint)
+// Properties API - Uses admin_properties table (unified for admin and frontend)
 export const propertiesApi = {
-  getAll: async () => {
-    const response = await apiRequest<{ parkingLots: any[] }>('/parking-lots');
-    return response.parkingLots || [];
+  getAll: async (showAll: boolean = true) => {
+    // Fetch from admin properties endpoint
+    try {
+      const response = await apiRequest<{ properties: any[]; parkingLots: any[] }>(`/admin/properties`);
+      return response.properties || response.parkingLots || [];
+    } catch (error) {
+      // Fallback to parking-lots for non-admin users
+      const response = await apiRequest<{ parkingLots: any[] }>(`/parking-lots?showAll=${showAll}`);
+      return response.parkingLots || [];
+    }
+  },
+
+  getActivated: async () => {
+    try {
+      const response = await apiRequest<{ properties: any[] }>('/admin/properties?status=ACTIVATED');
+      return response.properties || [];
+    } catch (error) {
+      const response = await apiRequest<{ parkingLots: any[] }>('/parking-lots?showAll=false');
+      return response.parkingLots || [];
+    }
   },
 
   getById: (id: string | number) => apiRequest<any>(`/parking-lots/${id}`),
 
-  create: async (data: { propertyName: string; address: string; parkingSlots?: any[] }) => {
-    // Get current user to use as owner
-    const userResponse = await fetch('/api/auth/me', { credentials: 'include' });
-    const userData = await userResponse.json();
-    const ownerId = userData.data?.id || userData.id;
-    
-    if (!ownerId) {
-      throw new Error('User not authenticated');
-    }
-    
-    return apiRequest<{ parkingLot: any }>('/parking-lots', {
+  create: async (data: { 
+    propertyName: string; 
+    address: string; 
+    parkingSlots?: any[];
+    pricePerHour?: number;
+    pricePerDay?: number;
+    status?: 'ACTIVATED' | 'NOT_ACTIVATED' | 'DEACTIVATED';
+  }) => {
+    // Save to admin_properties table via admin endpoint
+    return apiRequest<{ property: any; parkingLot: any }>('/admin/properties', {
       method: 'POST',
       body: JSON.stringify({
-        name: data.propertyName,
-        address: data.address,
-        ownerId: ownerId,
+        propertyName: data.propertyName,
+        location: data.address,
         slots: data.parkingSlots,
+        pricePerHour: data.pricePerHour || 300,
+        status: data.status === 'ACTIVATED' ? 'ACTIVATED' : 'DEACTIVATED',
       }),
     });
   },
 
-  update: (id: string | number, data: { name?: string; address?: string; description?: string }) =>
-    apiRequest<{ message: string }>(`/parking-lots/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
+  update: (id: string | number, data: { 
+    name?: string; 
+    address?: string; 
+    description?: string;
+    status?: 'ACTIVATED' | 'NOT_ACTIVATED' | 'DEACTIVATED';
+    pricePerHour?: number;
+    pricePerDay?: number;
+    totalSlots?: number;
+  }) =>
+    apiRequest<{ message: string; property: any; parkingLot: any }>('/admin/properties', {
+      method: 'PATCH',
+      body: JSON.stringify({ 
+        id: String(id), 
+        propertyName: data.name,
+        location: data.address,
+        description: data.description,
+        status: data.status === 'ACTIVATED' ? 'ACTIVATED' : 'DEACTIVATED',
+        pricePerHour: data.pricePerHour,
+        totalSlots: data.totalSlots,
+      }),
+    }),
+
+  toggleStatus: (id: string | number, status: 'ACTIVATED' | 'NOT_ACTIVATED' | 'DEACTIVATED') =>
+    apiRequest<{ message: string; property: any; parkingLot: any }>('/admin/properties', {
+      method: 'PATCH',
+      body: JSON.stringify({ 
+        id: String(id), 
+        status: status === 'ACTIVATED' ? 'ACTIVATED' : 'DEACTIVATED' 
+      }),
+    }),
+
+  updatePrices: (id: string | number, pricePerHour: number, pricePerDay?: number) =>
+    apiRequest<{ message: string; property: any; parkingLot: any }>('/admin/properties', {
+      method: 'PATCH',
+      body: JSON.stringify({ id: String(id), pricePerHour }),
     }),
 
   delete: (id: string | number) =>
-    apiRequest<{ message: string }>(`/parking-lots/${id}`, {
+    apiRequest<{ message: string }>(`/admin/properties?propertyId=${id}`, {
       method: 'DELETE',
     }),
 };
@@ -93,9 +141,9 @@ export const bookingsApi = {
         customerId: booking.user?.id || booking.customerId || 'N/A',
         name: booking.user?.name || booking.name || 'Unknown',
         address: booking.user?.address || booking.address || 'N/A',
-        propertyName: booking.slot?.parkingLot?.name || booking.propertyName || 'Unknown',
-        propertyId: booking.slot?.parkingLot?.id || booking.propertyId || '',
-        parkingSlot: booking.slot?.slotNumber || booking.parkingSlot || 'N/A',
+        propertyName: booking.slot?.parkingLot?.name || booking.slots?.[0]?.location || booking.propertyName || 'Unknown',
+        propertyId: booking.slot?.parkingLot?.id || booking.slots?.[0]?.slot?.locationId || booking.propertyId || '',
+        parkingSlot: booking.slot?.slotNumber || booking.slots?.[0]?.number || booking.parkingSlot || 'N/A',
         parkingSlotId: booking.slots?.[0]?.id || booking.parkingSlotId || '',
         date: booking.date || '',
         time: booking.startTime || booking.time || '',

@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../../components/AuthProvider'; 
 import PaymentForm from '../../components/PaymentForm';
 
+// --- Interfaces ---
 interface BookingSlot {
   id: string;
   number: string;
@@ -20,38 +23,79 @@ interface Booking {
   status: 'pending' | 'paid' | 'completed' | 'cancelled';
   createdAt: string;
   paymentId?: string;
+  totalAmount?: number;
+  paidAmount?: number;
 }
 
 type Filter = 'all' | 'pending' | 'paid' | 'completed' | 'cancelled';
 
 export default function MyBookingsPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  
+  // State
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
 
+  // --- Pricing Logic ---
+  const FULL_FEE_PER_HOUR = 300;      // Total cost rate: 300 per hour
+  const ADVANCE_PAYMENT_FIXED = 150;  // Fixed advance payment (not per slot)
+
+  // 1. Calculate Full Total Cost
+  // Formula: Duration (hours) × Rate (300/hour) × Number of Slots
+  const calculateTotal = (b: Booking) => 
+    b.totalAmount ?? (FULL_FEE_PER_HOUR * b.duration * b.slots.length);
+
+  // 2. Calculate Required Advance (Fixed 150, regardless of slots)
+  const calculateAdvance = (b: Booking) => 
+    ADVANCE_PAYMENT_FIXED;
+
+  // 3. Get Amount Actually Paid (from DB)
+  const getAmountPaid = (b: Booking) => 
+    b.paidAmount ?? 0;
+
+  // 4. Calculate Remaining Balance (Total - Paid)
+  const calculateRemaining = (b: Booking) => 
+    Math.max(0, calculateTotal(b) - getAmountPaid(b));
+
+  // --- Fetch Bookings ---
+  const fetchBookings = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    try {
+      if (bookings.length === 0) setLoading(true); 
+      const res = await fetch('/api/bookings/list', { credentials: 'include' });
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json')
+        ? await res.json()
+        : { success: false, error: await res.text() };
+      if (res.ok && data.success) {
+        setBookings(data.data || []);
+      } else if (res.status === 401) {
+        router.replace('/sign-in');
+      } else {
+        console.error('Failed to load bookings', data.error || data.message || res.statusText);
+      }
+    } catch (error) {
+      console.error("Failed to load bookings", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem('bookings') || '[]') as Booking[];
-    stored.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    setBookings(stored);
-  }, []);
+    if (authLoading) return;
+    fetchBookings();
+  }, [authLoading, user]);
 
-  // ✅ Pricing rules:
-  // Full fee per slot per hour = 300
-  // Online fee (advance) per slot = 150 (paid once, NOT per hour)
-  const FULL_FEE_PER_SLOT_PER_HOUR = 300;
-  const ONLINE_FEE_PER_SLOT = 150;
-
-  // ✅ Total = 300 * duration(hours) * number of slots
-  const getTotal = (b: Booking) => FULL_FEE_PER_SLOT_PER_HOUR * b.duration * b.slots.length;
-
-  // ✅ Pay now = 150 * number of slots (one time)
-  const getPaidNow = (b: Booking) => ONLINE_FEE_PER_SLOT * b.slots.length;
-
-  // ✅ Remaining = Total - PaidNow
-  const getRemaining = (b: Booking) => Math.max(0, getTotal(b) - getPaidNow(b));
+  // --- Handlers ---
 
   const handlePayNow = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -60,37 +104,48 @@ export default function MyBookingsPage() {
 
   const handlePaymentSuccess = (paymentId: string) => {
     if (!selectedBooking) return;
+    
+    // Optimistic Update: Assume they just paid the advance
+    const advanceAmount = calculateAdvance(selectedBooking);
+    const currentPaid = getAmountPaid(selectedBooking);
 
-    const updated: Booking[] = bookings.map((b) =>
+    const updated = bookings.map((b) =>
       b.bookingId === selectedBooking.bookingId
-        ? { ...b, status: 'paid' as Booking['status'], paymentId }
+        ? { ...b, status: 'paid' as const, paymentId, paidAmount: currentPaid + advanceAmount } 
         : b
     );
-
     setBookings(updated);
-    localStorage.setItem('bookings', JSON.stringify(updated));
+    
     setSelectedBooking(null);
     setShowPaymentForm(false);
+    fetchBookings(); // Sync with server to be safe
   };
 
-  const handleDelete = (bookingId: string) => {
-    const updated: Booking[] = bookings.filter((b) => b.bookingId !== bookingId);
-    setBookings(updated);
-    localStorage.setItem('bookings', JSON.stringify(updated));
-  };
-
-  const confirmCancelBooking = () => {
+  const confirmCancelBooking = async () => {
     if (!cancelTarget) return;
+    try {
+      const res = await fetch('/api/bookings/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: cancelTarget.bookingId })
+      });
+      const data = await res.json();
 
-    const updated: Booking[] = bookings.map((b) =>
-      b.bookingId === cancelTarget.bookingId
-        ? { ...b, status: 'cancelled' as Booking['status'] }
-        : b
-    );
-
-    setBookings(updated);
-    localStorage.setItem('bookings', JSON.stringify(updated));
-    setCancelTarget(null);
+      if (data.success) {
+        const updated = bookings.map((b) =>
+          b.bookingId === cancelTarget.bookingId
+            ? { ...b, status: 'cancelled' as const }
+            : b
+        );
+        setBookings(updated);
+      } else {
+        alert(data.error || "Failed to cancel");
+      }
+    } catch (err) {
+      alert("Network error.");
+    } finally {
+      setCancelTarget(null);
+    }
   };
 
   const filtered = useMemo(
@@ -99,46 +154,32 @@ export default function MyBookingsPage() {
   );
 
   const statusMeta = (status: Booking['status']) => {
-    if (status === 'paid')
-      return {
-        label: 'Paid',
-        pill: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/20',
-        dot: 'bg-emerald-400',
-      };
-    if (status === 'pending')
-      return {
-        label: 'Pending',
-        pill: 'bg-amber-500/12 text-amber-300 border-amber-500/20',
-        dot: 'bg-amber-400',
-      };
-    if (status === 'cancelled')
-      return {
-        label: 'Cancelled',
-        pill: 'bg-rose-500/12 text-rose-300 border-rose-500/20',
-        dot: 'bg-rose-400',
-      };
-    return {
-      label: 'Completed',
-      pill: 'bg-sky-500/12 text-sky-300 border-sky-500/20',
-      dot: 'bg-sky-400',
-    };
+    if (status === 'paid') return { label: 'Advance Paid', pill: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/20', dot: 'bg-emerald-400' };
+    if (status === 'pending') return { label: 'Pending Payment', pill: 'bg-amber-500/12 text-amber-300 border-amber-500/20', dot: 'bg-amber-400' };
+    if (status === 'cancelled') return { label: 'Cancelled', pill: 'bg-rose-500/12 text-rose-300 border-rose-500/20', dot: 'bg-rose-400' };
+    return { label: 'Completed', pill: 'bg-sky-500/12 text-sky-300 border-sky-500/20', dot: 'bg-sky-400' };
   };
 
   const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    try {
+      return new Date(iso).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    } catch (e) { return iso; }
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-32">
+        <div className="h-8 w-8 border-4 border-lime-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (bookings.length === 0) {
     return (
       <div className="rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-slate-800 p-10 sm:p-12 text-center shadow-lg">
         <h1 className="text-2xl sm:text-3xl font-bold text-lime-400">My Bookings</h1>
         <p className="text-slate-400 mt-2 text-sm sm:text-base">You have no bookings yet.</p>
-
-        <a
-          href="/customer/view-bookings"
-          className="inline-flex items-center justify-center mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 font-semibold hover:scale-105 hover:shadow-lg transition"
-        >
+        <a href="/customer/view-bookings" className="inline-flex items-center justify-center mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 font-semibold hover:scale-105 hover:shadow-lg transition">
           Book a Slot →
         </a>
       </div>
@@ -146,7 +187,7 @@ export default function MyBookingsPage() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5">
+    <div className="pt-20 sm:pt-24 space-y-4 sm:space-y-5">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3 sm:gap-4">
         <div>
@@ -154,12 +195,11 @@ export default function MyBookingsPage() {
             My Bookings
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Online fee (Rs.{ONLINE_FEE_PER_SLOT} per slot) is{' '}
-            <span className="text-rose-300 font-semibold">non-refundable</span> if you cancel.
+            Pay <span className="text-lime-400 font-bold">Rs.{ADVANCE_PAYMENT_FIXED}</span> advance now. Pay the rest at the location.
           </p>
         </div>
 
-        {/* Mobile-friendly filters: horizontal scroll */}
+        {/* Filters */}
         <div className="-mx-2 px-2 overflow-x-auto">
           <div className="flex gap-2 w-max pb-1">
             {(['all', 'pending', 'paid', 'cancelled'] as Filter[]).map((f) => (
@@ -167,37 +207,35 @@ export default function MyBookingsPage() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold border transition
-                  ${
-                    filter === f
-                      ? 'bg-lime-500 text-slate-900 border-lime-400'
-                      : 'bg-slate-950/40 text-slate-300 border-slate-800 hover:bg-slate-900/60'
-                  }`}
+                  ${filter === f ? 'bg-lime-500 text-slate-900 border-lime-400' : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'}`}
               >
-                {f}
+                {f.charAt(0).toUpperCase() + f.slice(1)}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Booking list */}
+      {/* Booking List */}
       <div className="grid gap-3">
         {filtered.map((b) => {
-          const total = getTotal(b);
-          const paidNow = getPaidNow(b);
-          const remaining = getRemaining(b);
+          const total = calculateTotal(b);
+          const advanceRequired = calculateAdvance(b);
+          const paidSoFar = getAmountPaid(b);
+          
+          // Logic: Remaining = Total - Paid
+          // If status is pending, paid is 0, remaining = total
+          // If status is paid, paid is 150, remaining = total - 150
+          const remaining = calculateRemaining(b);
+          
           const expanded = expandedBookingId === b.bookingId;
           const s = statusMeta(b.status);
           const canCancel = b.status === 'pending' || b.status === 'paid';
 
           return (
-            <div
-              key={b.bookingId}
-              className="rounded-xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden"
-            >
-              {/* Top bar */}
+            <div key={b.bookingId} className="rounded-xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
+              {/* Top Bar */}
               <div className="px-4 py-3 border-b border-slate-800/70 bg-slate-950/30">
-                {/* Mobile stacks; desktop aligns */}
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -208,22 +246,19 @@ export default function MyBookingsPage() {
                           <path d="M9 11h6" />
                         </svg>
                       </div>
-
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h2 className="text-base font-bold text-white truncate">{b.location}</h2>
-                          <span
-                            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${s.pill}`}
-                          >
+                          <span className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-[11px] font-semibold ${s.pill}`}>
                             <span className={`h-2 w-2 rounded-full ${s.dot}`} />
                             {s.label}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 font-mono truncate">{b.bookingId}</p>
+                        <p className="text-[11px] text-slate-400 font-mono truncate">{b.bookingId.slice(0, 8)}...</p>
                       </div>
                     </div>
-
-                    {/* Compact facts */}
+                    
+                    {/* Tags */}
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Chip label={`📅 ${formatDate(b.date)}`} />
                       <Chip label={`🕒 ${b.time}`} />
@@ -231,12 +266,12 @@ export default function MyBookingsPage() {
                     </div>
                   </div>
 
-                  {/* Price badge: full width on mobile, compact on desktop */}
+                  {/* Price Badge */}
                   <div className="w-full sm:w-auto">
                     <div className="rounded-xl border border-lime-400/15 bg-slate-950/35 px-3 py-2 sm:text-right">
-                      <p className="text-[10px] uppercase tracking-[0.22em] text-slate-400">Remaining</p>
+                      <p className="text-[10px] uppercase tracking-[0.22em] text-slate-400">Due at Location</p>
                       <p className="text-lg font-extrabold text-lime-300 leading-tight">Rs.{remaining}</p>
-                      <p className="text-[11px] text-slate-400">Total Rs.{total}</p>
+                      <p className="text-[11px] text-slate-400">Total Bill Rs.{total}</p>
                     </div>
                   </div>
                 </div>
@@ -248,58 +283,38 @@ export default function MyBookingsPage() {
                   <p className="text-[11px] text-slate-400 mb-1.5">Selected slots</p>
                   <div className="flex flex-wrap gap-2">
                     {b.slots.map((slot) => (
-                      <span
-                        key={slot.id}
-                        className="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900/40 text-xs text-slate-200"
-                      >
+                      <span key={slot.id} className="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-900/40 text-xs text-slate-200">
                         {slot.number}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                {/* Stats: 1 col on tiny screens, 3 cols otherwise */}
+                {/* Stats */}
                 <div className="mt-3 grid grid-cols-1 xs:grid-cols-3 sm:grid-cols-3 gap-2">
-                  <TinyStat label="Total" value={`Rs.${total}`} />
-                  <TinyStat label="Paid" value={`Rs.${paidNow}`} />
-                  <TinyStat label="Remaining" value={`Rs.${remaining}`} highlight />
+                  <TinyStat label="Total Value" value={`Rs.${total}`} />
+                  <TinyStat label="Paid Online" value={`Rs.${paidSoFar}`} />
+                  <TinyStat label="Balance Due" value={`Rs.${remaining}`} highlight />
                 </div>
 
-                {/* Actions: full width buttons on mobile */}
+                {/* Actions */}
                 <div className="mt-3 grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
                   {b.status === 'pending' && (
-                    <button
-                      onClick={() => handlePayNow(b)}
-                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 text-sm font-semibold hover:shadow-lg transition"
-                    >
-                      Pay Rs.{paidNow}
+                    <button onClick={() => handlePayNow(b)} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 text-sm font-semibold hover:shadow-lg transition">
+                      Pay Advance (Rs.{advanceRequired})
                     </button>
                   )}
-
                   {canCancel && (
-                    <button
-                      onClick={() => setCancelTarget(b)}
-                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 transition"
-                    >
+                    <button onClick={() => setCancelTarget(b)} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 transition">
                       Cancel Booking
                     </button>
                   )}
-
-                  <button
-                    onClick={() => setExpandedBookingId(expanded ? null : b.bookingId)}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-200 text-sm font-semibold hover:bg-slate-800/60 transition"
-                  >
+                  <button onClick={() => setExpandedBookingId(expanded ? null : b.bookingId)} className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-200 text-sm font-semibold hover:bg-slate-800/60 transition">
                     {expanded ? 'Hide' : 'Details'}
-                  </button>
-
-                  <button
-                    onClick={() => handleDelete(b.bookingId)}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-300 text-sm font-semibold hover:text-rose-300 hover:border-rose-500/30 transition"
-                  >
-                    Delete
                   </button>
                 </div>
 
+                {/* Expanded Details */}
                 {expanded && (
                   <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/30 p-3 text-xs text-slate-300">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -307,12 +322,9 @@ export default function MyBookingsPage() {
                         <span className="text-slate-400">Created:</span>{' '}
                         <span className="font-semibold text-slate-100">{new Date(b.createdAt).toLocaleString()}</span>
                       </div>
-
-                      {b.paymentId && (
-                        <div className="font-mono text-[11px] text-slate-400">
-                          Payment ID: <span className="text-slate-200">{b.paymentId}</span>
-                        </div>
-                      )}
+                      <div className="font-mono text-[11px] text-slate-400">
+                        ID: <span className="text-slate-200">{b.bookingId}</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -322,11 +334,12 @@ export default function MyBookingsPage() {
         })}
       </div>
 
-      {/* Payment Form */}
+      {/* Payment Form Modal */}
       {showPaymentForm && selectedBooking && (
         <PaymentForm
           booking={selectedBooking}
-          total={getPaidNow(selectedBooking)}
+          // The form asks "How much do you want to pay?". We pass the Advance Amount here.
+          total={calculateAdvance(selectedBooking)}
           onSuccess={handlePaymentSuccess}
           onClose={() => {
             setSelectedBooking(null);
@@ -337,26 +350,17 @@ export default function MyBookingsPage() {
 
       {/* Cancel Modal */}
       {cancelTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-          <div className="w-full max-w-md rounded-2xl border border-slate-200/20 bg-slate-950 p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-white">Cancel Booking?</h3>
             <p className="text-sm text-slate-300 mt-2">
-              You can cancel this booking, but the online fee of{' '}
-              <span className="font-bold text-rose-300">Rs.{getPaidNow(cancelTarget)}</span> is{' '}
-              <span className="font-bold">not refundable</span>.
+              If you have already paid the advance of <span className="font-bold text-rose-300">Rs.{calculateAdvance(cancelTarget)}</span>, it is non-refundable.
             </p>
-
-            <div className="mt-4 grid grid-cols-1 sm:flex sm:justify-end gap-2">
-              <button
-                onClick={() => setCancelTarget(null)}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-700 bg-slate-900/40 text-slate-200 font-semibold hover:bg-slate-800/60 transition"
-              >
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setCancelTarget(null)} className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-900">
                 Keep Booking
               </button>
-              <button
-                onClick={confirmCancelBooking}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-600 text-white font-semibold hover:bg-rose-700 transition"
-              >
+              <button onClick={confirmCancelBooking} className="px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700">
                 Confirm Cancel
               </button>
             </div>
@@ -367,25 +371,12 @@ export default function MyBookingsPage() {
   );
 }
 
-/* --------- tiny UI helpers ------------- */
-
+// --- Small UI Helpers ---
 function Chip({ label }: { label: string }) {
-  return (
-    <span className="px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-950/30 text-[11px] text-slate-300">
-      {label}
-    </span>
-  );
+  return <span className="px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-950/30 text-[11px] text-slate-300">{label}</span>;
 }
 
-function TinyStat({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+function TinyStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/30 px-3 py-2">
       <p className="text-[11px] text-slate-400">{label}</p>

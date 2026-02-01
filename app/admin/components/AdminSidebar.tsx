@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Calendar, Building2, User, Settings, LogOut } from 'lucide-react';
+import { Home, Calendar, Building2, User, Settings, UserPlus, Users, LogOut } from 'lucide-react';
 
 interface AdminSidebarProps {
   adminName?: string;
@@ -18,6 +18,8 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
     { href: '/admin/bookings', label: 'View Booking Details', icon: Calendar },
     { href: '/admin/properties', label: 'Manage Properties', icon: Building2 },
     { href: '/admin/properties/add', label: 'Add Properties', icon: Settings },
+    { href: '/admin/users', label: 'Add Users', icon: UserPlus },
+    { href: '/admin/view-users', label: 'View Users', icon: Users },
   ];
 
   const isActive = (path: string) => {
@@ -31,7 +33,7 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
   };
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 border-r transition-colors duration-300 dark:border-slate-800/60 border-slate-200/60 bg-gradient-to-b dark:from-[#1E293B] dark:to-[#0F172A] from-white to-[#F3F4F6] z-30">
+    <aside className="fixed left-0 top-0 h-screen w-64 border-r transition-colors duration-300 dark:border-slate-800/60 border-slate-200/60 bg-white/70 dark:bg-slate-900/60 backdrop-blur z-30">
       <div className="flex h-full flex-col p-6">
         {/* Logo/Title */}
         <div className="mb-8">
@@ -61,6 +63,7 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
                 onClick={onLinkClick}
                 className={`flex items-center space-x-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 ${
                   active

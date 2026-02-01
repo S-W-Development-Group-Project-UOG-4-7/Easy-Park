@@ -2,8 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, MapPin, Plus, X, Car, Zap, Droplets, ArrowLeft, Trash2, RefreshCw } from 'lucide-react';
+import { Building2, MapPin, Plus, X, Car, Zap, Droplets, ArrowLeft, Trash2, RefreshCw, DollarSign, Power, AlertCircle } from 'lucide-react';
 import { propertiesApi } from '../../services/api';
+import {
+  adminCard,
+  adminInput,
+  adminInputWithIcon,
+  adminPrimaryButton,
+  adminSecondaryButton,
+} from '../components/adminTheme';
 
 interface Property {
   id: number;
@@ -13,11 +20,22 @@ interface Property {
   normalSlots: number;
   evSlots: number;
   carWashSlots: number;
+  pricePerHour: number;
+  pricePerDay: number;
+  status: 'ACTIVATED' | 'NOT_ACTIVATED';
 }
 
 interface ParkingSlot {
   type: 'EV' | 'Normal' | 'Car Washing';
   count: number;
+}
+
+interface ValidationErrors {
+  propertyName?: string;
+  address?: string;
+  pricePerHour?: string;
+  pricePerDay?: string;
+  parkingSlots?: string;
 }
 
 export default function AddPropertiesPage() {
@@ -26,12 +44,16 @@ export default function AddPropertiesPage() {
     propertyName: '',
     address: '',
     parkingSlots: [] as ParkingSlot[],
+    pricePerHour: 300,
+    pricePerDay: 2000,
+    status: 'NOT_ACTIVATED' as 'ACTIVATED' | 'NOT_ACTIVATED',
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loadingProperties, setLoadingProperties] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [errors, setErrors] = useState<ValidationErrors>({});
 
   const parkingTypes: ParkingSlot['type'][] = ['Normal', 'EV', 'Car Washing'];
 
@@ -103,21 +125,71 @@ export default function AddPropertiesPage() {
     const updatedSlots = [...formData.parkingSlots];
     updatedSlots[index] = { ...updatedSlots[index], [field]: value };
     setFormData({ ...formData, parkingSlots: updatedSlots });
+    // Clear slot error when user makes changes
+    if (errors.parkingSlots) {
+      setErrors({ ...errors, parkingSlots: undefined });
+    }
+  };
+
+  // Validation function
+  const validateForm = (): boolean => {
+    const newErrors: ValidationErrors = {};
+    
+    if (!formData.propertyName.trim()) {
+      newErrors.propertyName = 'Property name is required';
+    }
+    
+    if (!formData.address.trim()) {
+      newErrors.address = 'Address/Location is required';
+    }
+    
+    const totalSlots = formData.parkingSlots.reduce((sum, slot) => sum + slot.count, 0);
+    if (totalSlots <= 0) {
+      newErrors.parkingSlots = 'Total parking slots must be greater than 0';
+    }
+    
+    if (formData.pricePerHour <= 0) {
+      newErrors.pricePerHour = 'Price per hour must be greater than 0';
+    }
+    
+    if (formData.pricePerDay <= 0) {
+      newErrors.pricePerDay = 'Price per day must be greater than 0';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate before submitting
+    if (!validateForm()) {
+      return;
+    }
+    
     setLoading(true);
     setSuccess(false);
 
     try {
-      await propertiesApi.create(formData);
+      await propertiesApi.create({
+        propertyName: formData.propertyName,
+        address: formData.address,
+        parkingSlots: formData.parkingSlots,
+        pricePerHour: formData.pricePerHour,
+        pricePerDay: formData.pricePerDay,
+        status: formData.status,
+      });
       setSuccess(true);
       setFormData({
         propertyName: '',
         address: '',
         parkingSlots: [],
+        pricePerHour: 300,
+        pricePerDay: 2000,
+        status: 'NOT_ACTIVATED',
       });
+      setErrors({});
       // Refresh the properties list
       fetchProperties();
       setTimeout(() => {
@@ -155,10 +227,10 @@ export default function AddPropertiesPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+        <div className={adminCard}>
           {/* Property Name */}
           <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+            <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
               Property Name
             </label>
             <div className="relative">
@@ -167,16 +239,25 @@ export default function AddPropertiesPage() {
                 type="text"
                 required
                 value={formData.propertyName}
-                onChange={(e) => setFormData({ ...formData, propertyName: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, propertyName: e.target.value });
+                  if (errors.propertyName) setErrors({ ...errors, propertyName: undefined });
+                }}
                 placeholder="Enter property name"
-                className="w-full rounded-lg border bg-linear-to-b pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400"
+                className={`${adminInputWithIcon} ${errors.propertyName ? 'border-red-500' : ''}`}
               />
             </div>
+            {errors.propertyName && (
+              <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
+                {errors.propertyName}
+              </p>
+            )}
           </div>
 
           {/* Address */}
           <div className="mb-6">
-            <label className="mb-2 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+            <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
               Location / Address
             </label>
             <div className="relative">
@@ -185,16 +266,117 @@ export default function AddPropertiesPage() {
                 type="text"
                 required
                 value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, address: e.target.value });
+                  if (errors.address) setErrors({ ...errors, address: undefined });
+                }}
                 placeholder="Enter property address"
-                className="w-full rounded-lg border bg-linear-to-b pl-10 pr-4 py-2.5 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827] placeholder-slate-400"
+                className={`${adminInputWithIcon} ${errors.address ? 'border-red-500' : ''}`}
               />
             </div>
+            {errors.address && (
+              <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
+                {errors.address}
+              </p>
+            )}
+          </div>
+
+          {/* Pricing Section */}
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
+                Price Per Hour (LKR)
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 dark:text-[#94A3B8] text-[#6B7280]" />
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.pricePerHour}
+                  onChange={(e) => {
+                    setFormData({ ...formData, pricePerHour: parseFloat(e.target.value) || 0 });
+                    if (errors.pricePerHour) setErrors({ ...errors, pricePerHour: undefined });
+                  }}
+                  placeholder="300"
+                  className={`${adminInputWithIcon} ${errors.pricePerHour ? 'border-red-500' : ''}`}
+                />
+              </div>
+              {errors.pricePerHour && (
+                <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4" />
+                  {errors.pricePerHour}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
+                Price Per Day (LKR)
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 dark:text-[#94A3B8] text-[#6B7280]" />
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.pricePerDay}
+                  onChange={(e) => {
+                    setFormData({ ...formData, pricePerDay: parseFloat(e.target.value) || 0 });
+                    if (errors.pricePerDay) setErrors({ ...errors, pricePerDay: undefined });
+                  }}
+                  placeholder="2000"
+                  className={`${adminInputWithIcon} ${errors.pricePerDay ? 'border-red-500' : ''}`}
+                />
+              </div>
+              {errors.pricePerDay && (
+                <p className="mt-1 text-sm text-red-500 flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4" />
+                  {errors.pricePerDay}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Status Selection */}
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
+              Parking Area Status
+            </label>
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, status: 'ACTIVATED' })}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-colors ${
+                  formData.status === 'ACTIVATED'
+                    ? 'border-green-500 bg-green-500/20 text-green-400'
+                    : 'border-slate-600 bg-slate-800/50 text-slate-400 hover:border-green-500/50'
+                }`}
+              >
+                <Power className="w-4 h-4" />
+                <span>Activated</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, status: 'NOT_ACTIVATED' })}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-colors ${
+                  formData.status === 'NOT_ACTIVATED'
+                    ? 'border-red-500 bg-red-500/20 text-red-400'
+                    : 'border-slate-600 bg-slate-800/50 text-slate-400 hover:border-red-500/50'
+                }`}
+              >
+                <Power className="w-4 h-4" />
+                <span>Not Activated</span>
+              </button>
+            </div>
+            <p className="mt-2 text-xs dark:text-[#94A3B8] text-[#6B7280]">
+              Only activated parking areas are visible to customers and washers for bookings.
+            </p>
           </div>
 
           {/* Quick Add Presets */}
           <div className="mb-6">
-            <label className="mb-3 block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+            <label className="mb-3 block text-sm font-medium text-slate-600 dark:text-slate-300">
               Quick Add Slots
             </label>
             <div className="grid grid-cols-3 gap-3">
@@ -228,7 +410,7 @@ export default function AddPropertiesPage() {
           {/* Parking Slots */}
           <div>
             <div className="mb-4 flex items-center justify-between">
-              <label className="block text-sm font-medium dark:text-[#E5E7EB] text-[#111827]">
+              <label className="block text-sm font-medium text-slate-600 dark:text-slate-300">
                 Parking Slots Configuration
               </label>
               <button
@@ -242,9 +424,17 @@ export default function AddPropertiesPage() {
             </div>
 
             {formData.parkingSlots.length === 0 ? (
-              <p className="text-sm dark:text-[#94A3B8] text-[#6B7280]">
-                No parking slots added. Use quick add or click "Add Slot Type" to add slots.
-              </p>
+              <div>
+                <p className="text-sm dark:text-[#94A3B8] text-[#6B7280]">
+                  No parking slots added. Use quick add or click "Add Slot Type" to add slots.
+                </p>
+                {errors.parkingSlots && (
+                  <p className="mt-2 text-sm text-red-500 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    {errors.parkingSlots}
+                  </p>
+                )}
+              </div>
             ) : (
               <div className="space-y-3">
                 {formData.parkingSlots.map((slot, index) => (
@@ -264,8 +454,8 @@ export default function AddPropertiesPage() {
                     <select
                       value={slot.type}
                       onChange={(e) => handleSlotChange(index, 'type', e.target.value as ParkingSlot['type'])}
-                      className="flex-1 rounded-lg border bg-linear-to-b px-3 py-2 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
-                    >
+                    className={adminInput}
+                  >
                       {parkingTypes.map((type) => (
                         <option key={type} value={type}>
                           {type === 'EV' ? 'EV Charging' : type}
@@ -278,7 +468,7 @@ export default function AddPropertiesPage() {
                       value={slot.count}
                       onChange={(e) => handleSlotChange(index, 'count', parseInt(e.target.value) || 1)}
                       placeholder="Count"
-                      className="w-24 rounded-lg border bg-linear-to-b px-3 py-2 text-sm transition-colors dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] dark:text-[#E5E7EB] border-slate-200/60 from-white to-[#F3F4F6] text-[#111827]"
+                      className="w-24 rounded-lg border border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                     />
                     <button
                       type="button"
@@ -400,7 +590,7 @@ export default function AddPropertiesPage() {
           <button
             type="submit"
             disabled={loading || formData.parkingSlots.length === 0}
-            className="rounded-lg bg-linear-to-r from-[#84CC16] to-[#BEF264] px-6 py-3 font-medium text-slate-950 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={adminPrimaryButton}
           >
             {loading ? 'Adding...' : 'Add Property'}
           </button>
@@ -414,7 +604,7 @@ export default function AddPropertiesPage() {
       </form>
 
       {/* Existing Properties List with Delete */}
-      <div className="mt-8 rounded-xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-[#F3F4F6]">
+      <div className={`mt-8 ${adminCard}`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold dark:text-[#E5E7EB] text-[#111827]">
             Existing Properties
@@ -422,7 +612,7 @@ export default function AddPropertiesPage() {
           <button
             onClick={fetchProperties}
             disabled={loadingProperties}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border dark:border-slate-700 border-slate-200 dark:text-[#E5E7EB] text-[#111827] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className={`${adminSecondaryButton} disabled:opacity-50`}
           >
             <RefreshCw className={`w-4 h-4 ${loadingProperties ? 'animate-spin' : ''}`} />
             <span className="text-sm">Refresh</span>
