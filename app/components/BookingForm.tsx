@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createBooking } from '@/app/lib/bookingActions';
 
 interface ParkingSlot {
   id: string;
@@ -50,6 +51,7 @@ export default function BookingForm({ isOpen, onClose, onSubmit, selectedSlot }:
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
 
   // Update parking spot when selectedSlot changes or form opens
   useEffect(() => {
@@ -83,42 +85,72 @@ export default function BookingForm({ isOpen, onClose, onSubmit, selectedSlot }:
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validate()) return;
 
-    // Calculate amount based on duration (default $5 per hour, minimum $5)
-    const entryTime = new Date(formData.entryTime);
-    const exitTime = new Date(formData.expectedExitTime);
-    const durationHours = Math.max(1, Math.ceil((exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60)));
-    const amount = durationHours * 5;
+    setIsLoading(true);
 
-    const booking: BookingData = {
-      id: Date.now().toString(),
-      ...formData,
-      amount,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      // Calculate amount based on duration (default $5 per hour, minimum $5)
+      const entryTime = new Date(formData.entryTime);
+      const exitTime = new Date(formData.expectedExitTime);
+      const durationHours = Math.max(1, Math.ceil((exitTime.getTime() - entryTime.getTime()) / (1000 * 60 * 60)));
+      const amount = durationHours * 5;
 
-    onSubmit(booking);
-    
-    // Reset form
-    setFormData({
-      driverName: '',
-      vehicleNumber: '',
-      idNumber: '',
-      phoneNumber: '',
-      email: '',
-      parkingSpot: '',
-      entryTime: '',
-      expectedExitTime: '',
-      vehicleType: 'Car',
-      paymentMethod: 'Cash',
-      notes: '',
-    });
-    setErrors({});
-    onClose();
+      // Save to database
+      const result = await createBooking({
+        driverName: formData.driverName,
+        vehicleNumber: formData.vehicleNumber,
+        email: formData.email,
+        phoneNumber: formData.phoneNumber,
+        idNumber: formData.idNumber,
+        parkingSpot: formData.parkingSpot,
+        vehicleType: formData.vehicleType,
+        entryTime: formData.entryTime,
+        expectedExitTime: formData.expectedExitTime,
+        paymentMethod: formData.paymentMethod,
+        notes: formData.notes,
+        totalCost: amount,
+      });
+
+      if (result.success) {
+        const booking: BookingData = {
+          id: result.data.id.toString(),
+          ...formData,
+          amount,
+          createdAt: new Date().toISOString(),
+        };
+
+        onSubmit(booking);
+        
+        // Reset form
+        setFormData({
+          driverName: '',
+          vehicleNumber: '',
+          idNumber: '',
+          phoneNumber: '',
+          email: '',
+          parkingSpot: '',
+          entryTime: '',
+          expectedExitTime: '',
+          vehicleType: 'Car',
+          paymentMethod: 'Cash',
+          notes: '',
+        });
+        setErrors({});
+        onClose();
+        alert('Booking saved successfully to database!');
+      } else {
+        alert(`Error saving booking: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error submitting booking:', error);
+      alert('Failed to save booking');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -367,15 +399,17 @@ export default function BookingForm({ isOpen, onClose, onSubmit, selectedSlot }:
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-6 py-3 bg-slate-700/50 text-[#E5E7EB] rounded-lg font-semibold hover:bg-slate-700 transition-all border border-slate-600/50"
+                disabled={isLoading}
+                className="flex-1 px-6 py-3 bg-slate-700/50 text-[#E5E7EB] rounded-lg font-semibold hover:bg-slate-700 transition-all border border-slate-600/50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-[#84CC16] to-[#BEF264] text-slate-900 rounded-lg font-semibold hover:shadow-lg hover:shadow-lime-500/50 transition-all"
+                disabled={isLoading}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-[#84CC16] to-[#BEF264] text-slate-900 rounded-lg font-semibold hover:shadow-lg hover:shadow-lime-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Create Booking
+                {isLoading ? 'Saving...' : 'Create Booking'}
               </button>
             </div>
           </form>

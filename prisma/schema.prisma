@@ -6,81 +6,32 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  output   = "../.prisma/client"
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  createdAt DateTime @default(now())
-  vehicles  Vehicle[]
-  bookings  Booking[]
-}
-
-model Vehicle {
-  id           Int    @id @default(autoincrement())
-  userId       Int
-  licensePlate String @unique
-  make         String
-  model        String
-  color        String?
-  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bookings     Booking[]
-}
-
-model ParkingLot {
-  id       Int           @id @default(autoincrement())
-  name     String
-  location String
-  capacity Int
-  spots    ParkingSpot[]
-}
-
-model ParkingSpot {
-  id         Int         @id @default(autoincrement())
-  lotId      Int
-  spotNumber String
-  status     SpotStatus  @default(AVAILABLE)
-  lot        ParkingLot  @relation(fields: [lotId], references: [id], onDelete: Cascade)
-  bookings   Booking[]
-}
-
 model Booking {
-  id        Int          @id @default(autoincrement())
-  userId    Int
-  vehicleId Int
-  spotId    Int
-  startTime DateTime
-  endTime   DateTime
-  status    BookingStatus @default(PENDING)
-  totalCost Float?
-  createdAt DateTime      @default(now())
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vehicle   Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  spot      ParkingSpot   @relation(fields: [spotId], references: [id], onDelete: Cascade)
-  payment   Payment?
-}
-
-model Payment {
-  id        Int           @id @default(autoincrement())
-  bookingId Int           @unique
-  amount    Float
-  status    PaymentStatus @default(PENDING)
-  method    String?
-  createdAt DateTime      @default(now())
-  booking   Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-}
-
-enum SpotStatus {
-  AVAILABLE
-  OCCUPIED
-  RESERVED
-  MAINTENANCE
+  id                  Int          @id @default(autoincrement())
+  driverName          String
+  vehicleNumber       String
+  email               String?
+  phoneNumber         String
+  idNumber            String
+  parkingSpot         String
+  vehicleType         String       @default("Car")
+  entryTime           DateTime
+  expectedExitTime    DateTime
+  actualExitTime      DateTime?
+  paymentMethod       String       @default("Cash")
+  totalCost           Float?
+  paymentStatus       PaymentStatus @default(PENDING)
+  bookingStatus       BookingStatus @default(PENDING)
+  notes               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 }
 
 enum BookingStatus {
@@ -95,4 +46,41 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+// Keep these for reference but they're optional
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Vehicle {
+  id           Int    @id @default(autoincrement())
+  licensePlate String @unique
+  make         String
+  model        String
+  color        String?
+}
+
+model ParkingLot {
+  id       Int           @id @default(autoincrement())
+  name     String
+  location String
+  capacity Int
+}
+
+model ParkingSpot {
+  id         Int     @id @default(autoincrement())
+  lotId      Int
+  spotNumber String
+  status     SpotStatus  @default(AVAILABLE)
+}
+
+enum SpotStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  MAINTENANCE
 }
