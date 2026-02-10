@@ -38,6 +38,8 @@ export default function MyBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  const [paymentMode, setPaymentMode] = useState<'advance' | 'remaining' | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
@@ -107,36 +109,28 @@ export default function MyBookingsPage() {
 
   // --- Handlers ---
 
-  const handlePayNow = (booking: Booking) => {
+  const handlePayAdvance = (booking: Booking) => {
     setSelectedBooking(booking);
+    setPaymentMode('advance');
+    setPaymentAmount(calculateAdvance(booking));
     setShowPaymentForm(true);
   };
 
-  const handlePaymentSuccess = (paymentId: string) => {
-    if (!selectedBooking) return;
-    
-    // Optimistic Update: Assume they just paid the advance
-    const advanceAmount = calculateAdvance(selectedBooking);
-    const currentPaid = getAmountPaid(selectedBooking);
-    const newPaidAmount = currentPaid + advanceAmount;
-    const newRemaining = Math.max(0, calculateTotal(selectedBooking) - newPaidAmount);
-    const newStatus =
-      selectedBooking.status === 'cancelled'
-        ? ('cancelled' as const)
-        : newRemaining > 0
-          ? ('pending' as const)
-          : ('paid' as const);
+  const handlePayRemaining = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setPaymentMode('remaining');
+    setPaymentAmount(calculateRemaining(booking));
+    setShowPaymentForm(true);
+  };
 
-    const updated = bookings.map((b) =>
-      b.bookingId === selectedBooking.bookingId
-        ? { ...b, status: newStatus, paymentId, paidAmount: newPaidAmount } 
-        : b
-    );
-    setBookings(updated);
+  const handlePaymentSuccess = async (_payload: { paymentId: string; booking: any }) => {
+    if (!selectedBooking) return;
     
     setSelectedBooking(null);
     setShowPaymentForm(false);
-    fetchBookings(); // Sync with server to be safe
+    setPaymentAmount(null);
+    setPaymentMode(null);
+    await fetchBookings(); // Backend is source of truth
   };
 
   const confirmCancelBooking = async () => {
@@ -175,7 +169,7 @@ export default function MyBookingsPage() {
   );
 
   const statusMeta = (status: Booking['status']) => {
-    if (status === 'paid') return { label: 'Advance Paid', pill: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/20', dot: 'bg-emerald-400' };
+    if (status === 'paid') return { label: 'Paid', pill: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/20', dot: 'bg-emerald-400' };
     if (status === 'pending') return { label: 'Pending Payment', pill: 'bg-amber-500/12 text-amber-300 border-amber-500/20', dot: 'bg-amber-400' };
     if (status === 'cancelled') return { label: 'Cancelled', pill: 'bg-rose-500/12 text-rose-300 border-rose-500/20', dot: 'bg-rose-400' };
     return { label: 'Completed', pill: 'bg-sky-500/12 text-sky-300 border-sky-500/20', dot: 'bg-sky-400' };
@@ -322,8 +316,13 @@ export default function MyBookingsPage() {
                 {/* Actions */}
                 <div className="mt-3 grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
                   {b.status === 'pending' && (
-                    <button onClick={() => handlePayNow(b)} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 text-sm font-semibold hover:shadow-lg transition">
+                    <button onClick={() => handlePayAdvance(b)} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-lime-500 to-lime-400 text-slate-900 text-sm font-semibold hover:shadow-lg transition">
                       Pay Advance (Rs.{advanceRequired})
+                    </button>
+                  )}
+                  {b.status !== 'cancelled' && remaining > 0 && (
+                    <button onClick={() => handlePayRemaining(b)} className="w-full sm:w-auto px-4 py-2 rounded-xl border border-lime-400/40 bg-slate-900/40 text-lime-200 text-sm font-semibold hover:bg-slate-800/60 transition">
+                      Pay Remaining (Rs.{remaining})
                     </button>
                   )}
                   {canCancel && (
@@ -360,12 +359,14 @@ export default function MyBookingsPage() {
       {showPaymentForm && selectedBooking && (
         <PaymentForm
           booking={selectedBooking}
-          // The form asks "How much do you want to pay?". We pass the Advance Amount here.
-          total={calculateAdvance(selectedBooking)}
+          // The form asks "How much do you want to pay?". We pass the selected amount here.
+          total={paymentAmount ?? (paymentMode === 'remaining' ? calculateRemaining(selectedBooking) : calculateAdvance(selectedBooking))}
           onSuccess={handlePaymentSuccess}
           onClose={() => {
             setSelectedBooking(null);
             setShowPaymentForm(false);
+            setPaymentAmount(null);
+            setPaymentMode(null);
           }}
         />
       )}

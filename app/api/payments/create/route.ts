@@ -16,8 +16,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { bookingId, amount } = body;
 
-    if (!bookingId || !amount) {
+    if (!bookingId || amount == null) {
       return errorResponse('Missing booking ID or amount', 400);
+    }
+    const amountValue = Number(amount);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      return errorResponse('Invalid payment amount', 400);
     }
 
     // 3. Verify User & Booking
@@ -35,54 +39,85 @@ export async function POST(request: NextRequest) {
     if (!booking) return errorResponse('Booking not found', 404);
     if (booking.userId !== dbUser.id) return errorResponse('Unauthorized booking access', 403);
 
-    // 4. Check if already paid (Prevent double charge)
+    // 4. Check if fully paid (Prevent double charge)
+    if (booking.status === 'CANCELLED') {
+      return errorResponse('Booking is cancelled', 409);
+    }
+    const totalAmount = booking.totalAmount || 0;
+    const currentPaid = booking.paidAmount || 0;
+    const balanceDue = Math.max(0, totalAmount - currentPaid);
+    const fullyPaid = currentPaid >= totalAmount || balanceDue === 0;
+    if (fullyPaid) {
+      return errorResponse('Booking is already paid', 409);
+    }
+    if (amountValue > balanceDue) {
+      return errorResponse('Payment amount exceeds balance due', 400);
+    }
+
     const existingPayment = await prisma.payments.findUnique({
       where: { bookingId: bookingId }
     });
 
-    if (existingPayment) {
-      return errorResponse('Booking is already paid', 409);
-    }
-
     // --- 5. PROCESS PAYMENT (Mock Gateway) ---
     // In a real app, this is where you call Stripe/PayPal
-    const gatewayResult = await processDemoPayment(parseFloat(amount));
+    const gatewayResult = await processDemoPayment(amountValue);
 
     // --- 6. DATABASE TRANSACTION ---
     const result = await prisma.$transaction(async (tx) => {
       
       // A. Insert into 'payments' table
-      const newPayment = await tx.payments.create({
-        data: {
-          id: crypto.randomUUID(),
-          bookingId: bookingId,
-          amount: parseFloat(amount),
-          method: 'CARD',       // Enum: PaymentMethod
-          status: 'COMPLETED',  // Enum: PaymentStatus
-          transactionId: gatewayResult.transactionId,
-          paidAt: gatewayResult.timestamp,
-          createdAt: gatewayResult.timestamp,
-          updatedAt: gatewayResult.timestamp,
-        }
-      });
+      const newPayment = existingPayment
+        ? await tx.payments.update({
+            where: { bookingId: bookingId },
+            data: {
+              amount: existingPayment.amount + amountValue,
+              method: 'CARD',
+              status: 'COMPLETED',
+              transactionId: gatewayResult.transactionId,
+              paidAt: gatewayResult.timestamp,
+              updatedAt: gatewayResult.timestamp,
+            }
+          })
+        : await tx.payments.create({
+            data: {
+              id: crypto.randomUUID(),
+              bookingId: bookingId,
+              amount: amountValue,
+              method: 'CARD',       // Enum: PaymentMethod
+              status: 'COMPLETED',  // Enum: PaymentStatus
+              transactionId: gatewayResult.transactionId,
+              paidAt: gatewayResult.timestamp,
+              createdAt: gatewayResult.timestamp,
+              updatedAt: gatewayResult.timestamp,
+            }
+          });
 
       // B. Update 'bookings' table
-      // Update paidAmount and set status to 'PAID' or 'CONFIRMED'
-      const currentPaid = booking.paidAmount || 0;
-      await tx.bookings.update({
+      // Update paidAmount and set status based on remaining balance
+      const newPaidAmount = Math.min(totalAmount, currentPaid + amountValue);
+      const newRemaining = Math.max(0, totalAmount - newPaidAmount);
+      const newStatus = newRemaining === 0 ? 'PAID' : 'PENDING';
+      const updatedBooking = await tx.bookings.update({
         where: { id: bookingId },
         data: {
-          status: 'PAID', // Enum: BookingStatus
-          paidAmount: currentPaid + parseFloat(amount),
+          status: newStatus, // Enum: BookingStatus
+          paidAmount: newPaidAmount,
           updatedAt: new Date()
         }
       });
 
-      return newPayment;
+      return { payment: newPayment, booking: updatedBooking };
     });
 
-    console.log(`✅ [PAYMENT] Record created: ${result.id}`);
-    return successResponse(result, 'Payment successful');
+    const responseBooking = {
+      bookingId: result.booking.id,
+      status: result.booking.status.toLowerCase(),
+      totalAmount: result.booking.totalAmount,
+      paidAmount: result.booking.paidAmount,
+      paymentId: result.payment.id
+    };
+    console.log(`✅ [PAYMENT] Record created/updated: ${result.payment.id}`);
+    return successResponse({ payment: result.payment, booking: responseBooking }, 'Payment successful');
 
   } catch (error: any) {
     console.error('[PAYMENT_API_ERROR]', error);
