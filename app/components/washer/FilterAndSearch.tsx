@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { BookingFilters, BookingStatus } from '@/lib/washer-types';
-import { Search, Filter, ChevronDown } from 'lucide-react';
+import { Search, Filter, ChevronDown, Calendar, Clock, X } from 'lucide-react';
 
 interface FilterAndSearchProps {
   onFilterChange: (filters: BookingFilters) => void;
@@ -19,30 +19,9 @@ export const FilterAndSearch: React.FC<FilterAndSearchProps> = ({
     sortBy: 'earliest',
   });
 
-  // Generate date options for the dropdown (today and next 7 days)
-  const dateOptions = useMemo(() => {
-    const dates = [];
-    const today = new Date();
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      const dateStr = date.toISOString().split('T')[0];
-      const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      dates.push({ value: dateStr, label });
-    }
-    return dates;
-  }, []);
-
-  // Time slot options
-  const timeOptions = [
-    { value: '', label: 'All Times' },
-    { value: '08:00-10:00', label: '8:00 AM - 10:00 AM' },
-    { value: '10:00-12:00', label: '10:00 AM - 12:00 PM' },
-    { value: '12:00-14:00', label: '12:00 PM - 2:00 PM' },
-    { value: '14:00-16:00', label: '2:00 PM - 4:00 PM' },
-    { value: '16:00-18:00', label: '4:00 PM - 6:00 PM' },
-    { value: '18:00-20:00', label: '6:00 PM - 8:00 PM' },
-  ];
+  // State for time range inputs
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
 
   const handleSearchChange = useCallback((query: string) => {
     const newFilters = { ...filters, searchQuery: query };
@@ -62,17 +41,52 @@ export const FilterAndSearch: React.FC<FilterAndSearchProps> = ({
     onFilterChange(newFilters);
   }, [filters, onFilterChange]);
 
-  const handleTimeChange = useCallback((timeRange: string) => {
-    if (!timeRange) {
+  const clearDateFilter = useCallback(() => {
+    const newFilters = { ...filters, dateFilter: undefined };
+    setFilters(newFilters);
+    onFilterChange(newFilters);
+  }, [filters, onFilterChange]);
+
+  const handleStartTimeChange = useCallback((time: string) => {
+    setStartTime(time);
+    if (time && endTime) {
+      const newFilters = { ...filters, timeRange: { start: time, end: endTime } };
+      setFilters(newFilters);
+      onFilterChange(newFilters);
+    } else if (time && !endTime) {
+      // If only start time is set, filter from that time onwards (set end to 23:59)
+      const newFilters = { ...filters, timeRange: { start: time, end: '23:59' } };
+      setFilters(newFilters);
+      onFilterChange(newFilters);
+    } else if (!time) {
+      // Clear time filter if start time is removed
       const newFilters = { ...filters, timeRange: undefined };
       setFilters(newFilters);
       onFilterChange(newFilters);
-    } else {
-      const [start, end] = timeRange.split('-');
-      const newFilters = { ...filters, timeRange: { start, end } };
+      setEndTime('');
+    }
+  }, [filters, onFilterChange, endTime]);
+
+  const handleEndTimeChange = useCallback((time: string) => {
+    setEndTime(time);
+    if (startTime && time) {
+      const newFilters = { ...filters, timeRange: { start: startTime, end: time } };
+      setFilters(newFilters);
+      onFilterChange(newFilters);
+    } else if (!startTime && time) {
+      // If only end time is set, filter from start of day (00:00) to that time
+      const newFilters = { ...filters, timeRange: { start: '00:00', end: time } };
       setFilters(newFilters);
       onFilterChange(newFilters);
     }
+  }, [filters, onFilterChange, startTime]);
+
+  const clearTimeFilter = useCallback(() => {
+    setStartTime('');
+    setEndTime('');
+    const newFilters = { ...filters, timeRange: undefined };
+    setFilters(newFilters);
+    onFilterChange(newFilters);
   }, [filters, onFilterChange]);
 
   const statusOptions: { value: BookingStatus | 'ALL'; label: string }[] = [
@@ -82,11 +96,6 @@ export const FilterAndSearch: React.FC<FilterAndSearchProps> = ({
     { value: 'COMPLETED', label: 'Completed' },
     { value: 'CANCELLED', label: 'Cancelled' },
   ];
-
-  const getCurrentTimeValue = () => {
-    if (!filters.timeRange) return '';
-    return `${filters.timeRange.start}-${filters.timeRange.end}`;
-  };
 
   return (
     <div className="p-6 rounded-xl border border-white/10 bg-white/5">
@@ -124,41 +133,67 @@ export const FilterAndSearch: React.FC<FilterAndSearchProps> = ({
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" size={18} />
         </div>
 
-        {/* Date Dropdown */}
+        {/* Date Picker */}
         <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
-          <select
+          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
+          <input
+            type="date"
             value={filters.dateFilter || ''}
             onChange={(e) => handleDateChange(e.target.value)}
             disabled={isLoading}
-            className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer appearance-none text-sm"
-          >
-            <option value="" className="bg-[#1E293B] text-white">All Dates</option>
-            {dateOptions.map((option) => (
-              <option key={option.value} value={option.value} className="bg-[#1E293B] text-white">
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" size={18} />
+            className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+            style={{ colorScheme: 'dark' }}
+          />
+          {filters.dateFilter && (
+            <button
+              onClick={clearDateFilter}
+              disabled={isLoading}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition disabled:opacity-50"
+              aria-label="Clear date filter"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
-        {/* Time Dropdown */}
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={18} />
-          <select
-            value={getCurrentTimeValue()}
-            onChange={(e) => handleTimeChange(e.target.value)}
-            disabled={isLoading}
-            className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer appearance-none text-sm"
-          >
-            {timeOptions.map((option) => (
-              <option key={option.value} value={option.value} className="bg-[#1E293B] text-white">
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" size={18} />
+        {/* Time Range Pickers */}
+        <div className="relative flex items-center gap-2">
+          <div className="relative flex-1">
+            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => handleStartTimeChange(e.target.value)}
+              disabled={isLoading}
+              placeholder="From"
+              className="w-full pl-9 pr-2 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              style={{ colorScheme: 'dark' }}
+              title="Start time"
+            />
+          </div>
+          <span className="text-white/40 text-sm flex-shrink-0">to</span>
+          <div className="relative flex-1">
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => handleEndTimeChange(e.target.value)}
+              disabled={isLoading}
+              placeholder="To"
+              className="w-full pl-3 pr-2 py-2.5 rounded-lg bg-white/5 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent disabled:opacity-50 transition cursor-pointer text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              style={{ colorScheme: 'dark' }}
+              title="End time"
+            />
+          </div>
+          {(startTime || endTime) && (
+            <button
+              onClick={clearTimeFilter}
+              disabled={isLoading}
+              className="text-white/40 hover:text-white/80 transition disabled:opacity-50 flex-shrink-0"
+              aria-label="Clear time filter"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
       </div>
     </div>

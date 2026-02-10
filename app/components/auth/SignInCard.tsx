@@ -1,8 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../AuthProvider';
+import { useAuthModal } from '../AuthModalProvider';
 
 // Map roles to their redirect paths
 const ROLE_REDIRECT_MAP: Record<string, string> = {
@@ -15,6 +16,8 @@ const ROLE_REDIRECT_MAP: Record<string, string> = {
 
 export function SignInCard() {
   const router = useRouter();
+  const { refreshUser, setUser } = useAuth();
+  const { openSignUp } = useAuthModal();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -41,6 +44,7 @@ export function SignInCard() {
     try {
       const response = await fetch('/api/auth/sign-in', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -60,6 +64,16 @@ export function SignInCard() {
       // Success! Redirect based on user role
       const userRole = data.data?.user?.role || 'CUSTOMER';
       const redirectPath = ROLE_REDIRECT_MAP[userRole] || '/customer';
+      if (data.data?.user) {
+        setUser(data.data.user);
+        try {
+          localStorage.setItem('user', JSON.stringify(data.data.user));
+        } catch (error) {
+          console.error('Failed to cache user:', error);
+        }
+      }
+      // Hydrate auth context with server data in background as well.
+      refreshUser();
       router.push(redirectPath);
     } catch (err) {
       setError('Something went wrong. Please try again.');
@@ -71,7 +85,7 @@ export function SignInCard() {
 
   return (
     <div className="w-full">
-      <div className="bg-gradient-to-br from-[#1E293B] to-[#0F172A] rounded-2xl shadow-2xl p-8 border border-[#334155]/50">
+      <div className="bg-linear-to-br from-[#1E293B] to-[#0F172A] rounded-2xl shadow-2xl p-8 border border-[#334155]/50">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[#E5E7EB] mb-2 text-center">Sign in</h1>
           <p className="text-sm text-[#84CC16] text-center">Use email or service, to sign in</p>
@@ -109,7 +123,7 @@ export function SignInCard() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-lg bg-black text-white font-medium hover:bg-gradient-to-r hover:from-[#84CC16] hover:to-[#BEF264] hover:text-black transition-all duration-300 shadow-lg hover:shadow-[#84CC16]/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 rounded-lg bg-black text-white font-medium hover:bg-linear-to-r hover:from-[#84CC16] hover:to-[#BEF264] hover:text-black transition-all duration-300 shadow-lg hover:shadow-[#84CC16]/50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Signing in...' : 'Continue'}
           </button>
@@ -157,12 +171,13 @@ export function SignInCard() {
         <div className="mt-6 text-center">
           <p className="text-sm text-[#94A3B8]">
             Create new account?{' '}
-            <Link
-              href="/sign-up"
+            <button
+              type="button"
+              onClick={openSignUp}
               className="text-blue-500 hover:text-blue-400 underline transition-colors duration-200"
             >
               Sign up
-            </Link>
+            </button>
           </p>
         </div>
       </div>

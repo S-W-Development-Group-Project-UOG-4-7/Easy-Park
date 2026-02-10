@@ -18,6 +18,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { statsApi, bookingsApi } from '../../services/api';
+import { adminCard, adminPrimaryButton } from '../components/adminTheme';
 
 interface Stats {
   totalRevenue: number;
@@ -157,7 +158,7 @@ const statCards = [
   return (
     <div className="space-y-8">
       {/* Header Section */}
-      <div className="relative overflow-hidden rounded-2xl border bg-linear-to-br p-8 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-slate-50">
+      <div className={`relative overflow-hidden ${adminCard} p-8`}>
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-linear-to-br from-lime-400/20 to-emerald-500/20 blur-3xl" />
         <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-linear-to-br from-blue-400/20 to-cyan-500/20 blur-3xl" />
         <div className="relative">
@@ -173,11 +174,11 @@ const statCards = [
             </div>
           </div>
           <div className="mt-6 flex flex-wrap gap-4">
-            <div className="flex items-center gap-2 rounded-full bg-slate-100/80 dark:bg-slate-800/50 px-4 py-2">
+            <div className="flex items-center gap-2 rounded-full bg-white/60 dark:bg-slate-900/50 px-4 py-2">
               <Clock className="h-4 w-4 text-lime-500" />
               <span className="text-sm dark:text-slate-300 text-slate-700">Last updated: Just now</span>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-slate-100/80 dark:bg-slate-800/50 px-4 py-2">
+            <div className="flex items-center gap-2 rounded-full bg-white/60 dark:bg-slate-900/50 px-4 py-2">
               <Zap className="h-4 w-4 text-amber-500" />
               <span className="text-sm dark:text-slate-300 text-slate-700">System status: Operational</span>
             </div>
@@ -191,7 +192,7 @@ const statCards = [
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="h-40 animate-pulse rounded-2xl bg-linear-to-br dark:from-[#1E293B] dark:to-[#0F172A] from-white to-slate-50"
+              className="h-40 animate-pulse rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60"
             />
           ))}
         </div>
@@ -202,7 +203,7 @@ const statCards = [
             return (
               <div
                 key={index}
-                className={`group relative overflow-hidden rounded-2xl border bg-linear-to-br p-6 transition-all duration-500 hover:scale-[1.03] hover:shadow-2xl ${card.shadowColor} dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-slate-50`}
+                className={`group relative overflow-hidden ${adminCard} p-6 transition-all duration-500 hover:scale-[1.03] hover:shadow-2xl ${card.shadowColor}`}
               >
                 {/* Animated background glow */}
                 <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full ${card.bgGlow} blur-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100`} />
@@ -232,7 +233,7 @@ const statCards = [
       {/* Quick Actions & Activity Section */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Quick Actions */}
-        <div className="rounded-2xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-slate-50">
+        <div className={adminCard}>
           <div className="flex items-center gap-3 mb-6">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-lime-400 to-lime-500">
               <Zap className="h-5 w-5 text-slate-900" />
@@ -246,7 +247,7 @@ const statCards = [
                 <Link
                   key={index}
                   href={action.href}
-                  className="group flex items-center justify-between rounded-xl border p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg dark:border-slate-700/50 dark:bg-slate-800/30 dark:hover:bg-slate-800/60 border-slate-200/60 bg-slate-50/50 hover:bg-white"
+                  className="group flex items-center justify-between rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/60 dark:bg-slate-900/60 p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   <div className="flex items-center gap-3">
                     <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-linear-to-br ${action.color}`}>
@@ -262,7 +263,7 @@ const statCards = [
         </div>
 
         {/* Recent Activity */}
-        <div className="lg:col-span-2 rounded-2xl border bg-linear-to-br p-6 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-slate-50">
+        <div className={`lg:col-span-2 ${adminCard}`}>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-blue-500 to-cyan-500">
@@ -279,7 +280,7 @@ const statCards = [
               stats.recentActivities.map((activity) => (
                 <div
                   key={activity.id}
-                  className="group flex items-center gap-4 rounded-xl border p-4 transition-all duration-300 hover:bg-slate-50 dark:border-slate-700/50 dark:bg-slate-800/20 dark:hover:bg-slate-800/40 border-slate-200/60 bg-white/50"
+                  className="group flex items-center gap-4 rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-white/60 dark:bg-slate-900/60 p-4 transition-all duration-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
                     activity.type === 'booking' ? 'bg-blue-500/10 text-blue-500' :
@@ -315,7 +316,7 @@ const statCards = [
       </div>
 
       {/* System Overview Banner */}
-      <div className="relative overflow-hidden rounded-2xl border bg-linear-to-br p-8 dark:border-slate-800/60 dark:from-[#1E293B] dark:to-[#0F172A] border-slate-200/60 from-white to-slate-50">
+      <div className={`relative overflow-hidden ${adminCard} p-8`}>
         {/* Animated gradient background */}
         <div className="absolute inset-0 bg-linear-to-r from-lime-500/5 via-emerald-500/5 to-teal-500/5" />
         <div className="absolute -right-40 top-1/2 -translate-y-1/2 h-80 w-80 rounded-full bg-linear-to-br from-lime-400/20 to-emerald-500/20 blur-3xl" />
@@ -348,7 +349,7 @@ const statCards = [
           </div>
           <Link
             href="/admin/properties"
-            className="inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-lime-500 to-emerald-500 px-6 py-3 font-semibold text-slate-900 shadow-lg shadow-lime-500/30 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-lime-500/40"
+            className={`inline-flex items-center gap-2 ${adminPrimaryButton}`}
           >
             View Details
             <ArrowUpRight className="h-5 w-5" />

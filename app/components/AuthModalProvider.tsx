@@ -1,16 +1,30 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { SignInCard } from './auth/SignInCard';
-import { SignUpCard } from './auth/SignUpCard';
+import dynamic from 'next/dynamic';
+
+// Lazy-load heavy auth forms so they don't inflate every page's JS bundle.
+const SignInCard = dynamic(() => import('./auth/SignInCard').then((m) => m.SignInCard), {
+  ssr: false,
+  loading: () => <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-8 text-slate-300">Loading...</div>,
+});
+
+const SignUpCard = dynamic(() => import('./auth/SignUpCard').then((m) => m.SignUpCard), {
+  ssr: false,
+  loading: () => <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-8 text-slate-300">Loading...</div>,
+});
 
 type AuthModalMode = 'sign-in' | 'sign-up';
 
 type AuthModalContextValue = {
   openAuthModal: (mode: AuthModalMode) => void;
+  openSignIn: () => void;
+  openSignUp: () => void;
   closeAuthModal: () => void;
   isOpen: boolean;
   mode: AuthModalMode;
+  showSignIn: boolean;
+  showSignUp: boolean;
 };
 
 const AuthModalContext = createContext<AuthModalContextValue | null>(null);
@@ -51,15 +65,34 @@ function AuthModal({ mode, onClose }: { mode: AuthModalMode; onClose: () => void
 }
 
 export function AuthModalProvider({ children }: { children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [mode, setMode] = useState<AuthModalMode>('sign-in');
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [showSignUp, setShowSignUp] = useState(false);
 
-  const openAuthModal = (nextMode: AuthModalMode) => {
-    setMode(nextMode);
-    setIsOpen(true);
+  const openSignIn = () => {
+    setShowSignIn(true);
+    setShowSignUp(false);
   };
 
-  const closeAuthModal = () => setIsOpen(false);
+  const openSignUp = () => {
+    setShowSignUp(true);
+    setShowSignIn(false);
+  };
+
+  const openAuthModal = (nextMode: AuthModalMode) => {
+    if (nextMode === 'sign-in') {
+      openSignIn();
+    } else {
+      openSignUp();
+    }
+  };
+
+  const closeAuthModal = () => {
+    setShowSignIn(false);
+    setShowSignUp(false);
+  };
+
+  const isOpen = showSignIn || showSignUp;
+  const mode: AuthModalMode = showSignUp ? 'sign-up' : 'sign-in';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -67,14 +100,32 @@ export function AuthModalProvider({ children }: { children: React.ReactNode }) {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeAuthModal();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+
     return () => {
       document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, [isOpen]);
 
   const value = useMemo<AuthModalContextValue>(
-    () => ({ openAuthModal, closeAuthModal, isOpen, mode }),
-    [isOpen, mode]
+    () => ({
+      openAuthModal,
+      openSignIn,
+      openSignUp,
+      closeAuthModal,
+      isOpen,
+      mode,
+      showSignIn,
+      showSignUp,
+    }),
+    [isOpen, mode, showSignIn, showSignUp]
   );
 
   return (

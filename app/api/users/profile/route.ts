@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser, hashPassword, verifyPassword } from '@/lib/auth';
 import {
@@ -8,32 +8,29 @@ import {
   serverErrorResponse,
 } from '@/lib/api-response';
 
-// GET user profile
+// GET: Fetch user profile
 export async function GET(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
+    const authUser = await getAuthUser(request); // Added await
     
-    if (!authUser) {
+    if (!authUser || !authUser.email) {
       return unauthorizedResponse();
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: authUser.userId },
+    const user = await prisma.users.findUnique({
+      where: { email: authUser.email }, // Fixed: Added where clause
       select: {
         id: true,
         email: true,
         fullName: true,
         contactNo: true,
-        vehicleNumber: true,
         nic: true,
+        vehicleNumber: true,
         role: true,
         createdAt: true,
-        _count: {
-          select: {
-            bookings: true,
-          },
-        },
-      },
+        updatedAt: true,
+        // Exclude password
+      }
     });
 
     if (!user) {
@@ -47,48 +44,55 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH update user profile
-export async function PATCH(request: NextRequest) {
+// PUT: Update User Profile (Matches your Frontend 'PUT' call)
+export async function PUT(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
+    const authUser = await getAuthUser(request); // Added await
     
-    if (!authUser) {
+    if (!authUser || !authUser.email) {
       return unauthorizedResponse();
     }
 
     const body = await request.json();
-    const { fullName, contactNo, vehicleNumber } = body;
+    
+    // Extract all fields sent from the frontend
+    const { 
+      fullName, 
+      contactNo, 
+      nic, 
+      vehicleNumber
+    } = body;
 
-    const user = await prisma.user.update({
-      where: { id: authUser.userId },
+    // Determine user ID (using email from token to be safe)
+    const existingUser = await prisma.users.findUnique({
+        where: { email: authUser.email }
+    });
+
+    if (!existingUser) return unauthorizedResponse('User not found');
+
+    // Perform the Update
+    const updatedUser = await prisma.users.update({
+      where: { id: existingUser.id },
       data: {
-        ...(fullName && { fullName }),
-        ...(contactNo && { contactNo }),
-        ...(vehicleNumber && { vehicleNumber }),
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        contactNo: true,
-        vehicleNumber: true,
-        nic: true,
-        role: true,
-        createdAt: true,
+        fullName,
+        contactNo,
+        nic,
+        vehicleNumber,
+        updatedAt: new Date(),
       },
     });
 
-    return successResponse(user, 'Profile updated successfully');
+    return successResponse(updatedUser, 'Profile updated successfully');
   } catch (error) {
     console.error('Update profile error:', error);
     return serverErrorResponse('Failed to update profile');
   }
 }
 
-// PUT change password
-export async function PUT(request: NextRequest) {
+// PATCH: Change Password (Optional - moved here to avoid conflict)
+export async function PATCH(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
+    const authUser = await getAuthUser(request); // Added await
     
     if (!authUser) {
       return unauthorizedResponse();
@@ -106,8 +110,8 @@ export async function PUT(request: NextRequest) {
     }
 
     // Get user with password
-    const user = await prisma.user.findUnique({
-      where: { id: authUser.userId },
+    const user = await prisma.users.findUnique({
+      where: { email: authUser.email },
     });
 
     if (!user) {
@@ -124,9 +128,9 @@ export async function PUT(request: NextRequest) {
     const hashedPassword = await hashPassword(newPassword);
 
     // Update password
-    await prisma.user.update({
-      where: { id: authUser.userId },
-      data: { password: hashedPassword },
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { password: hashedPassword, updatedAt: new Date() },
     });
 
     return successResponse(null, 'Password changed successfully');

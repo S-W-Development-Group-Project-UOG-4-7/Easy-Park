@@ -32,14 +32,14 @@ export async function GET(
 
     const { id } = await params;
 
-    const customer = await prisma.washerCustomer.findUnique({
+    const customer = await prisma.washer_customers.findUnique({
       where: { id },
       include: {
-        bookings: {
+        washer_bookings: {
           orderBy: { slotTime: 'desc' },
         },
         _count: {
-          select: { bookings: true },
+          select: { washer_bookings: true },
         },
       },
     });
@@ -49,14 +49,14 @@ export async function GET(
     }
 
     // Calculate customer statistics
-    const bookingStats = await prisma.washerBooking.groupBy({
+    const bookingStats = await prisma.washer_bookings.groupBy({
       by: ['status'],
       where: { customerId: id },
       _count: { status: true },
     });
 
     const stats = {
-      total: customer.bookings.length,
+      total: customer.washer_bookings.length,
       pending: 0,
       accepted: 0,
       completed: 0,
@@ -108,7 +108,7 @@ export async function PATCH(
     const { name, email, phone, vehicleDetails, otherRelevantInfo } = body;
 
     // Check if customer exists
-    const existingCustomer = await prisma.washerCustomer.findUnique({
+    const existingCustomer = await prisma.washer_customers.findUnique({
       where: { id },
     });
 
@@ -118,7 +118,7 @@ export async function PATCH(
 
     // If email is being changed, check for duplicates
     if (email && email !== existingCustomer.email) {
-      const emailExists = await prisma.washerCustomer.findUnique({
+      const emailExists = await prisma.washer_customers.findUnique({
         where: { email },
       });
 
@@ -134,12 +134,13 @@ export async function PATCH(
     if (phone !== undefined) updateData.phone = phone;
     if (vehicleDetails !== undefined) updateData.vehicleDetails = vehicleDetails;
     if (otherRelevantInfo !== undefined) updateData.otherRelevantInfo = otherRelevantInfo;
+    updateData.updatedAt = new Date();
 
-    const updatedCustomer = await prisma.washerCustomer.update({
+    const updatedCustomer = await prisma.washer_customers.update({
       where: { id },
       data: updateData,
       include: {
-        bookings: {
+        washer_bookings: {
           orderBy: { slotTime: 'desc' },
           take: 5,
         },
@@ -175,11 +176,11 @@ export async function DELETE(
 
     const { id } = await params;
 
-    const customer = await prisma.washerCustomer.findUnique({
+    const customer = await prisma.washer_customers.findUnique({
       where: { id },
       include: {
         _count: {
-          select: { bookings: true },
+          select: { washer_bookings: true },
         },
       },
     });
@@ -189,14 +190,14 @@ export async function DELETE(
     }
 
     // Check if customer has any bookings
-    if (customer._count.bookings > 0) {
+    if (customer._count.washer_bookings > 0) {
       return errorResponse(
         'Cannot delete customer with existing bookings. Delete all bookings first.',
         400
       );
     }
 
-    await prisma.washerCustomer.delete({
+    await prisma.washer_customers.delete({
       where: { id },
     });
 

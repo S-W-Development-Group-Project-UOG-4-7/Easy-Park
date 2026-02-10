@@ -61,7 +61,7 @@ export default function AdminBookingsPage() {
     setTheme(theme === "dark" ? "light" : "dark");
   };
 
-  // Open sign out confirmation modal with page
+  // Open sign out confirmation modal
   const openSignOutModal = () => {
     setMobileMenuOpen(false); // Close mobile menu if open
     setShowSignOutModal(true);
@@ -72,7 +72,7 @@ export default function AdminBookingsPage() {
     setShowSignOutModal(false);
   };
 
-  // Handle  the Sign Out
+  // Handle Sign Out
   const handleSignOut = async () => {
     if (signingOut) return;
     

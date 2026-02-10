@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "./components/ThemeProvider";
-import { AuthModalProvider } from "./components/AuthModalProvider";
-import { AuthProvider } from "./components/AuthProvider";
+import ClientProviders from "./components/ClientProviders";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="scroll-smooth">
+    <html lang="en" suppressHydrationWarning className="scroll-smooth dark">
       <body
         className={`
           ${geistSans.variable} 
@@ -38,13 +36,7 @@ export default function RootLayout({
           transition-colors duration-300
         `}
       >
-        <ThemeProvider>
-          <AuthProvider>
-            <AuthModalProvider>
-              {children}
-            </AuthModalProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   );

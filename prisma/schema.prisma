@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,127 +7,200 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User model - stores customer information
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  password      String
-  fullName      String
-  contactNo     String?
-  vehicleNumber String?
-  nic           String?   @unique
-  role          Role      @default(CUSTOMER)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  bookings      Booking[]
-  ownedLocations ParkingLocation[] @relation("ParkingLocationOwner")
-
-  @@map("users")
+model admin_bookings {
+  id                  String              @id
+  propertyId          String
+  slotId              String
+  customerId          String
+  bookingDate         DateTime
+  startTime           DateTime
+  endTime             DateTime
+  totalPrice          Float
+  status              AdminBookingStatus  @default(PENDING)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime
+  admin_customers     admin_customers     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  admin_properties    admin_properties    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  admin_parking_slots admin_parking_slots @relation(fields: [slotId], references: [id], onDelete: Cascade)
 }
 
-// AdminUser model - stores users created by admin (COUNTER, WASHER, LAND_OWNER)
-model AdminUser {
-  id            String    @id @default(cuid())
-  fullName      String
-  address       String?
-  nic           String    @unique
-  mobileNumber  String
-  email         String    @unique
-  role          AdminRole
-  password      String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  @@map("admin_users")
+model admin_customers {
+  id             String           @id
+  name           String
+  email          String           @unique
+  phone          String
+  registeredDate DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  admin_bookings admin_bookings[]
 }
 
-enum AdminRole {
-  COUNTER
-  WASHER
-  LAND_OWNER
+model admin_parking_slots {
+  id               String           @id
+  propertyId       String
+  slotNumber       String
+  status           AdminSlotStatus  @default(AVAILABLE)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime
+  admin_bookings   admin_bookings[]
+  admin_properties admin_properties @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, slotNumber])
 }
 
-enum Role {
-  ADMIN
-  CUSTOMER
-  COUNTER
-  LAND_OWNER
-  WASHER
+model admin_properties {
+  id                  String                @id
+  propertyName        String
+  location            String
+  description         String?
+  pricePerHour        Float                 @default(300)
+  status              AdminPropertyStatus   @default(ACTIVATED)
+  totalSlots          Int                   @default(0)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  admin_bookings      admin_bookings[]
+  admin_parking_slots admin_parking_slots[]
 }
 
-// Parking Location Status enum
-enum ParkingLocationStatus {
-  ACTIVATED
-  NOT_ACTIVATED
+model booking_slots {
+  id            String        @id
+  bookingId     String
+  slotId        String
+  bookings      bookings      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  parking_slots parking_slots @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, slotId])
 }
 
-// Parking Location model - different parking areas
-model ParkingLocation {
-  id           String                @id @default(cuid())
-  name         String
-  address      String
-  description  String?
-  totalSlots   Int
-  pricePerHour Float                 @default(300)
-  pricePerDay  Float                 @default(2000)
-  status       ParkingLocationStatus @default(NOT_ACTIVATED)
-  ownerId      String?
-  owner        User?                 @relation("ParkingLocationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-  slots        ParkingSlot[]
-
-  @@map("parking_locations")
+model bookings {
+  id            String          @id
+  userId        String
+  date          DateTime
+  startTime     DateTime
+  endTime       DateTime
+  duration      Int
+  totalAmount   Float
+  paidAmount    Float           @default(0)
+  status        BookingStatus   @default(PENDING)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  booking_slots booking_slots[]
+  users         users           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments      payments?
 }
 
-// Parking Slot model - individual parking spaces
-model ParkingSlot {
-  id           String          @id @default(cuid())
-  number       String
-  zone         String          @default("A")
-  type         SlotType        @default(NORMAL)
-  status       SlotStatus      @default(AVAILABLE)
-  pricePerHour Float           @default(300)
-  locationId   String
-  location     ParkingLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  bookings     BookingSlot[]
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+model parking_locations {
+  id            String                @id
+  name          String
+  address       String
+  description   String?
+  totalSlots    Int
+  ownerId       String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime
+  pricePerDay   Float                 @default(2000)
+  pricePerHour  Float                 @default(300)
+  status        ParkingLocationStatus @default(NOT_ACTIVATED)
+  users         users?                @relation(fields: [ownerId], references: [id])
+  parking_slots parking_slots[]
+}
+
+model parking_slots {
+  id                String            @id
+  number            String
+  zone              String            @default("A")
+  type              SlotType          @default(NORMAL)
+  status            SlotStatus        @default(AVAILABLE)
+  pricePerHour      Float             @default(300)
+  locationId        String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime
+  booking_slots     booking_slots[]
+  parking_locations parking_locations @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@unique([locationId, number])
-  @@map("parking_slots")
 }
 
-enum SlotType {
-  NORMAL
-  EV
-  CAR_WASH
+model payments {
+  id            String        @id
+  bookingId     String        @unique
+  amount        Float
+  method        PaymentMethod @default(CARD)
+  status        PaymentStatus @default(PENDING)
+  transactionId String?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime
+  bookings      bookings      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 }
 
-enum SlotStatus {
+model users {
+  id                String              @id
+  email             String              @unique
+  password          String
+  fullName          String
+  contactNo         String?             @unique
+  address           String?
+  vehicleNumber     String?
+  nic               String?             @unique
+  role              Role                @default(CUSTOMER)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  bookings          bookings[]
+  parking_locations parking_locations[]
+}
+
+model washer_bookings {
+  id               String              @id
+  customerId       String
+  slotTime         DateTime
+  vehicle          String
+  serviceType      String
+  status           WasherBookingStatus @default(PENDING)
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime
+  washer_customers washer_customers    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model washer_customers {
+  id                String            @id
+  name              String
+  email             String            @unique
+  phone             String
+  vehicleDetails    String
+  otherRelevantInfo String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime
+  washer_bookings   washer_bookings[]
+}
+
+model washer_notifications {
+  id        String   @id
+  type      String
+  message   String
+  bookingId String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+}
+
+enum AdminBookingStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum AdminPropertyStatus {
+  ACTIVATED
+  DEACTIVATED
+}
+
+enum AdminSlotStatus {
   AVAILABLE
-  OCCUPIED
-  MAINTENANCE
-}
-
-// Booking model - parking reservations
-model Booking {
-  id          String        @id @default(cuid())
-  userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date        DateTime
-  startTime   DateTime
-  endTime     DateTime
-  duration    Int           // in hours
-  totalAmount Float
-  paidAmount  Float         @default(0)
-  status      BookingStatus @default(PENDING)
-  slots       BookingSlot[]
-  payment     Payment?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-
-  @@map("bookings")
+  BOOKED
+  DISABLED
 }
 
 enum BookingStatus {
@@ -141,32 +211,9 @@ enum BookingStatus {
   CANCELLED
 }
 
-// Junction table for Booking and ParkingSlot (many-to-many)
-model BookingSlot {
-  id        String      @id @default(cuid())
-  bookingId String
-  booking   Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  slotId    String
-  slot      ParkingSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
-
-  @@unique([bookingId, slotId])
-  @@map("booking_slots")
-}
-
-// Payment model - payment records
-model Payment {
-  id            String        @id @default(cuid())
-  bookingId     String        @unique
-  booking       Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  amount        Float
-  method        PaymentMethod @default(CARD)
-  status        PaymentStatus @default(PENDING)
-  transactionId String?
-  paidAt        DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  @@map("payments")
+enum ParkingLocationStatus {
+  ACTIVATED
+  NOT_ACTIVATED
 }
 
 enum PaymentMethod {
@@ -182,149 +229,29 @@ enum PaymentStatus {
   REFUNDED
 }
 
-// ==========================================
-// WASHER DASHBOARD MODELS
-// ==========================================
-
-// Washer Customer model - stores customer information for car wash services
-model WasherCustomer {
-  id               String           @id @default(cuid())
-  name             String
-  email            String           @unique
-  phone            String
-  vehicleDetails   String           // e.g., "Toyota Camry 2020 - Black"
-  otherRelevantInfo String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  bookings         WasherBooking[]
-
-  @@map("washer_customers")
+enum Role {
+  ADMIN
+  CUSTOMER
+  COUNTER
+  LAND_OWNER
+  WASHER
 }
 
-// Washer Booking Status enum
+enum SlotStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum SlotType {
+  NORMAL
+  EV
+  CAR_WASH
+}
+
 enum WasherBookingStatus {
   PENDING
   ACCEPTED
   COMPLETED
   CANCELLED
-}
-
-// Washer Booking model - car wash service bookings
-model WasherBooking {
-  id          String              @id @default(cuid())
-  customerId  String
-  customer    WasherCustomer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  slotTime    DateTime
-  vehicle     String              // Vehicle description for this specific booking
-  serviceType String              // e.g., "Car Wash", "Full Detail", "Quick Wash", "Interior Clean"
-  status      WasherBookingStatus @default(PENDING)
-  notes       String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-
-  @@map("washer_bookings")
-}
-
-// Washer Notification model - for tracking alerts and notifications
-model WasherNotification {
-  id        String   @id @default(cuid())
-  type      String   // 'new_booking', 'urgent_reminder', 'upcoming_slot'
-  message   String
-  bookingId String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("washer_notifications")
-}
-
-// ==========================================
-// ADMIN PANEL MODELS
-// ==========================================
-
-// Admin Property Status enum
-enum AdminPropertyStatus {
-  ACTIVATED
-  DEACTIVATED
-}
-
-// Admin Property model - stores parking area properties for admin management
-model AdminProperty {
-  id            String              @id @default(cuid())
-  propertyName  String
-  location      String
-  description   String?
-  pricePerHour  Float               @default(300)
-  status        AdminPropertyStatus @default(ACTIVATED)
-  totalSlots    Int                 @default(0)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  slots         AdminParkingSlot[]
-  bookings      AdminBooking[]
-
-  @@map("admin_properties")
-}
-
-// Admin Parking Slot Status enum
-enum AdminSlotStatus {
-  AVAILABLE
-  BOOKED
-  DISABLED
-}
-
-// Admin Parking Slot model - individual parking slots for admin properties
-model AdminParkingSlot {
-  id         String          @id @default(cuid())
-  propertyId String
-  property   AdminProperty   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  slotNumber String
-  status     AdminSlotStatus @default(AVAILABLE)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  bookings   AdminBooking[]
-
-  @@unique([propertyId, slotNumber])
-  @@map("admin_parking_slots")
-}
-
-// Admin Booking Status enum
-enum AdminBookingStatus {
-  PENDING
-  CONFIRMED
-  COMPLETED
-  CANCELLED
-}
-
-// Admin Booking model - booking records for admin panel
-model AdminBooking {
-  id          String             @id @default(cuid())
-  propertyId  String
-  property    AdminProperty      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  slotId      String
-  slot        AdminParkingSlot   @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  customerId  String
-  customer    AdminCustomer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  bookingDate DateTime
-  startTime   DateTime
-  endTime     DateTime
-  totalPrice  Float
-  status      AdminBookingStatus @default(PENDING)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-
-  @@map("admin_bookings")
-}
-
-// Admin Customer model - stores customer information for admin panel
-model AdminCustomer {
-  id             String         @id @default(cuid())
-  name           String
-  email          String         @unique
-  phone          String
-  registeredDate DateTime       @default(now())
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  bookings       AdminBooking[]
-
-  @@map("admin_customers")
 }

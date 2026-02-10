@@ -1,6 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_cache } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
+
+const getActivatedParkingLots = unstable_cache(
+  async () => {
+    return prisma.parking_locations.findMany({
+      where: { status: 'ACTIVATED' as const },
+      include: {
+        users: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        parking_slots: {
+          select: {
+            id: true,
+            status: true,
+            type: true,
+            pricePerHour: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  },
+  ['parking-lots:activated'],
+  { revalidate: 60 }
+);
 
 // GET all parking lots
 export async function GET(request: NextRequest) {
@@ -14,29 +45,32 @@ export async function GET(request: NextRequest) {
     // Regular users and washers only see ACTIVATED parking lots
     const whereClause = (isAdmin && showAll) ? {} : { status: 'ACTIVATED' as const };
 
-    const parkingLots = await prisma.parkingLocation.findMany({
-      where: whereClause,
-      include: {
-        owner: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
+    const useCache = !isAdmin && !showAll;
+    const parkingLots = useCache
+      ? await getActivatedParkingLots()
+      : await prisma.parking_locations.findMany({
+          where: whereClause,
+          include: {
+            users: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+            parking_slots: {
+              select: {
+                id: true,
+                status: true,
+                type: true,
+                pricePerHour: true,
+              },
+            },
           },
-        },
-        slots: {
-          select: {
-            id: true,
-            status: true,
-            type: true,
-            pricePerHour: true,
+          orderBy: {
+            createdAt: 'desc',
           },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        });
 
     // Transform the data to include slot counts and pricing
     const transformedParkingLots = parkingLots.map((lot) => ({
@@ -45,18 +79,18 @@ export async function GET(request: NextRequest) {
       address: lot.address,
       description: lot.description,
       ownerId: lot.ownerId,
-      owner: lot.owner
+      owner: lot.users
         ? {
-            id: lot.owner.id,
-            name: lot.owner.fullName,
-            email: lot.owner.email,
+            id: lot.users.id,
+            name: lot.users.fullName,
+            email: lot.users.email,
           }
         : null,
-      totalSlots: lot.slots.length,
-      availableSlots: lot.slots.filter((s) => s.status === 'AVAILABLE').length,
-      normalSlots: lot.slots.filter((s) => s.type === 'NORMAL').length,
-      evSlots: lot.slots.filter((s) => s.type === 'EV').length,
-      carWashSlots: lot.slots.filter((s) => s.type === 'CAR_WASH').length,
+      totalSlots: lot.parking_slots.length,
+      availableSlots: lot.parking_slots.filter((s) => s.status === 'AVAILABLE').length,
+      normalSlots: lot.parking_slots.filter((s) => s.type === 'NORMAL').length,
+      evSlots: lot.parking_slots.filter((s) => s.type === 'EV').length,
+      carWashSlots: lot.parking_slots.filter((s) => s.type === 'CAR_WASH').length,
       pricePerHour: lot.pricePerHour,
       pricePerDay: lot.pricePerDay,
       status: lot.status,
@@ -64,7 +98,16 @@ export async function GET(request: NextRequest) {
       updatedAt: lot.updatedAt,
     }));
 
-    return NextResponse.json({ parkingLots: transformedParkingLots });
+    return NextResponse.json(
+      { parkingLots: transformedParkingLots },
+      {
+        headers: {
+          'Cache-Control': useCache
+            ? 'public, s-maxage=60, stale-while-revalidate=300'
+            : 'no-store',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error fetching parking lots:', error);
     return NextResponse.json(
@@ -127,8 +170,9 @@ export async function POST(request: NextRequest) {
     // Only admin can set status to ACTIVATED directly
     const locationStatus = user.role === 'ADMIN' && status === 'ACTIVATED' ? 'ACTIVATED' : 'NOT_ACTIVATED';
 
-    const parkingLot = await prisma.parkingLocation.create({
+    const parkingLot = await prisma.parking_locations.create({
       data: {
+        id: crypto.randomUUID(),
         name,
         address,
         ownerId,
@@ -136,9 +180,10 @@ export async function POST(request: NextRequest) {
         pricePerHour: pricePerHour || 300,
         pricePerDay: pricePerDay || 2000,
         status: locationStatus,
+        updatedAt: new Date(),
       },
       include: {
-        owner: {
+        users: {
           select: {
             id: true,
             fullName: true,
@@ -161,14 +206,16 @@ export async function POST(request: NextRequest) {
                       String.fromCharCode(65 + Math.floor((slotNumber - 1) / 9));
           const num = slotType === 'EV' || slotType === 'CAR_WASH' ? i + 1 : ((slotNumber - 1) % 9) + 1;
           
-          await prisma.parkingSlot.create({
+          await prisma.parking_slots.create({
             data: {
+              id: crypto.randomUUID(),
               number: `${zone}${num}`,
               zone: zone,
               type: slotType,
               status: 'AVAILABLE',
               pricePerHour: pricePerHour || (slotType === 'EV' ? 400 : slotType === 'CAR_WASH' ? 500 : 300),
               locationId: parkingLot.id,
+              updatedAt: new Date(),
             },
           });
           slotNumber++;
@@ -176,10 +223,10 @@ export async function POST(request: NextRequest) {
       }
 
       // Update total slots count
-      const totalSlots = await prisma.parkingSlot.count({ where: { locationId: parkingLot.id } });
-      await prisma.parkingLocation.update({
+      const totalSlots = await prisma.parking_slots.count({ where: { locationId: parkingLot.id } });
+      await prisma.parking_locations.update({
         where: { id: parkingLot.id },
-        data: { totalSlots },
+        data: { totalSlots, updatedAt: new Date() },
       });
     }
 
@@ -192,17 +239,17 @@ export async function POST(request: NextRequest) {
           ownerId: parkingLot.ownerId,
           pricePerHour: parkingLot.pricePerHour,
           pricePerDay: parkingLot.pricePerDay,
-          status: parkingLot.status,
-          owner: parkingLot.owner
-            ? {
-                id: parkingLot.owner.id,
-                name: parkingLot.owner.fullName,
-                email: parkingLot.owner.email,
-              }
-            : null,
-          createdAt: parkingLot.createdAt,
-          updatedAt: parkingLot.updatedAt,
-        },
+        status: parkingLot.status,
+        owner: parkingLot.users
+          ? {
+              id: parkingLot.users.id,
+              name: parkingLot.users.fullName,
+              email: parkingLot.users.email,
+            }
+          : null,
+        createdAt: parkingLot.createdAt,
+        updatedAt: parkingLot.updatedAt,
+      },
       },
       { status: 201 }
     );
@@ -238,7 +285,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get existing parking lot
-    const existingLot = await prisma.parkingLocation.findUnique({
+    const existingLot = await prisma.parking_locations.findUnique({
       where: { id },
     });
 
@@ -309,25 +356,26 @@ export async function PATCH(request: NextRequest) {
     if (address !== undefined) updateData.address = address;
     if (description !== undefined) updateData.description = description;
     if (totalSlots !== undefined) updateData.totalSlots = totalSlots;
+    updateData.updatedAt = new Date();
 
-    const updatedLot = await prisma.parkingLocation.update({
+    const updatedLot = await prisma.parking_locations.update({
       where: { id },
       data: updateData,
       include: {
-        owner: {
+        users: {
           select: {
             id: true,
             fullName: true,
             email: true,
           },
         },
-        slots: true,
+        parking_slots: true,
       },
     });
 
     // If price updated, update all slot prices for this location
     if (pricePerHour !== undefined) {
-      await prisma.parkingSlot.updateMany({
+      await prisma.parking_slots.updateMany({
         where: { 
           locationId: id,
           type: 'NORMAL',
@@ -336,7 +384,7 @@ export async function PATCH(request: NextRequest) {
       });
       
       // EV slots get 33% more
-      await prisma.parkingSlot.updateMany({
+      await prisma.parking_slots.updateMany({
         where: { 
           locationId: id,
           type: 'EV',
@@ -345,7 +393,7 @@ export async function PATCH(request: NextRequest) {
       });
       
       // Car wash slots get 67% more
-      await prisma.parkingSlot.updateMany({
+      await prisma.parking_slots.updateMany({
         where: { 
           locationId: id,
           type: 'CAR_WASH',

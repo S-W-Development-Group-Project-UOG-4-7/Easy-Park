@@ -398,7 +398,7 @@ export const washerApi = {
    */
   getDashboardStats: async (date?: string): Promise<{
     today: DashboardStats;
-    allTime: DashboardStats & { total: number };
+    allTime: { total: number; pending: number; accepted: number; completed: number; cancelled: number };
     upcomingBookings: any[];
     totalCustomers: number;
   }> => {
@@ -407,10 +407,17 @@ export const washerApi = {
       const filtered = date
         ? demoBookingsState.filter(b => b.slotDate === date)
         : demoBookingsState;
+      const all = calculateStats(demoBookingsState);
 
       return {
         today: calculateStats(filtered),
-        allTime: { ...calculateStats(demoBookingsState), total: demoBookingsState.length },
+        allTime: {
+          total: all.totalBookings,
+          pending: all.pendingBookings,
+          accepted: all.acceptedBookings,
+          completed: all.completedBookings,
+          cancelled: all.cancelledBookings,
+        },
         upcomingBookings: demoBookingsState.slice(0, 3),
         totalCustomers: 5,
       };
@@ -437,7 +444,7 @@ export const washerApi = {
 
     return {
       today: { totalBookings: 0, pendingBookings: 0, acceptedBookings: 0, completedBookings: 0, cancelledBookings: 0 },
-      allTime: { total: 0, pending: 0, accepted: 0, completed: 0, cancelled: 0, totalBookings: 0, pendingBookings: 0, acceptedBookings: 0, completedBookings: 0, cancelledBookings: 0 },
+      allTime: { total: 0, pending: 0, accepted: 0, completed: 0, cancelled: 0 },
       upcomingBookings: [],
       totalCustomers: 0,
     };

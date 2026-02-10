@@ -267,4 +267,3 @@ export function generateMockBooking(overrides?: Partial<WasherBooking>): WasherB
 export function generateMockBookings(count: number = 5): WasherBooking[] {
   return Array.from({ length: count }, () => generateMockBooking());
 }
-`;

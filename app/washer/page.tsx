@@ -132,10 +132,27 @@ export default function WasherDashboard() {
     // Apply time range filter
     if (filters.timeRange) {
       filtered = filtered.filter(booking => {
-        const bookingTime = booking.slotTime.replace(/\s/g, "");
-        const startTime = filters.timeRange!.start.replace(":", "");
-        const endTime = filters.timeRange!.end.replace(":", "");
-        return bookingTime >= startTime && bookingTime <= endTime;
+        // Parse booking time - handle various formats like "10:00", "10:00 AM", "1000"
+        let bookingTimeStr = booking.slotTime.replace(/\s/g, "").replace(/AM|PM/gi, "");
+        
+        // Normalize to HH:MM format
+        if (!bookingTimeStr.includes(":")) {
+          // Handle format like "1000" -> "10:00"
+          bookingTimeStr = bookingTimeStr.padStart(4, "0");
+          bookingTimeStr = bookingTimeStr.slice(0, 2) + ":" + bookingTimeStr.slice(2);
+        }
+        
+        // Convert to minutes for comparison
+        const parseTimeToMinutes = (time: string): number => {
+          const [hours, minutes] = time.split(":").map(Number);
+          return hours * 60 + (minutes || 0);
+        };
+        
+        const bookingMinutes = parseTimeToMinutes(bookingTimeStr);
+        const startMinutes = parseTimeToMinutes(filters.timeRange!.start);
+        const endMinutes = parseTimeToMinutes(filters.timeRange!.end);
+        
+        return bookingMinutes >= startMinutes && bookingMinutes <= endMinutes;
       });
     }
 

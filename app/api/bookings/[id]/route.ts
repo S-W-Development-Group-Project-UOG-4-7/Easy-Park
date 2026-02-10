@@ -24,22 +24,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
-    const booking = await prisma.booking.findFirst({
+    const booking = await prisma.bookings.findFirst({
       where: {
         id,
         userId: authUser.userId,
       },
       include: {
-        slots: {
+        booking_slots: {
           include: {
-            slot: {
+            parking_slots: {
               include: {
-                location: true,
+                parking_locations: true,
               },
             },
           },
         },
-        payment: true,
+        payments: true,
       },
     });
 
@@ -68,7 +68,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { status } = body;
 
     // Find the booking
-    const existingBooking = await prisma.booking.findFirst({
+    const existingBooking = await prisma.bookings.findFirst({
       where: {
         id,
         userId: authUser.userId,
@@ -90,16 +90,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return errorResponse('Cannot modify a completed or cancelled booking');
     }
 
-    const booking = await prisma.booking.update({
+    const booking = await prisma.bookings.update({
       where: { id },
       data: { status },
       include: {
-        slots: {
+        booking_slots: {
           include: {
-            slot: true,
+            parking_slots: true,
           },
         },
-        payment: true,
+        payments: true,
       },
     });
 
@@ -121,7 +121,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
 
-    const existingBooking = await prisma.booking.findFirst({
+    const existingBooking = await prisma.bookings.findFirst({
       where: {
         id,
         userId: authUser.userId,
@@ -137,7 +137,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return errorResponse('Only pending bookings can be deleted');
     }
 
-    await prisma.booking.delete({
+    await prisma.bookings.delete({
       where: { id },
     });
 

@@ -15,6 +15,10 @@ const publicRoutes = ['/', '/sign-in', '/sign-up', '/api/auth/sign-in', '/api/au
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // Let API routes handle auth/401 responses themselves.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
   
   // Allow public routes
   if (publicRoutes.some(route => pathname === route || pathname.startsWith('/api/auth/'))) {
@@ -38,11 +42,14 @@ export function middleware(request: NextRequest) {
     // Verify token and check role
     try {
       // Decode JWT payload (without verification - verification happens in API routes)
-      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-      const userRole = payload.role;
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
+      const payload = JSON.parse(atob(padded));
+      const userRole = String(payload.role || '').toUpperCase();
 
       // Check if user has required role for this route
-      if (!protectedRoute.roles.includes(userRole)) {
+      if (!userRole || !protectedRoute.roles.includes(userRole)) {
         // Redirect to appropriate page based on their role
         const roleRedirects: Record<string, string> = {
           ADMIN: '/admin',

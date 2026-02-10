@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: { id },
       select: {
         id: true,
@@ -63,7 +63,7 @@ export async function PATCH(
     const body = await request.json();
     const { name, email, phone } = body;
 
-    const user = await prisma.user.update({
+    const user = await prisma.users.update({
       where: { id },
       data: {
         ...(name && { fullName: name }),
@@ -92,48 +92,6 @@ export async function PATCH(
     console.error('Error updating user:', error);
     return NextResponse.json(
       { error: 'Failed to update user' },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE user
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    // Prevent deleting ADMIN users
-    if (user.role === 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Cannot delete admin users' },
-        { status: 403 }
-      );
-    }
-
-    await prisma.user.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ message: 'User deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting user:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete user' },
       { status: 500 }
     );
   }

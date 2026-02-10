@@ -1,32 +1,24 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
+import { ensureAdminSeeded } from '@/lib/admin-seed';
 
 // GET all users
 export async function GET(request: Request) {
   try {
+    await ensureAdminSeeded();
     const { searchParams } = new URL(request.url);
     const role = searchParams.get('role');
-    const roles = searchParams.get('roles'); // Support multiple roles like "COUNTER,WASHER,LAND_OWNER"
+    const normalizedRole = role ? role.toUpperCase() : null;
 
-    let whereClause: any = {};
-    
-    if (roles) {
-      // Filter by multiple roles
-      const roleArray = roles.split(',').map(r => r.trim());
-      whereClause = { role: { in: roleArray } };
-    } else if (role) {
-      whereClause = { role };
-    }
-
-    const users = await prisma.user.findMany({
-      where: whereClause,
+    const users = await prisma.users.findMany({
+      where: normalizedRole ? { role: normalizedRole as any } : undefined,
       select: {
         id: true,
         fullName: true,
         email: true,
         contactNo: true,
-        nic: true,
+        vehicleNumber: true,
         role: true,
         createdAt: true,
         _count: {
@@ -42,10 +34,13 @@ export async function GET(request: Request) {
 
     const transformedUsers = users.map((user) => ({
       id: user.id,
+      // Keep both keys to avoid breaking older UI code.
+      name: user.fullName,
       fullName: user.fullName,
       email: user.email,
+      phone: user.contactNo,
       contactNo: user.contactNo,
-      nic: user.nic,
+      vehicleNumber: user.vehicleNumber,
       role: user.role,
       createdAt: user.createdAt,
       totalBookings: user._count.bookings,
@@ -64,18 +59,19 @@ export async function GET(request: Request) {
 // POST create a new user
 export async function POST(request: Request) {
   try {
+    await ensureAdminSeeded();
     const body = await request.json();
-    const { fullName, email, password, contactNo, nic, address, role } = body;
+    const { fullName, email, password, contactNo, vehicleNumber } = body;
 
     if (!fullName || !email || !password) {
       return NextResponse.json(
-        { error: 'Full name, email, and password are required' },
+        { error: 'fullName, email, and password are required' },
         { status: 400 }
       );
     }
 
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: { email },
     });
 
@@ -86,40 +82,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if NIC already exists (if provided)
-    if (nic) {
-      const existingNic = await prisma.user.findUnique({
-        where: { nic },
-      });
-
-      if (existingNic) {
-        return NextResponse.json(
-          { error: 'User with this NIC already exists' },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Hash the password
     const hashedPassword = await hashPassword(password);
+    const now = new Date();
 
-    const user = await prisma.user.create({
+    const user = await prisma.users.create({
       data: {
+        id: crypto.randomUUID(),
         fullName,
-        email,
+        email: email.toLowerCase(),
         password: hashedPassword,
-        contactNo: contactNo || null,
-        nic: nic || null,
-        role: role || 'CUSTOMER',
+        contactNo,
+        vehicleNumber,
+        role: 'CUSTOMER',
+        updatedAt: now,
       },
       select: {
         id: true,
         fullName: true,
         email: true,
         contactNo: true,
-        nic: true,
+        vehicleNumber: true,
         role: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
 

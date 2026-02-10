@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     endOfDay.setHours(23, 59, 59, 999);
 
     // Get total bookings for the day
-    const todayBookings = await prisma.washerBooking.count({
+    const todayBookings = await prisma.washer_bookings.count({
       where: {
         slotTime: {
           gte: startOfDay,
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get status breakdown for the day
-    const statusBreakdown = await prisma.washerBooking.groupBy({
+    const statusBreakdown = await prisma.washer_bookings.groupBy({
       by: ['status'],
       where: {
         slotTime: {
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     
-    const upcomingBookings = await prisma.washerBooking.findMany({
+    const upcomingBookings = await prisma.washer_bookings.findMany({
       where: {
         slotTime: {
           gte: now,
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
         },
       },
       include: {
-        customer: {
+        washer_customers: {
           select: {
             name: true,
             phone: true,
@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get all-time statistics
-    const allTimeStats = await prisma.washerBooking.groupBy({
+    const allTimeStats = await prisma.washer_bookings.groupBy({
       by: ['status'],
       _count: { status: true },
     });
@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get total customers count
-    const totalCustomers = await prisma.washerCustomer.count();
+    const totalCustomers = await prisma.washer_customers.count();
 
     return successResponse(
       {

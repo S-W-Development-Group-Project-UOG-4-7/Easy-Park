@@ -7,12 +7,15 @@ import {
   serverErrorResponse,
 } from '@/lib/api-response';
 
+// The full location list is read-heavy; cache briefly for snappy UX.
+export const revalidate = 30;
+
 // GET all parking locations
 export async function GET() {
   try {
-    const locations = await prisma.parkingLocation.findMany({
+    const locations = await prisma.parking_locations.findMany({
       include: {
-        slots: {
+        parking_slots: {
           select: {
             id: true,
             number: true,
@@ -23,7 +26,7 @@ export async function GET() {
         },
         _count: {
           select: {
-            slots: true,
+            parking_slots: true,
           },
         },
       },
@@ -34,17 +37,19 @@ export async function GET() {
 
     // Add availability stats
     const locationsWithStats = locations.map((location) => {
-      const availableSlots = location.slots.filter((s) => s.status === 'AVAILABLE').length;
+      const availableSlots = location.parking_slots.filter((s) => s.status === 'AVAILABLE').length;
       return {
         ...location,
         availableSlots,
-        occupancyRate: location.slots.length > 0 
-          ? ((location.slots.length - availableSlots) / location.slots.length * 100).toFixed(1)
+        occupancyRate: location.parking_slots.length > 0 
+          ? ((location.parking_slots.length - availableSlots) / location.parking_slots.length * 100).toFixed(1)
           : 0,
       };
     });
 
-    return successResponse(locationsWithStats);
+    return successResponse(locationsWithStats, 'Success', 200, {
+      'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120',
+    });
   } catch (error) {
     console.error('Get locations error:', error);
     return serverErrorResponse('Failed to fetch locations');
@@ -62,12 +67,14 @@ export async function POST(request: NextRequest) {
       return errorResponse('Name and address are required');
     }
 
-    const location = await prisma.parkingLocation.create({
+    const location = await prisma.parking_locations.create({
       data: {
+        id: crypto.randomUUID(),
         name,
         address,
         description,
         totalSlots: totalSlots || 0,
+        updatedAt: new Date(),
       },
     });
 
