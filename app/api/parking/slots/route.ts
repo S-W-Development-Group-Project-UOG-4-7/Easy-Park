@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get('locationId');
-    const date = searchParams.get('date'); // Format: YYYY-MM-DD
+    const date = searchParams.get('date'); // Format: YYYY-MM-DD (optional)
 
     if (!locationId) {
       return errorResponse('Location ID is required', 400);
@@ -26,19 +26,22 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // 2. Check Availability (Advanced Logic)
-    // To make this realistic, we should check if these slots are booked for the specific date.
-    // For now, we will check against the "BookingSlots" table.
-    
-    // Find all booked slot IDs for this specific date (ignoring cancelled ones)
-    const bookingsOnDate = await prisma.bookings.findMany({
+    // 2. Check Availability (Active bookings only)
+    // A slot is OCCUPIED only if there's an active booking:
+    // startTime <= now < endTime AND status != CANCELLED
+    const now = new Date();
+    const activeBookings = await prisma.bookings.findMany({
       where: {
-        // We check if the booking date matches the requested date
-        date: new Date(date || new Date().toISOString()),
         status: { not: 'CANCELLED' },
-        // Ensure we are looking at bookings that actually use these slots
-        // (This part requires joining through booking_slots, but for simplicity
-        // in this step, we'll fetch the booked slot IDs below)
+        startTime: { lte: now },
+        endTime: { gt: now },
+        booking_slots: {
+          some: {
+            parking_slots: {
+              locationId: locationId
+            }
+          }
+        }
       },
       include: {
         booking_slots: {
@@ -49,7 +52,7 @@ export async function GET(request: NextRequest) {
 
     // Flatten the list of booked slot IDs
     const bookedSlotIds = new Set<string>();
-    bookingsOnDate.forEach(booking => {
+    activeBookings.forEach(booking => {
       booking.booking_slots.forEach(bs => bookedSlotIds.add(bs.slotId));
     });
 
@@ -75,8 +78,8 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { success: true, data: formattedSlots },
-      { headers: { 'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=30' } }
+      { success: true, data: formattedSlots, meta: { now: now.toISOString(), date } },
+      { headers: { 'Cache-Control': 'no-store' } }
     );
 
   } catch (error: any) {

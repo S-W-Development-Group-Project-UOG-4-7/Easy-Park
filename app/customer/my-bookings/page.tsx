@@ -43,6 +43,8 @@ export default function MyBookingsPage() {
   const [filter, setFilter] = useState<Filter>('all');
   const [expandedBookingId, setExpandedBookingId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   // --- Pricing Logic ---
   const FULL_FEE_PER_HOUR = 300;      // Total cost rate: 300 per hour
@@ -160,6 +162,37 @@ export default function MyBookingsPage() {
     }
   };
 
+  const confirmClearAllBookings = async () => {
+    if (clearingAll) return;
+    setClearingAll(true);
+    try {
+      const res = await fetch('/api/bookings/clear', {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json')
+        ? await res.json()
+        : { success: false, error: await res.text() };
+
+      if (res.ok && data.success) {
+        setBookings([]);
+        setExpandedBookingId(null);
+        setCancelTarget(null);
+        alert('All bookings cleared.');
+      } else if (res.status === 401) {
+        router.replace('/sign-in');
+      } else {
+        alert(data.error || data.message || 'Failed to clear bookings.');
+      }
+    } catch (err) {
+      alert('Network error.');
+    } finally {
+      setClearingAll(false);
+      setClearAllOpen(false);
+    }
+  };
+
   const filtered = useMemo(
     () => bookings.filter((b) => {
       if (filter === 'all') return true;
@@ -214,20 +247,28 @@ export default function MyBookingsPage() {
           </p>
         </div>
 
-        {/* Filters */}
-        <div className="-mx-2 px-2 overflow-x-auto">
-          <div className="flex gap-2 w-max pb-1">
-            {(['all', 'pending', 'paid', 'cancelled'] as Filter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold border transition
-                  ${filter === f ? 'bg-lime-500 text-slate-900 border-lime-400' : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'}`}
-              >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
+        {/* Filters + Clear All */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="-mx-2 px-2 overflow-x-auto">
+            <div className="flex gap-2 w-max pb-1">
+              {(['all', 'pending', 'paid', 'cancelled'] as Filter[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`shrink-0 px-4 py-2 rounded-full text-sm font-semibold border transition
+                    ${filter === f ? 'bg-lime-500 text-slate-900 border-lime-400' : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'}`}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
           </div>
+          <button
+            onClick={() => setClearAllOpen(true)}
+            className="shrink-0 px-4 py-2 rounded-full text-sm font-semibold border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 transition"
+          >
+            Clear All Bookings
+          </button>
         </div>
       </div>
 
@@ -385,6 +426,34 @@ export default function MyBookingsPage() {
               </button>
               <button onClick={confirmCancelBooking} className="px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700">
                 Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Modal */}
+      {clearAllOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">Clear All Bookings?</h3>
+            <p className="text-sm text-slate-300 mt-2">
+              Are you sure you want to clear all your bookings?
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setClearAllOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-900"
+                disabled={clearingAll}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmClearAllBookings}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
+                disabled={clearingAll}
+              >
+                {clearingAll ? 'Clearing...' : 'Confirm'}
               </button>
             </div>
           </div>

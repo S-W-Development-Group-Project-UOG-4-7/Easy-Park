@@ -183,7 +183,10 @@ export default function ViewBookingsPage() {
     if (!selectedHubId || !selectedDate) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/parking/slots?locationId=${selectedHubId}&date=${selectedDate}`);
+      const res = await fetch(
+        `/api/parking/slots?locationId=${selectedHubId}&date=${selectedDate}&time=${selectedTime}&duration=${selectedDuration}`,
+        { cache: 'no-store' }
+      );
       const json = await res.json();
       
       if (json.success) {
@@ -203,7 +206,7 @@ export default function ViewBookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedHubId, selectedDate]);
+  }, [selectedHubId, selectedDate, selectedTime, selectedDuration]);
 
   useEffect(() => {
     fetchSlots();
