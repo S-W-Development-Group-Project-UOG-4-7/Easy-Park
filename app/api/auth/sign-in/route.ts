@@ -4,11 +4,24 @@ import { verifyPassword, generateToken } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
 import { ensureAdminSeeded } from '@/lib/admin-seed';
 
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+  password: true,
+  fullName: true,
+  contactNo: true,
+  vehicleNumber: true,
+  nic: true,
+  role: true,
+  createdAt: true,
+} as const;
+
 export async function POST(request: NextRequest) {
   try {
     await ensureAdminSeeded();
     const body = await request.json();
-    const { email, password } = body;
+    const email = String(body?.email ?? '').trim();
+    const password = String(body?.password ?? '');
 
     // Validation
     if (!email || !password) {
@@ -57,12 +70,16 @@ export async function POST(request: NextRequest) {
     // Find user in database
     let user = await prisma.users.findUnique({
       where: { email: emailLower },
+      select: AUTH_USER_SELECT,
     });
 
     // If admin is trying to log in and isn't found, retry after seeding.
     if (!user && adminEmail && emailLower === adminEmail) {
       await ensureAdminSeeded();
-      user = await prisma.users.findUnique({ where: { email: emailLower } });
+      user = await prisma.users.findUnique({
+        where: { email: emailLower },
+        select: AUTH_USER_SELECT,
+      });
     }
 
     if (!user) {

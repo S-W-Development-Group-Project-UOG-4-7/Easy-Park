@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+} as const;
+
 export async function POST(request: NextRequest) {
   try {
     const authUser = await getAuthUser(request);
@@ -13,7 +18,10 @@ export async function POST(request: NextRequest) {
     if (!bookingId) return NextResponse.json({ success: false, error: 'ID required' }, { status: 400 });
 
     // Verify Ownership via Email lookup
-    const user = await prisma.users.findUnique({ where: { email: authUser.email } });
+    const user = await prisma.users.findUnique({
+      where: { email: authUser.email.toLowerCase() },
+      select: AUTH_USER_SELECT,
+    });
     if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
 
     // Update Status

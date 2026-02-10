@@ -77,7 +77,18 @@ export default function ViewBookingDetailsPage() {
   const fetchProperties = async () => {
     try {
       const data = await propertiesApi.getAll();
-      setProperties(data);
+      setProperties(
+        data.map((property) => ({
+          id: String(property.id),
+          name: property.name,
+          address: property.address,
+          slots: (property.slots || []).map((slot) => ({
+            id: String(slot.id),
+            number: slot.number,
+            type: slot.type === 'EV' ? 'EV Slot' : slot.type,
+          })),
+        }))
+      );
     } catch (error) {
       console.error('Error fetching properties:', error);
       // Mock data
@@ -193,7 +204,7 @@ export default function ViewBookingDetailsPage() {
     // Property filter - match by ID or by name
     let matchesProperty = selectedProperty === 'all';
     if (!matchesProperty) {
-      const selectedProp = properties.find(p => p.id === selectedProperty);
+      const selectedProp = properties.find(p => String(p.id) === selectedProperty);
       matchesProperty = booking.propertyId === selectedProperty || 
         (selectedProp ? booking.propertyName === selectedProp.name : false);
     }
@@ -232,7 +243,7 @@ export default function ViewBookingDetailsPage() {
   const getParkingSlotsForVisualization = () => {
     if (selectedProperty === 'all') return null;
     
-    const property = properties.find(p => p.id === selectedProperty);
+    const property = properties.find(p => String(p.id) === selectedProperty);
     if (!property || !property.slots) return null;
 
     const bookedSlotIds = new Set(

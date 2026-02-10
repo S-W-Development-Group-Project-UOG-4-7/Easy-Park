@@ -4,6 +4,11 @@ import { getAuthUser } from '@/lib/auth'; // Assuming you have this helper from 
 
 export const dynamic = 'force-dynamic';
 
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+} as const;
+
 export async function GET(request: NextRequest) {
   try {
     // 1. Authenticate (Get User ID)
@@ -13,7 +18,10 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Resolve User ID from DB
-    const user = await prisma.users.findUnique({ where: { email: authUser.email } });
+    const user = await prisma.users.findUnique({
+      where: { email: authUser.email.toLowerCase() },
+      select: AUTH_USER_SELECT,
+    });
     if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
 
     // 3. Fetch Bookings with Relations

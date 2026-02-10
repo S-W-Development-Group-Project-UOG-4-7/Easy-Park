@@ -15,6 +15,7 @@ async function apiRequest<T>(
 ): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
+    cache: 'no-store',
     headers: {
       ...getHeaders(),
       ...options.headers,
@@ -31,27 +32,103 @@ async function apiRequest<T>(
   return data;
 }
 
+export type PropertySlotType = 'Normal' | 'EV' | 'Car Washing';
+
+export interface PropertySlot {
+  id: string | number;
+  number: string;
+  slotNumber?: string;
+  type: PropertySlotType;
+  status: string;
+}
+
+export interface PropertySummary {
+  id: string | number;
+  name: string;
+  address: string;
+  description?: string;
+  totalSlots: number;
+  availableSlots: number;
+  normalSlots: number;
+  evSlots: number;
+  carWashSlots: number;
+  pricePerHour: number;
+  pricePerDay: number;
+  status: 'ACTIVATED' | 'DEACTIVATED' | 'NOT_ACTIVATED';
+  slots: PropertySlot[];
+  createdAt: string | Date;
+}
+
+const normalizeSlotType = (rawType: unknown): PropertySlotType => {
+  if (typeof rawType !== 'string') return 'Normal';
+  const normalized = rawType.trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'EV' || normalized === 'EV_SLOT' || normalized === 'EV_CHARGING') return 'EV';
+  if (normalized === 'CAR_WASH' || normalized === 'CAR_WASHING' || normalized === 'CARWASH') return 'Car Washing';
+  return 'Normal';
+};
+
+const inferSlotTypeFromNumber = (slotNumber: unknown): PropertySlotType => {
+  if (typeof slotNumber !== 'string') return 'Normal';
+  const upper = slotNumber.trim().toUpperCase();
+  if (upper.startsWith('EV')) return 'EV';
+  if (upper.startsWith('CW')) return 'Car Washing';
+  return 'Normal';
+};
+
+const normalizeProperty = (property: any): PropertySummary => {
+  const rawSlots = Array.isArray(property?.slots) ? property.slots : [];
+  const slots: PropertySlot[] = rawSlots.map((slot: any) => ({
+    id: slot?.id,
+    number: slot?.number || slot?.slotNumber || '',
+    slotNumber: slot?.slotNumber || slot?.number || '',
+    type: slot?.type ? normalizeSlotType(slot.type) : inferSlotTypeFromNumber(slot?.slotNumber || slot?.number),
+    status: typeof slot?.status === 'string' ? slot.status : 'available',
+  }));
+
+  const countedNormal = slots.filter((slot) => slot.type === 'Normal').length;
+  const countedEv = slots.filter((slot) => slot.type === 'EV').length;
+  const countedCarWash = slots.filter((slot) => slot.type === 'Car Washing').length;
+
+  return {
+    ...property,
+    id: property?.id,
+    name: property?.name || property?.propertyName || '',
+    address: property?.address || property?.location || '',
+    totalSlots: property?.totalSlots ?? slots.length,
+    availableSlots: property?.availableSlots ?? slots.filter((slot) => slot.status === 'available').length,
+    normalSlots: property?.normalSlots ?? countedNormal,
+    evSlots: property?.evSlots ?? countedEv,
+    carWashSlots: property?.carWashSlots ?? countedCarWash,
+    pricePerHour: property?.pricePerHour ?? 300,
+    pricePerDay: property?.pricePerDay ?? 2000,
+    status: property?.status || 'DEACTIVATED',
+    slots,
+    createdAt: property?.createdAt || new Date().toISOString(),
+  };
+};
+
 // Properties API - Uses admin_properties table (unified for admin and frontend)
 export const propertiesApi = {
-  getAll: async (showAll: boolean = true) => {
+  getAll: async (showAll: boolean = true): Promise<PropertySummary[]> => {
     // Fetch from admin properties endpoint
     try {
-      const response = await apiRequest<{ properties: any[]; parkingLots: any[] }>(`/admin/properties`);
-      return response.properties || response.parkingLots || [];
+      const response = await apiRequest<{ properties?: any[]; parkingLots?: any[] }>(`/admin/properties?ts=${Date.now()}`);
+      const properties = response.properties || response.parkingLots || [];
+      return properties.map(normalizeProperty);
     } catch (error) {
       // Fallback to parking-lots for non-admin users
       const response = await apiRequest<{ parkingLots: any[] }>(`/parking-lots?showAll=${showAll}`);
-      return response.parkingLots || [];
+      return (response.parkingLots || []).map(normalizeProperty);
     }
   },
 
-  getActivated: async () => {
+  getActivated: async (): Promise<PropertySummary[]> => {
     try {
       const response = await apiRequest<{ properties: any[] }>('/admin/properties?status=ACTIVATED');
-      return response.properties || [];
+      return (response.properties || []).map(normalizeProperty);
     } catch (error) {
       const response = await apiRequest<{ parkingLots: any[] }>('/parking-lots?showAll=false');
-      return response.parkingLots || [];
+      return (response.parkingLots || []).map(normalizeProperty);
     }
   },
 

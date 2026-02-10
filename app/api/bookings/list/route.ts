@@ -4,6 +4,11 @@ import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+} as const;
+
 export async function GET(request: NextRequest) {
   try {
     const authUser = await getAuthUser(request);
@@ -12,10 +17,13 @@ export async function GET(request: NextRequest) {
     }
 
     let user = authUser.userId
-      ? await prisma.users.findUnique({ where: { id: authUser.userId } })
+      ? await prisma.users.findUnique({ where: { id: authUser.userId }, select: AUTH_USER_SELECT })
       : null;
     if (!user && authUser.email) {
-      user = await prisma.users.findUnique({ where: { email: authUser.email.toLowerCase() } });
+      user = await prisma.users.findUnique({
+        where: { email: authUser.email.toLowerCase() },
+        select: AUTH_USER_SELECT,
+      });
     }
     if (!user) {
       // Allow demo user sessions to return empty data instead of error.

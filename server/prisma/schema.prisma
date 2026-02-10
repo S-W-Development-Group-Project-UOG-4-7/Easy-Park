@@ -39,6 +39,7 @@ model admin_parking_slots {
   id               String           @id
   propertyId       String
   slotNumber       String
+  type             AdminSlotType    @default(NORMAL)
   status           AdminSlotStatus  @default(AVAILABLE)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -200,6 +201,12 @@ enum AdminSlotStatus {
   AVAILABLE
   BOOKED
   DISABLED
+}
+
+enum AdminSlotType {
+  NORMAL
+  EV
+  CAR_WASH
 }
 
 enum BookingStatus {

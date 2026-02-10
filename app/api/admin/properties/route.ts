@@ -12,6 +12,71 @@ import { getAuthUser } from '@/lib/auth';
  * - Single source of truth for all property data
  */
 
+type AdminSlotType = 'NORMAL' | 'EV' | 'CAR_WASH';
+
+const normalizeSlotType = (rawType?: string | null): AdminSlotType => {
+  if (!rawType) return 'NORMAL';
+  const normalized = rawType.trim().toUpperCase().replace(/[\s-]+/g, '_');
+
+  if (normalized === 'EV' || normalized === 'EV_SLOT' || normalized === 'EV_CHARGING') {
+    return 'EV';
+  }
+  if (
+    normalized === 'CAR_WASH' ||
+    normalized === 'CAR_WASHING' ||
+    normalized === 'CARWASH' ||
+    normalized === 'CAR_WASH_SLOT'
+  ) {
+    return 'CAR_WASH';
+  }
+  return 'NORMAL';
+};
+
+const inferSlotTypeFromSlotNumber = (slotNumber?: string): AdminSlotType => {
+  if (!slotNumber) return 'NORMAL';
+  const upper = slotNumber.trim().toUpperCase();
+  if (upper.startsWith('EV')) return 'EV';
+  if (upper.startsWith('CW')) return 'CAR_WASH';
+  return 'NORMAL';
+};
+
+const toUiSlotType = (slotType: AdminSlotType): 'Normal' | 'EV' | 'Car Washing' => {
+  if (slotType === 'EV') return 'EV';
+  if (slotType === 'CAR_WASH') return 'Car Washing';
+  return 'Normal';
+};
+
+const summarizeSlots = (
+  slots: Array<{ id: string; slotNumber: string; status: string; type?: string | null }>
+) => {
+  const mappedSlots = slots.map((slot) => {
+    const normalizedType = slot.type
+      ? normalizeSlotType(slot.type)
+      : inferSlotTypeFromSlotNumber(slot.slotNumber);
+    return {
+      id: slot.id,
+      number: slot.slotNumber,
+      slotNumber: slot.slotNumber,
+      type: toUiSlotType(normalizedType),
+      status: slot.status.toLowerCase(),
+    };
+  });
+
+  const normalSlots = mappedSlots.filter((slot) => slot.type === 'Normal').length;
+  const evSlots = mappedSlots.filter((slot) => slot.type === 'EV').length;
+  const carWashSlots = mappedSlots.filter((slot) => slot.type === 'Car Washing').length;
+  const availableSlots = slots.filter((slot) => slot.status === 'AVAILABLE').length;
+
+  return {
+    mappedSlots,
+    normalSlots,
+    evSlots,
+    carWashSlots,
+    totalSlots: mappedSlots.length,
+    availableSlots,
+  };
+};
+
 // GET all properties for admin
 export async function GET(request: NextRequest) {
   try {
@@ -58,8 +123,15 @@ export async function GET(request: NextRequest) {
     // Transform to match expected format
     const adminProperties = properties.map((property) => {
       const slots = property.admin_parking_slots || [];
-      const totalSlots = slots.length || property.totalSlots;
-      const availableSlots = slots.filter(s => s.status === 'AVAILABLE').length;
+      const slotSummary = summarizeSlots(slots);
+      const totalSlots = slotSummary.totalSlots || property.totalSlots;
+      const normalSlots = slotSummary.totalSlots ? slotSummary.normalSlots : property.totalSlots;
+      const evSlots = slotSummary.totalSlots ? slotSummary.evSlots : 0;
+      const carWashSlots = slotSummary.totalSlots ? slotSummary.carWashSlots : 0;
+      const availableSlots =
+        slotSummary.totalSlots > 0
+          ? slotSummary.availableSlots
+          : property.totalSlots;
 
       return {
         // Admin Property Table Fields
@@ -78,24 +150,18 @@ export async function GET(request: NextRequest) {
         totalParkingSlots: totalSlots,
         availableSlots: availableSlots,
         availableParkingSlots: availableSlots,
-        normalSlots: totalSlots, // Since no slotType in DB, assume all are normal
-        evSlots: 0,
-        carWashSlots: 0,
+        normalSlots,
+        evSlots,
+        carWashSlots,
         createdAt: property.createdAt,
         createdDate: property.createdAt,
         updatedAt: property.updatedAt,
         lastUpdatedDate: property.updatedAt,
-        slots: slots.map(slot => ({
-          id: slot.id,
-          number: slot.slotNumber,
-          slotNumber: slot.slotNumber,
-          type: 'Normal',
-          status: slot.status.toLowerCase(),
-        })),
+        slots: slotSummary.mappedSlots,
         slotBreakdown: {
-          normal: totalSlots,
-          ev: 0,
-          carWash: 0,
+          normal: normalSlots,
+          ev: evSlots,
+          carWash: carWashSlots,
         },
       };
     });
@@ -177,18 +243,29 @@ export async function POST(request: NextRequest) {
 
     // Create parking slots if provided
     if (finalSlots && finalSlots.length > 0) {
-      let slotNumber = 1;
+      const slotCounters: Record<AdminSlotType, number> = {
+        NORMAL: 0,
+        EV: 0,
+        CAR_WASH: 0,
+      };
+
       for (const slotConfig of finalSlots) {
-        const slotType = slotConfig.type || 'Normal';
+        const slotType = normalizeSlotType(slotConfig.type);
         const count = slotConfig.count || 1;
         
         for (let i = 0; i < count; i++) {
-          const prefix = slotType === 'EV' || slotType === 'EV Slot' ? 'EV' : 
-                        slotType === 'Car Washing' ? 'CW' : 
-                        String.fromCharCode(65 + Math.floor((slotNumber - 1) / 9));
-          const num = slotType === 'EV' || slotType === 'EV Slot' || slotType === 'Car Washing' 
-                      ? i + 1 
-                      : ((slotNumber - 1) % 9) + 1;
+          slotCounters[slotType] += 1;
+          const typeCounter = slotCounters[slotType];
+          const prefix =
+            slotType === 'EV'
+              ? 'EV'
+              : slotType === 'CAR_WASH'
+                ? 'CW'
+                : String.fromCharCode(65 + Math.floor((typeCounter - 1) / 9));
+          const num =
+            slotType === 'NORMAL'
+              ? ((typeCounter - 1) % 9) + 1
+              : typeCounter;
           
           const slotId = `cm${Date.now().toString(36)}${Math.random().toString(36).substr(2, 9)}`;
           await prisma.admin_parking_slots.create({
@@ -200,7 +277,6 @@ export async function POST(request: NextRequest) {
               updatedAt: new Date(),
             },
           });
-          slotNumber++;
         }
       }
     }
@@ -209,9 +285,17 @@ export async function POST(request: NextRequest) {
     const createdProperty = await prisma.admin_properties.findUnique({
       where: { id: property.id },
       include: {
-        admin_parking_slots: true,
+        admin_parking_slots: {
+          select: {
+            id: true,
+            slotNumber: true,
+            status: true,
+          },
+        },
       },
     });
+
+    const createdSlotSummary = summarizeSlots(createdProperty?.admin_parking_slots || []);
 
     return NextResponse.json({
       success: true,
@@ -225,8 +309,12 @@ export async function POST(request: NextRequest) {
         location: createdProperty?.location,
         pricePerHour: createdProperty?.pricePerHour,
         status: createdProperty?.status,
-        totalSlots: createdProperty?.admin_parking_slots?.length || createdProperty?.totalSlots || 0,
-        availableSlots: createdProperty?.admin_parking_slots?.filter(s => s.status === 'AVAILABLE').length || 0,
+        totalSlots: createdSlotSummary.totalSlots || createdProperty?.totalSlots || 0,
+        availableSlots: createdSlotSummary.availableSlots,
+        normalSlots: createdSlotSummary.normalSlots,
+        evSlots: createdSlotSummary.evSlots,
+        carWashSlots: createdSlotSummary.carWashSlots,
+        slots: createdSlotSummary.mappedSlots,
         createdAt: createdProperty?.createdAt,
         updatedAt: createdProperty?.updatedAt,
       },
@@ -239,8 +327,9 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
   } catch (error) {
     console.error('Admin create property error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create property';
     return NextResponse.json(
-      { error: 'Failed to create property' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
@@ -299,11 +388,17 @@ export async function PATCH(request: NextRequest) {
       where: { id: finalId },
       data: updateData,
       include: {
-        admin_parking_slots: true,
+        admin_parking_slots: {
+          select: {
+            id: true,
+            slotNumber: true,
+            status: true,
+          },
+        },
       },
     });
 
-    const slots = updatedProperty.admin_parking_slots || [];
+    const slotSummary = summarizeSlots(updatedProperty.admin_parking_slots || []);
 
     return NextResponse.json({
       success: true,
@@ -317,8 +412,12 @@ export async function PATCH(request: NextRequest) {
         location: updatedProperty.location,
         pricePerHour: updatedProperty.pricePerHour,
         status: updatedProperty.status,
-        totalSlots: slots.length || updatedProperty.totalSlots,
-        availableSlots: slots.filter(s => s.status === 'AVAILABLE').length,
+        totalSlots: slotSummary.totalSlots || updatedProperty.totalSlots,
+        availableSlots: slotSummary.availableSlots,
+        normalSlots: slotSummary.normalSlots,
+        evSlots: slotSummary.evSlots,
+        carWashSlots: slotSummary.carWashSlots,
+        slots: slotSummary.mappedSlots,
         updatedAt: updatedProperty.updatedAt,
       },
       // For compatibility

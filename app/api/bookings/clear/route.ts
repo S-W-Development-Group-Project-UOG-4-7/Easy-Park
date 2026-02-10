@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 
+const AUTH_USER_SELECT = {
+  id: true,
+  email: true,
+} as const;
+
 export async function DELETE(request: NextRequest) {
   try {
     const authUser = await getAuthUser(request);
@@ -10,10 +15,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     let user = authUser.userId
-      ? await prisma.users.findUnique({ where: { id: authUser.userId } })
+      ? await prisma.users.findUnique({ where: { id: authUser.userId }, select: AUTH_USER_SELECT })
       : null;
     if (!user && authUser.email) {
-      user = await prisma.users.findUnique({ where: { email: authUser.email.toLowerCase() } });
+      user = await prisma.users.findUnique({
+        where: { email: authUser.email.toLowerCase() },
+        select: AUTH_USER_SELECT,
+      });
     }
     if (!user) {
       if (authUser.email === 'customer@gmail.com' && authUser.role === 'CUSTOMER') {
