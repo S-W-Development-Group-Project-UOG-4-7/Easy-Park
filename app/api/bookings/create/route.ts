@@ -35,10 +35,10 @@ export async function POST(request: NextRequest) {
     if (!dbUser) return errorResponse('User not found', 404);
 
     const body = await request.json();
-    const { date, startTime, duration, slotIds, totalAmount, advanceAmount } = body;
+    const { date, startTime, duration, slotIds, totalAmount, advanceAmount, locationId } = body;
 
     // 3. Validation
-    if (!slotIds?.length || !date || !startTime) {
+    if (!slotIds?.length || !date || !startTime || !locationId) {
       return errorResponse('Missing required fields', 400);
     }
 
@@ -49,11 +49,33 @@ export async function POST(request: NextRequest) {
     endDateTime.setHours(endDateTime.getHours() + Number(duration));
     const now = new Date();
 
-    // 5. Process Payment (Mock Gateway)
+    // 5. Overlap Check (Active bookings only)
+    const overlapping = await prisma.bookings.findFirst({
+      where: {
+        status: { not: 'CANCELLED' },
+        startTime: { lt: endDateTime },
+        endTime: { gt: startDateTime },
+        booking_slots: {
+          some: {
+            slotId: { in: slotIds },
+            parking_slots: {
+              locationId: locationId
+            }
+          }
+        }
+      },
+      select: { id: true }
+    });
+
+    if (overlapping) {
+      return errorResponse('Selected slot(s) are already booked for that time', 409);
+    }
+
+    // 6. Process Payment (Mock Gateway)
     // We do this BEFORE the DB transaction to ensure we don't book if payment fails
     const transactionId = await chargeCreditCard(advanceAmount);
 
-    // 6. Database Transaction (Atomic Write)
+    // 7. Database Transaction (Atomic Write)
     const result = await prisma.$transaction(async (tx) => {
       const newBookingId = crypto.randomUUID();
 

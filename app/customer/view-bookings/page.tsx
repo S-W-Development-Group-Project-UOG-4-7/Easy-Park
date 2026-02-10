@@ -183,19 +183,32 @@ export default function ViewBookingsPage() {
     if (!selectedHubId || !selectedDate) return;
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/parking/slots?locationId=${selectedHubId}&date=${selectedDate}&time=${selectedTime}&duration=${selectedDuration}`,
-        { cache: 'no-store' }
-      );
-      const json = await res.json();
-      
-      if (json.success) {
-        // Map backend slot data
-        const mappedSlots: Slot[] = json.data.map((s: any) => ({
+      const startIso = selectedTime ? `${selectedDate}T${selectedTime}:00` : '';
+
+      const [slotsRes, availabilityRes] = await Promise.all([
+        fetch(`/api/parking/slots?locationId=${selectedHubId}&date=${selectedDate}`, { cache: 'no-store' }),
+        selectedTime
+          ? fetch(
+              `/api/slots/availability?locationId=${selectedHubId}&start=${encodeURIComponent(startIso)}&duration=${selectedDuration}`,
+              { cache: 'no-store' }
+            )
+          : Promise.resolve(null)
+      ]);
+
+      const slotsJson = await slotsRes.json();
+      const availabilityJson = availabilityRes ? await availabilityRes.json() : { success: true, occupiedSlotIds: [] };
+
+      if (slotsJson.success) {
+        const occupied = new Set<string>(
+          availabilityJson?.success ? availabilityJson.occupiedSlotIds || [] : []
+        );
+
+        // Map backend slot data + overlay occupied for selected window
+        const mappedSlots: Slot[] = slotsJson.data.map((s: any) => ({
           id: s.id,
           number: s.number,
-          type: s.type, 
-          status: s.status, // AVAILABLE, OCCUPIED, etc.
+          type: s.type,
+          status: occupied.has(s.id) ? 'OCCUPIED' : s.status, // MAINTENANCE or AVAILABLE
           pricePerHour: s.pricePerHour
         }));
         setAllSlots(mappedSlots);

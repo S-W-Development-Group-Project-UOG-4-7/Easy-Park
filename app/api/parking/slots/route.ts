@@ -26,47 +26,12 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // 2. Check Availability (Active bookings only)
-    // A slot is OCCUPIED only if there's an active booking:
-    // startTime <= now < endTime AND status != CANCELLED
-    const now = new Date();
-    const activeBookings = await prisma.bookings.findMany({
-      where: {
-        status: { not: 'CANCELLED' },
-        startTime: { lte: now },
-        endTime: { gt: now },
-        booking_slots: {
-          some: {
-            parking_slots: {
-              locationId: locationId
-            }
-          }
-        }
-      },
-      include: {
-        booking_slots: {
-          select: { slotId: true }
-        }
-      }
-    });
-
-    // Flatten the list of booked slot IDs
-    const bookedSlotIds = new Set<string>();
-    activeBookings.forEach(booking => {
-      booking.booking_slots.forEach(bs => bookedSlotIds.add(bs.slotId));
-    });
-
     // 3. Map Data for Frontend
     const formattedSlots = slots.map(slot => {
-      // If the slot is in the "bookedSlotIds" set, we mark it OCCUPIED
-      // OR if the slot is physically under MAINTENANCE in the database
+      // Occupancy is computed via /api/slots/availability for the requested time window.
+      // Here we only reflect physical maintenance status.
       let status = 'AVAILABLE';
-      
-      if (slot.status === 'MAINTENANCE') {
-        status = 'MAINTENANCE';
-      } else if (bookedSlotIds.has(slot.id)) {
-        status = 'OCCUPIED';
-      }
+      if (slot.status === 'MAINTENANCE') status = 'MAINTENANCE';
 
       return {
         id: slot.id,
@@ -78,7 +43,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(
-      { success: true, data: formattedSlots, meta: { now: now.toISOString(), date } },
+      { success: true, data: formattedSlots, meta: { date } },
       { headers: { 'Cache-Control': 'no-store' } }
     );
 
