@@ -22,12 +22,16 @@ export async function GET(request: NextRequest) {
 
     const requestedEnd = new Date(requestedStart);
     requestedEnd.setHours(requestedEnd.getHours() + Number(duration));
+    const now = new Date();
 
     const overlapping = await prisma.bookings.findMany({
       where: {
         status: { not: 'CANCELLED' },
         startTime: { lt: requestedEnd },
         endTime: { gt: requestedStart },
+        AND: [
+          { endTime: { gt: now } }
+        ],
         booking_slots: {
           some: {
             parking_slots: {
