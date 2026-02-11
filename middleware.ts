@@ -6,6 +6,7 @@ const protectedRoutes: { path: string; roles: string[] }[] = [
   { path: '/customer', roles: ['CUSTOMER', 'ADMIN'] },
   { path: '/admin', roles: ['ADMIN'] },
   { path: '/counter', roles: ['COUNTER', 'ADMIN'] },
+  { path: '/landowner', roles: ['LANDOWNER', 'LAND_OWNER', 'ADMIN'] },
   { path: '/land_owner', roles: ['LANDOWNER', 'LAND_OWNER', 'ADMIN'] },
   { path: '/washer', roles: ['WASHER', 'ADMIN'] },
 ];
@@ -56,13 +57,13 @@ export function middleware(request: NextRequest) {
           ADMIN: '/admin',
           CUSTOMER: '/customer',
           COUNTER: '/counter',
-          LANDOWNER: '/land_owner',
+          LANDOWNER: '/landowner',
           WASHER: '/washer',
         };
         const redirectPath = roleRedirects[userRole] || '/';
         return NextResponse.redirect(new URL(redirectPath, request.url));
       }
-    } catch (error) {
+    } catch {
       // Invalid token - redirect to sign-in
       const response = NextResponse.redirect(new URL('/sign-in', request.url));
       // Clear the invalid token

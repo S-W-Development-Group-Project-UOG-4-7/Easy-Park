@@ -197,7 +197,7 @@ export function SignUpCard() {
             Already have an account?{' '}
             <button
               type="button"
-              onClick={openSignIn}
+              onClick={() => openSignIn()}
               className="text-blue-500 hover:text-blue-400 underline transition-colors duration-200"
             >
               Sign in

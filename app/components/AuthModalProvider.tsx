@@ -1,7 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 // Lazy-load heavy auth forms so they don't inflate every page's JS bundle.
 const SignInCard = dynamic(() => import('./auth/SignInCard').then((m) => m.SignInCard), {
@@ -14,15 +15,35 @@ const SignUpCard = dynamic(() => import('./auth/SignUpCard').then((m) => m.SignU
   loading: () => <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-8 text-slate-300">Loading...</div>,
 });
 
-type AuthModalMode = 'sign-in' | 'sign-up';
+const ForgotPasswordCard = dynamic(
+  () => import('./auth/ForgotPasswordCard').then((m) => m.ForgotPasswordCard),
+  {
+    ssr: false,
+    loading: () => <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-8 text-slate-300">Loading...</div>,
+  }
+);
+
+const ResetPasswordCard = dynamic(
+  () => import('./auth/ResetPasswordCard').then((m) => m.ResetPasswordCard),
+  {
+    ssr: false,
+    loading: () => <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-8 text-slate-300">Loading...</div>,
+  }
+);
+
+type AuthModalMode = 'sign-in' | 'sign-up' | 'forgot' | 'reset';
 
 type AuthModalContextValue = {
   openAuthModal: (mode: AuthModalMode) => void;
-  openSignIn: () => void;
+  openSignIn: (options?: { clearToken?: boolean }) => void;
   openSignUp: () => void;
+  openForgot: (prefillEmail?: string) => void;
+  openReset: (token: string) => void;
   closeAuthModal: () => void;
   isOpen: boolean;
-  mode: AuthModalMode;
+  mode: AuthModalMode | null;
+  resetToken: string;
+  forgotEmail: string;
   showSignIn: boolean;
   showSignUp: boolean;
 };
@@ -38,6 +59,15 @@ export function useAuthModal() {
 }
 
 function AuthModal({ mode, onClose }: { mode: AuthModalMode; onClose: () => void }) {
+  const { resetToken, forgotEmail } = useAuthModal();
+
+  const renderContent = () => {
+    if (mode === 'sign-in') return <SignInCard />;
+    if (mode === 'sign-up') return <SignUpCard />;
+    if (mode === 'forgot') return <ForgotPasswordCard initialEmail={forgotEmail} />;
+    return <ResetPasswordCard token={resetToken} />;
+  };
+
   return (
     <div
       className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4"
@@ -58,41 +88,80 @@ function AuthModal({ mode, onClose }: { mode: AuthModalMode; onClose: () => void
         >
           <span className="text-2xl leading-none">×</span>
         </button>
-        {mode === 'sign-in' ? <SignInCard /> : <SignUpCard />}
+        {renderContent()}
       </div>
     </div>
   );
 }
 
 export function AuthModalProvider({ children }: { children: React.ReactNode }) {
-  const [showSignIn, setShowSignIn] = useState(false);
-  const [showSignUp, setShowSignUp] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tokenFromQuery = String(searchParams.get('token') || '').trim();
+  const [mode, setMode] = useState<AuthModalMode | null>(null);
+  const [resetToken, setResetToken] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
 
-  const openSignIn = () => {
-    setShowSignIn(true);
-    setShowSignUp(false);
+  const removeTokenQueryParam = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (!params.has('token')) return;
+    params.delete('token');
+    const query = params.toString();
+    const url = query ? `${pathname}?${query}` : pathname;
+    router.replace(url, { scroll: false });
+  };
+
+  const openSignIn = (options?: { clearToken?: boolean }) => {
+    if (options?.clearToken) {
+      removeTokenQueryParam();
+      setResetToken('');
+    }
+    setMode('sign-in');
   };
 
   const openSignUp = () => {
-    setShowSignUp(true);
-    setShowSignIn(false);
+    setMode('sign-up');
+  };
+
+  const openForgot = (prefillEmail = '') => {
+    setForgotEmail(prefillEmail);
+    setMode('forgot');
+  };
+
+  const openReset = (token: string) => {
+    setResetToken(token);
+    setMode('reset');
   };
 
   const openAuthModal = (nextMode: AuthModalMode) => {
     if (nextMode === 'sign-in') {
       openSignIn();
+    } else if (nextMode === 'forgot') {
+      openForgot();
+    } else if (nextMode === 'reset') {
+      openReset(resetToken);
     } else {
       openSignUp();
     }
   };
 
   const closeAuthModal = () => {
-    setShowSignIn(false);
-    setShowSignUp(false);
+    setMode(null);
   };
 
-  const isOpen = showSignIn || showSignUp;
-  const mode: AuthModalMode = showSignUp ? 'sign-up' : 'sign-in';
+  const isOpen = mode !== null;
+  const showSignIn = mode === 'sign-in';
+  const showSignUp = mode === 'sign-up';
+
+  useEffect(() => {
+    if (!tokenFromQuery) return;
+    const id = window.setTimeout(() => {
+      setResetToken(tokenFromQuery);
+      setMode('reset');
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [tokenFromQuery]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -114,24 +183,25 @@ export function AuthModalProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isOpen]);
 
-  const value = useMemo<AuthModalContextValue>(
-    () => ({
-      openAuthModal,
-      openSignIn,
-      openSignUp,
-      closeAuthModal,
-      isOpen,
-      mode,
-      showSignIn,
-      showSignUp,
-    }),
-    [isOpen, mode, showSignIn, showSignUp]
-  );
+  const value: AuthModalContextValue = {
+    openAuthModal,
+    openSignIn,
+    openSignUp,
+    openForgot,
+    openReset,
+    closeAuthModal,
+    isOpen,
+    mode,
+    resetToken,
+    forgotEmail,
+    showSignIn,
+    showSignUp,
+  };
 
   return (
     <AuthModalContext.Provider value={value}>
       {children}
-      {isOpen ? <AuthModal mode={mode} onClose={closeAuthModal} /> : null}
+      {isOpen && mode ? <AuthModal mode={mode} onClose={closeAuthModal} /> : null}
     </AuthModalContext.Provider>
   );
 }
