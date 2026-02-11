@@ -61,8 +61,29 @@ export async function PATCH(
               slot: { select: { slotType: true } },
               booking: {
                 include: {
-                  customer: { select: { id: true, fullName: true, email: true, phone: true } },
-                  vehicle: { select: { vehicleNumber: true } },
+                  customer: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      email: true,
+                      phone: true,
+                      vehicles: {
+                        select: {
+                          vehicleNumber: true,
+                          type: true,
+                          createdAt: true,
+                        },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1,
+                      },
+                    },
+                  },
+                  vehicle: {
+                    select: {
+                      vehicleNumber: true,
+                      type: true,
+                    },
+                  },
                 },
               },
             },

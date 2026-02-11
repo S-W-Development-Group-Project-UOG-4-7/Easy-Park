@@ -35,9 +35,23 @@ export async function GET(
                     fullName: true,
                     email: true,
                     phone: true,
+                    vehicles: {
+                      select: {
+                        vehicleNumber: true,
+                        type: true,
+                        createdAt: true,
+                      },
+                      orderBy: { createdAt: 'desc' },
+                      take: 1,
+                    },
                   },
                 },
-                vehicle: { select: { vehicleNumber: true } },
+                vehicle: {
+                  select: {
+                    vehicleNumber: true,
+                    type: true,
+                  },
+                },
               },
             },
           },

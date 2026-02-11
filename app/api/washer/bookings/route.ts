@@ -79,10 +79,22 @@ export async function GET(request: NextRequest) {
                     fullName: true,
                     email: true,
                     phone: true,
+                    vehicles: {
+                      select: {
+                        vehicleNumber: true,
+                        type: true,
+                        createdAt: true,
+                      },
+                      orderBy: { createdAt: 'desc' },
+                      take: 1,
+                    },
                   },
                 },
                 vehicle: {
-                  select: { vehicleNumber: true },
+                  select: {
+                    vehicleNumber: true,
+                    type: true,
+                  },
                 },
               },
             },
@@ -232,9 +244,23 @@ export async function POST(request: NextRequest) {
                       fullName: true,
                       email: true,
                       phone: true,
+                      vehicles: {
+                        select: {
+                          vehicleNumber: true,
+                          type: true,
+                          createdAt: true,
+                        },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1,
+                      },
                     },
                   },
-                  vehicle: { select: { vehicleNumber: true } },
+                  vehicle: {
+                    select: {
+                      vehicleNumber: true,
+                      type: true,
+                    },
+                  },
                 },
               },
             },

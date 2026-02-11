@@ -32,6 +32,9 @@ export type WasherBookingPayload = {
   customerId: string;
   slotTime: Date;
   vehicle: string;
+  vehicleNumber: string;
+  vehicle_number: string;
+  vehicleType: string | null;
   serviceType: string;
   status: 'PENDING' | 'ACCEPTED' | 'COMPLETED' | 'CANCELLED';
   notes: string;
@@ -59,9 +62,15 @@ export function mapWashJobToWasherBooking(job: {
         fullName: string;
         email: string;
         phone: string | null;
+        vehicles?: Array<{
+          vehicleNumber: string;
+          type: string | null;
+          createdAt: Date;
+        }>;
       };
       vehicle: {
         vehicleNumber: string;
+        type: string | null;
       } | null;
     };
     slot: {
@@ -70,11 +79,18 @@ export function mapWashJobToWasherBooking(job: {
   };
 }): WasherBookingPayload {
   const booking = job.bookingSlot.booking;
+  const fallbackVehicle = booking.customer.vehicles?.[0] || null;
+  const vehicleNumber = booking.vehicle?.vehicleNumber || fallbackVehicle?.vehicleNumber || '';
+  const vehicleType = booking.vehicle?.type || fallbackVehicle?.type || null;
+
   return {
     id: job.id,
     customerId: booking.customer.id,
     slotTime: booking.startTime,
-    vehicle: booking.vehicle?.vehicleNumber || 'N/A',
+    vehicle: vehicleNumber,
+    vehicleNumber,
+    vehicle_number: vehicleNumber,
+    vehicleType,
     serviceType: job.bookingSlot.slot.slotType === 'CAR_WASH' ? 'Car Wash' : 'Wash Job',
     status: booking.status === 'CANCELLED' ? 'CANCELLED' : job.status,
     notes: job.note || '',

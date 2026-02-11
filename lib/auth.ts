@@ -7,9 +7,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-pr
 const JWT_EXPIRES_IN = '7d';
 
 export interface JWTPayload {
-  userId: string;
-  email: string;
-  role: string;
+  userId?: string;
+  email?: string;
+  role?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -43,7 +44,7 @@ export function generateToken(payload: JWTPayload): string {
 export function verifyToken(token: string): JWTPayload | null {
   try {
     return jwt.verify(token, JWT_SECRET) as JWTPayload;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -73,7 +74,39 @@ export function getTokenFromRequest(request: NextRequest): string | null {
 export function getAuthUser(request: NextRequest): JWTPayload | null {
   const token = getTokenFromRequest(request);
   if (!token) return null;
-  return verifyToken(token);
+  const decoded = verifyToken(token) as (JWTPayload & {
+    id?: string;
+    sub?: string;
+    user_id?: string;
+    mail?: string;
+    roles?: string[] | string;
+  }) | null;
+  if (!decoded) return null;
+
+  const roleFromRoles =
+    Array.isArray(decoded.roles) && decoded.roles.length > 0
+      ? String(decoded.roles[0])
+      : typeof decoded.roles === 'string'
+        ? decoded.roles
+        : undefined;
+
+  return {
+    ...decoded,
+    userId:
+      (typeof decoded.userId === 'string' && decoded.userId) ||
+      (typeof decoded.id === 'string' && decoded.id) ||
+      (typeof decoded.user_id === 'string' && decoded.user_id) ||
+      (typeof decoded.sub === 'string' && decoded.sub) ||
+      undefined,
+    email:
+      (typeof decoded.email === 'string' && decoded.email) ||
+      (typeof decoded.mail === 'string' && decoded.mail) ||
+      undefined,
+    role:
+      (typeof decoded.role === 'string' && decoded.role) ||
+      (typeof roleFromRoles === 'string' && roleFromRoles) ||
+      undefined,
+  };
 }
 
 /**

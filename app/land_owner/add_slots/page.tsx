@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,9 @@ import {
   PlusSquare, 
   LogOut, 
   User, 
+  Car,
+  Zap,
+  Droplets,
   Plus,
   Trash2,
   Save,
@@ -23,9 +26,9 @@ import {
 interface Slot {
   id: string;
   slotNumber: string;
+  slotType: "NORMAL" | "EV" | "CAR_WASH";
   zone: string;
   status: string;
-  pricePerHour: number;
   parkingLotId: string;
 }
 
@@ -33,6 +36,53 @@ interface ParkingLot {
   id: string;
   name: string;
   address: string;
+}
+
+interface SlotApiItem {
+  id?: string;
+  slotNumber?: string;
+  number?: string;
+  type?: string;
+  slotType?: string;
+  zone?: string;
+  status?: string;
+  parkingLotId?: string;
+  locationId?: string;
+}
+
+function deriveZone(slotNumber: string) {
+  const match = String(slotNumber).match(/^[A-Za-z]+/);
+  return (match?.[0] || "A").toUpperCase();
+}
+
+function normalizeSlotStatus(status: unknown) {
+  const raw = String(status || "available").toLowerCase();
+  if (raw === "maintenance") return "maintenance";
+  if (raw === "occupied") return "occupied";
+  return "available";
+}
+
+function normalizeSlotType(type: unknown): "NORMAL" | "EV" | "CAR_WASH" {
+  const raw = String(type || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (raw === "EV" || raw === "EV_SLOT") return "EV";
+  if (raw === "CAR_WASH" || raw === "CAR_WASHING" || raw === "CARWASH") return "CAR_WASH";
+  return "NORMAL";
+}
+
+function parseSlotApiItem(item: SlotApiItem, fallbackPropertyId: string): Slot | null {
+  if (!item?.id) return null;
+  const slotNumber = String(item.slotNumber || item.number || "").trim();
+  if (!slotNumber) return null;
+
+  const zone = String(item.zone || "").trim().toUpperCase() || deriveZone(slotNumber);
+  return {
+    id: String(item.id),
+    slotNumber,
+    slotType: normalizeSlotType(item.type || item.slotType),
+    zone,
+    status: normalizeSlotStatus(item.status),
+    parkingLotId: String(item.parkingLotId || item.locationId || fallbackPropertyId),
+  };
 }
 
 export default function AddSlots() {
@@ -48,7 +98,13 @@ export default function AddSlots() {
   const [signingOut, setSigningOut] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
   
-  const [newSlot, setNewSlot] = useState({ zone: "A", count: 1, pricePerHour: 15 });
+  const [newSlot, setNewSlot] = useState<{
+    count: number;
+    slotType: "NORMAL" | "EV" | "CAR_WASH";
+  }>({
+    count: 1,
+    slotType: "NORMAL",
+  });
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedSlotForStatus, setSelectedSlotForStatus] = useState<Slot | null>(null);
 
@@ -57,8 +113,6 @@ export default function AddSlots() {
     { id: "bookings", label: "View Booking Details", icon: CalendarDays, href: "/land_owner/view_booking" },
     { id: "slots", label: "Add Slots", icon: PlusSquare, href: "/land_owner/add_slots" },
   ];
-
-  const zones = ["A", "B", "C", "D"];
 
   // Open sign out confirmation modal
   const openSignOutModal = () => {
@@ -118,18 +172,48 @@ export default function AddSlots() {
     };
   }, [showSignOutModal]);
 
+  const displayZones = useMemo(() => {
+    return Array.from(new Set(slots.map((slot) => slot.zone).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+    );
+  }, [slots]);
+
+  const loadSlots = useCallback(async (propertyId: string) => {
+    const response = await fetch(`/api/slots?propertyId=${propertyId}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("Failed to fetch slots");
+    const payload = await response.json();
+    const rawSlots: SlotApiItem[] = Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.slots)
+        ? payload.slots
+        : [];
+
+    const normalized = rawSlots
+      .map((item) => parseSlotApiItem(item, propertyId))
+      .filter((item): item is Slot => item !== null)
+      .sort((a, b) => a.slotNumber.localeCompare(b.slotNumber, undefined, { numeric: true, sensitivity: "base" }));
+
+    setSlots(normalized);
+  }, []);
+
   // Fetch parking lots on mount
   useEffect(() => {
     async function fetchParkingLots() {
       try {
-        const response = await fetch('/api/parking-lots');
+        setLoading(true);
+        const response = await fetch('/api/parking-lots', { cache: 'no-store' });
         if (!response.ok) throw new Error('Failed to fetch parking lots');
         const data = await response.json();
-        // API returns { parkingLots: [...] } format
-        const lots = data.parkingLots || [];
+        const lots: ParkingLot[] = (data.parkingLots || []).map((lot: { id: string; name: string; address: string }) => ({
+          id: String(lot.id),
+          name: String(lot.name || ''),
+          address: String(lot.address || ''),
+        }));
         setParkingLots(lots);
         if (lots.length > 0) {
-          setSelectedParkingLot(lots[0].id);
+          setSelectedParkingLot((prev) => (prev && lots.some((lot) => lot.id === prev) ? prev : lots[0].id));
+        } else {
+          setSelectedParkingLot("");
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
@@ -142,27 +226,25 @@ export default function AddSlots() {
 
   // Fetch slots when parking lot changes
   useEffect(() => {
-    async function fetchSlots() {
-      if (!selectedParkingLot) {
-        setLoading(false);
-        return;
-      }
+    if (!selectedParkingLot) {
+      setSlots([]);
+      setLoading(false);
+      return;
+    }
+
+    async function fetchSlotsForProperty() {
       try {
         setLoading(true);
-        const response = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
-        if (!response.ok) throw new Error('Failed to fetch slots');
-        const data = await response.json();
-        // API returns { success: true, data: [...] } format from successResponse
-        const slotsData = data.data || data.slots || [];
-        setSlots(slotsData);
+        await loadSlots(selectedParkingLot);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
         setLoading(false);
       }
     }
-    fetchSlots();
-  }, [selectedParkingLot]);
+
+    fetchSlotsForProperty();
+  }, [loadSlots, selectedParkingLot]);
 
   const getStatusStyle = (status: string) => {
     switch (status.toLowerCase()) {
@@ -190,9 +272,8 @@ export default function AddSlots() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           parkingLotId: selectedParkingLot,
-          zone: newSlot.zone,
           count: newSlot.count,
-          pricePerHour: newSlot.pricePerHour,
+          type: newSlot.slotType,
         }),
       });
 
@@ -201,13 +282,10 @@ export default function AddSlots() {
         throw new Error(data.error || 'Failed to add slots');
       }
 
-      // Refresh slots from database
-      const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
-      const slotsData = await slotsResponse.json();
-      setSlots(slotsData.data || slotsData.slots || []);
+      await loadSlots(selectedParkingLot);
       
       setShowAddForm(false);
-      setNewSlot({ zone: "A", count: 1, pricePerHour: 15 });
+      setNewSlot({ count: 1, slotType: "NORMAL" });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add slots');
     } finally {
@@ -241,7 +319,7 @@ export default function AddSlots() {
     setSelectedSlotForStatus(slot);
   };
 
-  const updateSlotStatus = async (newStatus: string) => {
+  const updateSlotStatus = async (newStatus: "AVAILABLE" | "MAINTENANCE") => {
     if (!selectedSlotForStatus) return;
 
     try {
@@ -261,10 +339,7 @@ export default function AddSlots() {
         throw new Error(data.error || 'Failed to update slot');
       }
 
-      // Refresh slots from database to ensure sync
-      const slotsResponse = await fetch(`/api/slots?parkingLotId=${selectedParkingLot}`);
-      const slotsData = await slotsResponse.json();
-      setSlots(slotsData.data || slotsData.slots || []);
+      await loadSlots(selectedParkingLot);
       
       setSelectedSlotForStatus(null);
     } catch (err) {
@@ -274,10 +349,29 @@ export default function AddSlots() {
     }
   };
 
-  const slotsByZone = zones.reduce((acc, zone) => {
-    acc[zone] = slots.filter(s => s.zone === zone);
-    return acc;
-  }, {} as Record<string, typeof slots>);
+  const slotsByZone = useMemo(
+    () =>
+      displayZones.reduce((acc, zone) => {
+        acc[zone] = slots.filter((slot) => slot.zone === zone);
+        return acc;
+      }, {} as Record<string, typeof slots>),
+    [displayZones, slots]
+  );
+
+  const slotTypeLabel = useCallback((slotType: Slot["slotType"]) => {
+    if (slotType === "EV") return "EV";
+    if (slotType === "CAR_WASH") return "Car Wash";
+    return "Normal";
+  }, []);
+
+  const slotTypeCounts = useMemo(
+    () => ({
+      NORMAL: slots.filter((slot) => slot.slotType === "NORMAL").length,
+      EV: slots.filter((slot) => slot.slotType === "EV").length,
+      CAR_WASH: slots.filter((slot) => slot.slotType === "CAR_WASH").length,
+    }),
+    [slots]
+  );
 
   return (
     <div className="flex min-h-screen">
@@ -435,6 +529,22 @@ export default function AddSlots() {
             </div>
           </div>
 
+          {/* Slot Type Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 sm:mb-8">
+            <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-5 py-4 flex items-center justify-center gap-2">
+              <Car className="w-5 h-5 text-blue-400" />
+              <p className="text-blue-300 font-semibold">+{slotTypeCounts.NORMAL} Normal</p>
+            </div>
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-5 py-4 flex items-center justify-center gap-2">
+              <Zap className="w-5 h-5 text-amber-400" />
+              <p className="text-amber-300 font-semibold">+{slotTypeCounts.EV} EV</p>
+            </div>
+            <div className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-4 flex items-center justify-center gap-2">
+              <Droplets className="w-5 h-5 text-cyan-400" />
+              <p className="text-cyan-300 font-semibold">+{slotTypeCounts.CAR_WASH} Car Wash</p>
+            </div>
+          </div>
+
           {/* Loading State */}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12">
@@ -445,12 +555,12 @@ export default function AddSlots() {
             <div className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-8 text-center">
               <MapPin className="w-12 h-12 text-[#94A3B8] mx-auto mb-4" />
               <p className="text-[#E5E7EB] text-lg">No slots found</p>
-              <p className="text-[#94A3B8] text-sm mt-2">Click "Add Slots" to create parking slots</p>
+              <p className="text-[#94A3B8] text-sm mt-2">Click Add Slots to create parking slots</p>
             </div>
           ) : (
             /* Slots by Zone */
             <div className="space-y-4 sm:space-y-6">
-              {zones.map(zone => (
+              {displayZones.map(zone => (
                 slotsByZone[zone]?.length > 0 && (
                   <div key={zone} className="rounded-2xl bg-gradient-to-br from-[#1E293B] to-[#0F172A] border border-white/10 p-4 sm:p-6">
                     <div className="flex items-center gap-2 mb-4">
@@ -480,6 +590,7 @@ export default function AddSlots() {
                                 <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                               </button>
                               <p className="font-semibold text-xs sm:text-sm">{slot.slotNumber}</p>
+                              <p className="text-[9px] sm:text-[10px] mt-0.5 opacity-80">{slotTypeLabel(slot.slotType)}</p>
                               <p className="text-[10px] sm:text-xs mt-1 capitalize">{slot.status.toLowerCase()}</p>
                             </>
                           )}
@@ -524,15 +635,20 @@ export default function AddSlots() {
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[#94A3B8] mb-2">Select Zone</label>
+                <label className="block text-sm text-[#94A3B8] mb-2">Slot Type</label>
                 <select
-                  value={newSlot.zone}
-                  onChange={(e) => setNewSlot({ ...newSlot, zone: e.target.value })}
+                  value={newSlot.slotType}
+                  onChange={(e) =>
+                    setNewSlot({
+                      ...newSlot,
+                      slotType: e.target.value as "NORMAL" | "EV" | "CAR_WASH",
+                    })
+                  }
                   className="w-full bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16]"
                 >
-                  {zones.map(zone => (
-                    <option key={zone} value={zone}>Zone {zone}</option>
-                  ))}
+                  <option value="NORMAL">Normal</option>
+                  <option value="EV">EV</option>
+                  <option value="CAR_WASH">Car Wash</option>
                 </select>
               </div>
 
@@ -544,18 +660,6 @@ export default function AddSlots() {
                   max="50"
                   value={newSlot.count}
                   onChange={(e) => setNewSlot({ ...newSlot, count: parseInt(e.target.value) || 1 })}
-                  className="w-full bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-[#94A3B8] mb-2">Price per Hour ($)</label>
-                <input
-                  type="number"
-                  min="1"
-                  step="0.5"
-                  value={newSlot.pricePerHour}
-                  onChange={(e) => setNewSlot({ ...newSlot, pricePerHour: parseFloat(e.target.value) || 15 })}
                   className="w-full bg-[#0F172A] border border-white/10 rounded-xl px-4 py-3 text-[#E5E7EB] focus:outline-none focus:border-[#84CC16]"
                 />
               </div>
@@ -626,7 +730,7 @@ export default function AddSlots() {
               <p className="text-sm text-[#94A3B8] mb-2">Select New Status</p>
               
               <button
-                onClick={() => updateSlotStatus('available')}
+                onClick={() => updateSlotStatus('AVAILABLE')}
                 disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toLowerCase() === 'available'}
                 className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
                   selectedSlotForStatus.status.toLowerCase() === 'available'
@@ -645,26 +749,7 @@ export default function AddSlots() {
               </button>
 
               <button
-                onClick={() => updateSlotStatus('occupied')}
-                disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toLowerCase() === 'occupied'}
-                className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
-                  selectedSlotForStatus.status.toLowerCase() === 'occupied'
-                    ? 'bg-red-500/30 border-red-500/50 cursor-not-allowed'
-                    : 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
-                } ${actionLoading === selectedSlotForStatus.id ? 'opacity-50' : ''}`}
-              >
-                <div className="w-4 h-4 rounded-full bg-red-500"></div>
-                <div className="text-left flex-1">
-                  <p className="text-red-400 font-medium">Occupied</p>
-                  <p className="text-red-400/60 text-xs">Slot is currently in use</p>
-                </div>
-                {selectedSlotForStatus.status.toLowerCase() === 'occupied' && (
-                  <span className="text-xs text-red-400 bg-red-500/20 px-2 py-1 rounded">Current</span>
-                )}
-              </button>
-
-              <button
-                onClick={() => updateSlotStatus('maintenance')}
+                onClick={() => updateSlotStatus('MAINTENANCE')}
                 disabled={actionLoading === selectedSlotForStatus.id || selectedSlotForStatus.status.toLowerCase() === 'maintenance'}
                 className={`w-full p-4 rounded-xl border flex items-center gap-3 transition-all ${
                   selectedSlotForStatus.status.toLowerCase() === 'maintenance'
@@ -681,6 +766,12 @@ export default function AddSlots() {
                   <span className="text-xs text-yellow-400 bg-yellow-500/20 px-2 py-1 rounded">Current</span>
                 )}
               </button>
+
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3">
+                <p className="text-xs text-red-300">
+                  Occupied is computed automatically from active bookings and cannot be set manually.
+                </p>
+              </div>
             </div>
 
             {/* Loading indicator */}

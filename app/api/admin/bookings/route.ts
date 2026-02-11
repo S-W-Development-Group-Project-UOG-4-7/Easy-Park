@@ -89,6 +89,15 @@ export async function GET(request: NextRequest) {
             phone: true,
             residentialAddress: true,
             nic: true,
+            vehicles: {
+              select: {
+                vehicleNumber: true,
+              },
+              orderBy: {
+                createdAt: 'desc',
+              },
+              take: 1,
+            },
           },
         },
         vehicle: {
@@ -164,7 +173,7 @@ export async function GET(request: NextRequest) {
         customerPhone: booking.customer.phone,
         customerAddress: booking.customer.residentialAddress,
         customerNic: booking.customer.nic,
-        vehicleNumber: booking.vehicle?.vehicleNumber || null,
+        vehicleNumber: booking.vehicle?.vehicleNumber || booking.customer.vehicles[0]?.vehicleNumber || null,
         bookingStatus: booking.status,
         status: booking.status,
         duration,

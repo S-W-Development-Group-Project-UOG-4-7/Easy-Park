@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
+import { extractRoles, normalizeRole } from '@/lib/user-roles';
 
 function toSlotType(raw: unknown): 'NORMAL' | 'EV' | 'CAR_WASH' {
   const value = String(raw || '')
@@ -40,9 +41,44 @@ async function syncPropertyTotals(propertyId: string) {
 export async function GET(request: NextRequest) {
   try {
     const authUser = getAuthUser(request);
-    const isAdmin = authUser?.role === 'ADMIN';
     const showAll = request.nextUrl.searchParams.get('showAll') === 'true';
-    const where = isAdmin && showAll ? {} : { status: 'ACTIVATED' as const };
+    let isAdmin = false;
+    let isLandOwner = false;
+    let resolvedUserId: string | null = null;
+
+    if (authUser?.userId || authUser?.email) {
+      const user = authUser.userId
+        ? await prisma.users.findUnique({
+            where: { id: authUser.userId },
+            include: { roles: { include: { role: true } } },
+          })
+        : await prisma.users.findUnique({
+            where: { email: String(authUser.email || '').toLowerCase() },
+            include: { roles: { include: { role: true } } },
+          });
+
+      if (user) {
+        resolvedUserId = user.id;
+        const roles = new Set(extractRoles(user));
+        isAdmin = roles.has('ADMIN');
+        isLandOwner = roles.has('LANDOWNER');
+      }
+    }
+
+    if (!isAdmin && !isLandOwner) {
+      const normalized = normalizeRole(authUser?.role);
+      if (normalized === 'ADMIN') isAdmin = true;
+      if (normalized === 'LANDOWNER') isLandOwner = true;
+      resolvedUserId = resolvedUserId || authUser?.userId || null;
+    }
+
+    let where: { status?: 'ACTIVATED'; ownerId?: string } = { status: 'ACTIVATED' };
+    if (isAdmin) {
+      where = showAll ? {} : { status: 'ACTIVATED' };
+    } else if (isLandOwner && resolvedUserId) {
+      const ownedCount = await prisma.properties.count({ where: { ownerId: resolvedUserId } });
+      where = ownedCount > 0 ? { ownerId: resolvedUserId } : { status: 'ACTIVATED' };
+    }
 
     const properties = await prisma.properties.findMany({
       where,
@@ -115,7 +151,8 @@ export async function GET(request: NextRequest) {
       { parkingLots },
       {
         headers: {
-          'Cache-Control': isAdmin && showAll ? 'no-store' : 'public, s-maxage=60, stale-while-revalidate=300',
+          'Cache-Control':
+            (isAdmin && showAll) || isLandOwner ? 'no-store' : 'public, s-maxage=60, stale-while-revalidate=300',
         },
       }
     );
@@ -128,7 +165,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const authUser = getAuthUser(request);
-    if (!authUser || !['ADMIN', 'LANDOWNER', 'LAND_OWNER'].includes(authUser.role)) {
+    const authRole = String(authUser?.role || '');
+    if (!authUser || !['ADMIN', 'LANDOWNER', 'LAND_OWNER'].includes(authRole)) {
       return NextResponse.json(
         { error: 'Unauthorized: Only admins and land owners can create parking lots' },
         { status: 403 }

@@ -29,9 +29,23 @@ model users {
   roles               user_roles[]
   vehicles            vehicles[]
   washJobs            wash_jobs[]              @relation("WashJobWasher")
+  passwordResetTokens password_reset_tokens[]
 
   @@index([email])
   @@map("users")
+}
+
+model password_reset_tokens {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @db.Timestamptz(6) @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  user      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, used, expiresAt])
+  @@map("password_reset_tokens")
 }
 
 model roles {

@@ -151,17 +151,32 @@ function calculateStats(bookings: WasherBooking[]): DashboardStats {
   };
 }
 
+function normalizeVehicleType(value: unknown): WasherBooking['vehicleType'] {
+  const raw = String(value || '').trim().toUpperCase();
+  if (raw === 'SEDAN') return 'Sedan';
+  if (raw === 'SUV') return 'SUV';
+  if (raw === 'HATCHBACK') return 'Hatchback';
+  if (raw === 'TRUCK') return 'Truck';
+  if (raw === 'VAN') return 'Van';
+  return 'Other';
+}
+
 // Transform API booking to frontend WasherBooking format
 function transformBooking(apiBooking: any): WasherBooking {
   const slotDateTime = new Date(apiBooking.slotTime);
+  const vehicleNumber = String(
+    apiBooking.vehicleNumber || apiBooking.vehicle_number || apiBooking.vehicle || ''
+  ).trim();
+  const vehicleType = normalizeVehicleType(apiBooking.vehicleType);
+
   return {
     id: apiBooking.id,
     customerId: apiBooking.customerId,
     customerName: apiBooking.customer?.name || 'Unknown',
     customerEmail: apiBooking.customer?.email,
     customerPhone: apiBooking.customer?.phone,
-    vehicleNumber: apiBooking.vehicle,
-    vehicleType: 'Other', // Could be derived from vehicleDetails
+    vehicleNumber,
+    vehicleType,
     slotTime: slotDateTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
     slotDate: slotDateTime.toISOString().split('T')[0],
     serviceType: apiBooking.serviceType,

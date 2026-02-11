@@ -117,6 +117,7 @@ export async function GET(request: NextRequest) {
         mapped.map((slot) => ({
           id: slot.id,
           slotNumber: slot.slotNumber,
+          type: slot.type,
           zone: String(slot.slotNumber).replace(/[0-9]+$/, '') || 'A',
           status: String(slot.status).toLowerCase(),
           parkingLotId: slot.parkingLotId,
@@ -137,16 +138,19 @@ export async function POST(request: NextRequest) {
     const number = String(body?.number || '').trim();
     const type = body?.type;
     const propertyId = String(body?.propertyId || body?.locationId || body?.parkingLotId || '').trim();
-    const zone = String(body?.zone || 'A').trim().toUpperCase();
+    const zone = String(body?.zone || '').trim().toUpperCase();
     const count = Number(body?.count || 0);
+    const requestedType = normalizeSlotType(type);
 
     if (!propertyId) {
       return errorResponse('propertyId/locationId/parkingLotId is required');
     }
 
     if (!number && count > 0) {
+      const typePrefix = requestedType === 'EV' ? 'EV' : requestedType === 'CAR_WASH' ? 'CW' : 'A';
+      const slotPrefix = zone || typePrefix;
       const existing = await prisma.parking_slots.findMany({
-        where: { propertyId, slotNumber: { startsWith: zone } },
+        where: { propertyId, slotType: requestedType, slotNumber: { startsWith: slotPrefix } },
         select: { slotNumber: true },
       });
 
@@ -158,8 +162,8 @@ export async function POST(request: NextRequest) {
 
       const rows = Array.from({ length: count }).map((_, index) => ({
         propertyId,
-        slotNumber: `${zone}${maxNumber + index + 1}`,
-        slotType: 'NORMAL' as SlotTypeValue,
+        slotNumber: `${slotPrefix}${maxNumber + index + 1}`,
+        slotType: requestedType,
         isActive: true,
       }));
 
@@ -196,10 +200,13 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const id = String(body?.id || '').trim();
-    const status = String(body?.status || '').toUpperCase();
+    const status = String(body?.status || '').trim().toUpperCase();
     if (!id || !status) return errorResponse('id and status are required');
+    if (status !== 'AVAILABLE' && status !== 'MAINTENANCE') {
+      return errorResponse('status must be AVAILABLE or MAINTENANCE. OCCUPIED is computed from bookings.', 400);
+    }
 
-    const isActive = status !== 'MAINTENANCE';
+    const isActive = status === 'AVAILABLE';
     const updated = await prisma.parking_slots.update({
       where: { id },
       data: { isActive },

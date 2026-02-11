@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../AuthProvider';
 import { useAuthModal } from '../AuthModalProvider';
@@ -19,6 +19,10 @@ export function SignInCard() {
   const router = useRouter();
   const { refreshUser, setUser } = useAuth();
   const { openSignUp } = useAuthModal();
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -30,6 +34,15 @@ export function SignInCard() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
+
+  useEffect(() => {
+    if (!showForgotModal) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [showForgotModal]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +97,35 @@ export function SignInCard() {
     }
   };
 
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      setForgotMessage('Please enter your email address.');
+      return;
+    }
+
+    setForgotLoading(true);
+    setForgotMessage('');
+
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      const message =
+        String(data?.message || data?.data?.message || '').trim() ||
+        'If an account exists for this email, a reset link has been sent.';
+      setForgotMessage(message);
+    } catch (forgotError) {
+      console.error('Forgot password error:', forgotError);
+      setForgotMessage('If an account exists for this email, a reset link has been sent.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <div className="w-full">
       <div className="bg-linear-to-br from-[#1E293B] to-[#0F172A] rounded-2xl shadow-2xl p-8 border border-[#334155]/50">
@@ -119,6 +161,20 @@ export function SignInCard() {
               placeholder="Password"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
+          </div>
+
+          <div className="text-right">
+            <button
+              type="button"
+              onClick={() => {
+                setForgotEmail(formData.email || '');
+                setForgotMessage('');
+                setShowForgotModal(true);
+              }}
+              className="text-sm text-[#84CC16] hover:text-[#BEF264] underline"
+            >
+              Forgot Password?
+            </button>
           </div>
 
           <button
@@ -182,6 +238,56 @@ export function SignInCard() {
           </p>
         </div>
       </div>
+
+      {showForgotModal && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setShowForgotModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-[#334155]/60 bg-gradient-to-br from-[#1E293B] to-[#0F172A] p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-2 text-xl font-bold text-[#E5E7EB]">Forgot Password</h3>
+            <p className="mb-4 text-sm text-[#94A3B8]">
+              Enter your email to receive a password reset link.
+            </p>
+
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+              <input
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full rounded-lg border border-[#334155] bg-white/5 px-4 py-3 text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16]"
+              />
+
+              {forgotMessage ? (
+                <div className="rounded-lg border border-[#334155] bg-[#0B1220] px-3 py-2 text-sm text-[#E5E7EB]">
+                  {forgotMessage}
+                </div>
+              ) : null}
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotModal(false)}
+                  className="flex-1 rounded-lg border border-[#334155] px-4 py-2.5 text-[#E5E7EB] hover:bg-white/5"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="flex-1 rounded-lg bg-gradient-to-r from-[#84CC16] to-[#BEF264] px-4 py-2.5 font-semibold text-[#0F172A] disabled:opacity-60"
+                >
+                  {forgotLoading ? 'Sending...' : 'Send Link'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

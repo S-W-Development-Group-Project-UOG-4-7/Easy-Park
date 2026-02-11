@@ -407,7 +407,7 @@ export default function ViewBookingDetailsPage() {
                 {[
                   { key: 'name', label: 'Customer Name', sortable: true },
                   { key: 'customerEmail', label: 'Customer Email', sortable: true },
-                  { key: 'vehicleNumber', label: 'Vehicle Number', sortable: true },
+                  { key: 'vehicleNumber', label: 'Reg Number', sortable: true },
                   { key: 'propertyName', label: 'Property', sortable: true },
                   { key: 'parkingSlot', label: 'Parking Slot', sortable: true },
                   { key: 'date', label: 'Date', sortable: true },
