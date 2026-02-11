@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../components/AuthProvider';
 import PaymentGatewayModal from '../../components/PaymentGatewayModal';
-import { propertiesApi, slotsApi } from '../../services/api';
+import { propertiesApi } from '../../services/api';
 import { 
-  Calendar, Clock, MapPin, Zap, Shield, AlertCircle, 
+  Calendar, Clock, MapPin, Zap, AlertCircle, 
   Loader2, Search, Droplets
 } from 'lucide-react';
 
@@ -38,6 +38,26 @@ interface TimeSlot {
   time: string;
   label: string;
   isPeak: boolean;
+  isEnabled: boolean;
+}
+
+interface AvailabilitySlot {
+  id: string;
+  number: string;
+  type: 'EV' | 'CAR_WASH' | 'NORMAL';
+  isAvailable: boolean;
+  status: 'AVAILABLE' | 'OCCUPIED' | 'MAINTENANCE';
+}
+
+interface AvailabilityResponse {
+  success: boolean;
+  data?: {
+    slots: AvailabilitySlot[];
+    timeOptions: TimeSlot[];
+    requestedStart: string | null;
+    requestedEnd: string | null;
+  };
+  error?: string;
 }
 
 // --- ✨ NEW: Futuristic Background Component ---
@@ -53,6 +73,7 @@ const FuturisticBackground = () => {
       delay: Math.random() * 5,
       size: Math.random() * 2 + 1, // 1px to 3px
     }));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStars(newStars);
   }, []);
 
@@ -91,6 +112,10 @@ const FuturisticBackground = () => {
 export default function ViewBookingsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const localToday = new Date();
+  const TODAY = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, '0')}-${String(
+    localToday.getDate()
+  ).padStart(2, '0')}`;
 
   // --- UI State ---
   const [hubs, setHubs] = useState<Hub[]>([]);
@@ -98,7 +123,6 @@ export default function ViewBookingsPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('1');
-  const [searchQuery, setSearchQuery] = useState('');
 
   // --- Data State ---
   const [allSlots, setAllSlots] = useState<Slot[]>([]);
@@ -116,25 +140,27 @@ export default function ViewBookingsPage() {
 
   // --- Constants ---
   const ADVANCE_FEE_PER_SLOT = 150;
-  const TODAY = new Date().toISOString().split('T')[0];
-  
-  const timeSlots: TimeSlot[] = useMemo(() => [
-    { time: '06:00', label: '06:00 AM', isPeak: false },
-    { time: '07:00', label: '07:00 AM', isPeak: true },
-    { time: '08:00', label: '08:00 AM', isPeak: true },
-    { time: '09:00', label: '09:00 AM', isPeak: true },
-    { time: '10:00', label: '10:00 AM', isPeak: true },
-    { time: '11:00', label: '11:00 AM', isPeak: false },
-    { time: '12:00', label: '12:00 PM', isPeak: false },
-    { time: '13:00', label: '01:00 PM', isPeak: false },
-    { time: '14:00', label: '02:00 PM', isPeak: false },
-    { time: '15:00', label: '03:00 PM', isPeak: false },
-    { time: '16:00', label: '04:00 PM', isPeak: true },
-    { time: '17:00', label: '05:00 PM', isPeak: true },
-    { time: '18:00', label: '06:00 PM', isPeak: true },
-    { time: '19:00', label: '07:00 PM', isPeak: true },
-    { time: '20:00', label: '08:00 PM', isPeak: false },
-  ], []);
+  const BASE_TIME_OPTIONS: TimeSlot[] = useMemo(
+    () => [
+      { time: '06:00', label: '06:00 AM', isPeak: false, isEnabled: true },
+      { time: '07:00', label: '07:00 AM', isPeak: true, isEnabled: true },
+      { time: '08:00', label: '08:00 AM', isPeak: true, isEnabled: true },
+      { time: '09:00', label: '09:00 AM', isPeak: true, isEnabled: true },
+      { time: '10:00', label: '10:00 AM', isPeak: true, isEnabled: true },
+      { time: '11:00', label: '11:00 AM', isPeak: false, isEnabled: true },
+      { time: '12:00', label: '12:00 PM', isPeak: false, isEnabled: true },
+      { time: '13:00', label: '01:00 PM', isPeak: false, isEnabled: true },
+      { time: '14:00', label: '02:00 PM', isPeak: false, isEnabled: true },
+      { time: '15:00', label: '03:00 PM', isPeak: false, isEnabled: true },
+      { time: '16:00', label: '04:00 PM', isPeak: true, isEnabled: true },
+      { time: '17:00', label: '05:00 PM', isPeak: true, isEnabled: true },
+      { time: '18:00', label: '06:00 PM', isPeak: true, isEnabled: true },
+      { time: '19:00', label: '07:00 PM', isPeak: true, isEnabled: true },
+      { time: '20:00', label: '08:00 PM', isPeak: false, isEnabled: true },
+    ],
+    []
+  );
+  const [timeOptions, setTimeOptions] = useState<TimeSlot[]>(BASE_TIME_OPTIONS);
 
   // --- 1. Fetch Locations ---
   useEffect(() => {
@@ -188,7 +214,7 @@ export default function ViewBookingsPage() {
     };
     fetchHubs();
     setSelectedDate(TODAY);
-  }, []);
+  }, [TODAY]);
 
   // --- 2. Update Selected Hub ---
   useEffect(() => {
@@ -196,43 +222,76 @@ export default function ViewBookingsPage() {
     setSelectedHubDetails(hub || null);
   }, [selectedPropertyId, hubs]);
 
-  // --- 3. Fetch Slots ---
-  const fetchSlots = useCallback(async () => {
-    if (!selectedPropertyId || !selectedDate) return;
-    setLoading(true);
-    try {
-      const slots = await slotsApi.getByProperty(selectedPropertyId, {
-        date: selectedDate,
-        time: selectedTime || undefined,
-        duration: selectedDuration,
-      });
+  // --- 3. Fetch Availability (slots + time options) ---
+  const fetchAvailability = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!selectedPropertyId || !selectedDate) return;
+      if (!silent) setLoading(true);
+      try {
+        const query = new URLSearchParams({
+          propertyId: selectedPropertyId,
+          date: selectedDate,
+          duration: String(selectedDuration),
+        });
+        if (selectedTime) query.set('startTime', selectedTime);
 
-      const mappedSlots: Slot[] = slots.map((slot) => ({
-        id: slot.id,
-        number: slot.number,
-        type: slot.type,
-        status:
-          slot.status === 'MAINTENANCE'
-            ? 'MAINTENANCE'
-            : slot.isBooked || slot.status === 'OCCUPIED'
-              ? 'OCCUPIED'
-              : 'AVAILABLE',
-        pricePerHour: selectedHubDetails?.pricePerHour || 300,
-      }));
+        const res = await fetch(`/api/customer/availability?${query.toString()}`, {
+          cache: 'no-store',
+          credentials: 'include',
+        });
+        const payload = (await res.json()) as AvailabilityResponse;
+        if (!res.ok || !payload.success || !payload.data) {
+          throw new Error(payload.error || 'Failed to fetch availability');
+        }
 
-      setAllSlots(mappedSlots);
-      setSelectedSlots((prev) => prev.filter((id) => mappedSlots.some((slot) => slot.id === id && slot.status === 'AVAILABLE')));
-    } catch (err) {
-      console.error('Slot fetch error', err);
-      setAllSlots([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedPropertyId, selectedDate, selectedTime, selectedDuration, selectedHubDetails?.pricePerHour]);
+        const mappedSlots: Slot[] = payload.data.slots.map((slot) => ({
+          id: slot.id,
+          number: slot.number,
+          type: slot.type,
+          status: slot.status,
+          pricePerHour: selectedHubDetails?.pricePerHour || 300,
+        }));
+
+        setAllSlots(mappedSlots);
+        setTimeOptions(payload.data.timeOptions);
+
+        setSelectedSlots((prev) =>
+          prev.filter((id) => mappedSlots.some((slot) => slot.id === id && slot.status === 'AVAILABLE'))
+        );
+
+        if (selectedTime && payload.data.timeOptions.some((option) => option.time === selectedTime && !option.isEnabled)) {
+          setSelectedTime('');
+          setSelectedSlots([]);
+        }
+      } catch (err) {
+        console.error('Availability fetch error', err);
+        setAllSlots([]);
+        setTimeOptions(BASE_TIME_OPTIONS);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [
+      BASE_TIME_OPTIONS,
+      selectedDate,
+      selectedDuration,
+      selectedHubDetails?.pricePerHour,
+      selectedPropertyId,
+      selectedTime,
+    ]
+  );
 
   useEffect(() => {
-    fetchSlots();
-  }, [fetchSlots]);
+    fetchAvailability();
+  }, [fetchAvailability]);
+
+  useEffect(() => {
+    if (!selectedPropertyId || !selectedDate) return;
+    const interval = setInterval(() => {
+      fetchAvailability({ silent: true });
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchAvailability, selectedDate, selectedPropertyId]);
 
   // --- Calculations ---
   const calculateTotals = useMemo(() => {
@@ -244,7 +303,7 @@ export default function ViewBookingsPage() {
     const duration = Number(selectedDuration);
     
     // Check if peak hour
-    const isPeakHour = timeSlots.find(t => t.time === selectedTime)?.isPeak || false;
+    const isPeakHour = timeOptions.find(t => t.time === selectedTime)?.isPeak || false;
     // Peak hour is 1.25x but we'll keep base rate at 300 for now
     const hourlyRate = baseHourlyRate;
     
@@ -255,7 +314,7 @@ export default function ViewBookingsPage() {
     const advanceToPay = ADVANCE_FEE_PER_SLOT * selectedSlots.length;
 
     return { totalPrice, advanceToPay, hourlyRate, isPeakHour };
-  }, [selectedHubDetails, selectedSlots.length, selectedDuration, selectedTime, timeSlots]);
+  }, [selectedHubDetails, selectedSlots.length, selectedDuration, selectedTime, timeOptions]);
 
   const filteredSlots = useMemo(() => {
     return filterType === 'ALL' ? allSlots : allSlots.filter(s => s.type === filterType);
@@ -352,8 +411,9 @@ export default function ViewBookingsPage() {
       }
 
       router.push('/customer/my-bookings');
-    } catch (err: any) {
-      setBookingError(err.message || 'Failed to create booking');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create booking';
+      setBookingError(message);
       setTimeout(() => setBookingError(null), 4000);
     }
   };
@@ -475,15 +535,18 @@ export default function ViewBookingsPage() {
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Start Time</label>
                 <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                  {timeSlots.map(t => (
+                  {timeOptions.map(t => (
                     <button 
                       key={t.time} 
-                      onClick={() => setSelectedTime(t.time)}
+                      onClick={() => t.isEnabled && setSelectedTime(t.time)}
+                      disabled={!t.isEnabled}
                       className={`
                         px-1 py-2.5 rounded-lg text-[10px] font-bold border transition-all duration-200
-                        ${selectedTime === t.time 
+                        ${selectedTime === t.time && t.isEnabled
                           ? 'bg-lime-400 text-slate-900 border-lime-400 shadow-[0_0_15px_rgba(132,204,22,0.4)] scale-[1.02]' 
-                          : t.isPeak 
+                          : !t.isEnabled
+                            ? 'bg-slate-950/40 text-slate-600 border-slate-900 cursor-not-allowed opacity-60'
+                            : t.isPeak 
                             ? 'bg-slate-900/50 text-amber-400 border-amber-500/20 hover:border-amber-500/50 hover:bg-slate-800' 
                             : 'bg-slate-950/50 text-slate-400 border-slate-800 hover:border-slate-600 hover:text-white hover:bg-slate-800'
                         }
@@ -514,10 +577,10 @@ export default function ViewBookingsPage() {
             
             {/* Filters */}
             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {['ALL', 'NORMAL', 'EV', 'CAR_WASH'].map(t => (
+              {(['ALL', 'NORMAL', 'EV', 'CAR_WASH'] as const).map((t) => (
                 <button 
                   key={t} 
-                  onClick={() => setFilterType(t as any)}
+                  onClick={() => setFilterType(t)}
                   className={`
                     px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-all whitespace-nowrap
                     ${filterType === t 
