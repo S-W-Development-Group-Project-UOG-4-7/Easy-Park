@@ -77,7 +77,16 @@ export async function POST(request: NextRequest) {
       return errorResponse('Account disabled', 401);
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    let isValidPassword = false;
+    try {
+      isValidPassword = await bcrypt.compare(password, user.password_hash);
+    } catch (bcryptError) {
+      console.warn('[auth/sign-in] bcrypt compare failed', {
+        userId: user.id,
+        error: bcryptError instanceof Error ? bcryptError.message : 'unknown',
+      });
+      return errorResponse('Invalid email or password', 401);
+    }
     console.log('[auth/sign-in] bcrypt result', { userId: user.id, isValidPassword });
     if (!isValidPassword) {
       return errorResponse('Invalid email or password', 401);
