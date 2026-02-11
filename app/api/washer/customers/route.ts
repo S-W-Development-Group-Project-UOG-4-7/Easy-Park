@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth';
 import {
   successResponse,
   createdResponse,
@@ -8,70 +7,78 @@ import {
   unauthorizedResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
+import { canAccessWasherRoutes, resolveWasherUser } from '@/app/api/washer/utils';
+import { assignRoleToUser } from '@/lib/user-roles';
+import { hashPassword } from '@/lib/auth';
 
-/**
- * GET /api/washer/customers
- * Fetch all washer customers with optional search
- * 
- * Query Parameters:
- * - search: Search by name, email, or phone
- */
 export async function GET(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only WASHER, ADMIN, and COUNTER roles can access customer data
-    if (!['WASHER', 'ADMIN', 'COUNTER'].includes(authUser.role)) {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (!canAccessWasherRoutes(auth.role)) {
       return errorResponse('Access denied. Insufficient permissions.', 403);
     }
 
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search');
+    const search = String(searchParams.get('search') || '').trim().toLowerCase();
 
-    // Build where clause
-    const whereClause: any = {};
-
-    // Search filter
-    if (search) {
-      whereClause.OR = [
-        {
-          name: {
-            contains: search,
-            mode: 'insensitive',
+    const users = await prisma.users.findMany({
+      where: {
+        roles: {
+          some: {
+            role: {
+              name: 'CUSTOMER',
+            },
           },
         },
-        {
-          email: {
-            contains: search,
-            mode: 'insensitive',
-          },
-        },
-        {
-          phone: {
-            contains: search,
-            mode: 'insensitive',
-          },
-        },
-      ];
-    }
-
-    const customers = await prisma.washer_customers.findMany({
-      where: whereClause,
+        ...(search
+          ? {
+              OR: [
+                { fullName: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
       include: {
-        washer_bookings: {
-          orderBy: { createdAt: 'desc' },
-          take: 5, // Include only recent bookings
-        },
-        _count: {
-          select: { washer_bookings: true },
+        vehicles: { orderBy: { createdAt: 'asc' }, take: 1 },
+      },
+      orderBy: { fullName: 'asc' },
+    });
+
+    const washJobs = await prisma.wash_jobs.findMany({
+      where: {
+        bookingSlot: {
+          booking: {
+            customerId: { in: users.map((user) => user.id) },
+          },
         },
       },
-      orderBy: { name: 'asc' },
+      include: {
+        bookingSlot: {
+          select: {
+            booking: { select: { customerId: true } },
+          },
+        },
+      },
     });
+
+    const bookingCounts = new Map<string, number>();
+    for (const job of washJobs) {
+      const customerId = job.bookingSlot.booking.customerId;
+      bookingCounts.set(customerId, (bookingCounts.get(customerId) || 0) + 1);
+    }
+
+    const customers = users.map((user) => ({
+      id: user.id,
+      name: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      vehicleDetails: user.vehicles[0]?.vehicleNumber || '',
+      washer_bookings: [],
+      _count: { washer_bookings: bookingCounts.get(user.id) || 0 },
+    }));
 
     return successResponse(customers, 'Customers retrieved successfully');
   } catch (error) {
@@ -80,54 +87,65 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST /api/washer/customers
- * Create a new washer customer
- */
 export async function POST(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only WASHER, ADMIN, and COUNTER roles can create customers
-    if (!['WASHER', 'ADMIN', 'COUNTER'].includes(authUser.role)) {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (!canAccessWasherRoutes(auth.role)) {
       return errorResponse('Access denied. Insufficient permissions.', 403);
     }
 
     const body = await request.json();
-    const { name, email, phone, vehicleDetails, otherRelevantInfo } = body;
+    const name = String(body?.name || '').trim();
+    const email = String(body?.email || '').trim().toLowerCase();
+    const phone = String(body?.phone || '').trim() || null;
+    const vehicleDetails = String(body?.vehicleDetails || '').trim();
+    const otherRelevantInfo = body?.otherRelevantInfo ? String(body.otherRelevantInfo) : '';
 
-    // Validate required fields
-    if (!name || !email || !phone || !vehicleDetails) {
-      return errorResponse('Missing required fields: name, email, phone, vehicleDetails');
+    if (!name || !email) {
+      return errorResponse('Missing required fields: name, email');
     }
 
-    // Check if customer with same email already exists
-    const existingCustomer = await prisma.washer_customers.findUnique({
+    const existingCustomer = await prisma.users.findUnique({
       where: { email },
+      select: { id: true },
     });
-
     if (existingCustomer) {
       return errorResponse('A customer with this email already exists', 409);
     }
 
-    // Create the customer
-    const customer = await prisma.washer_customers.create({
-      data: {
-        id: crypto.randomUUID(),
-        name,
-        email,
-        phone,
-        vehicleDetails,
-        otherRelevantInfo,
-        updatedAt: new Date(),
-      },
+    const customer = await prisma.$transaction(async (tx) => {
+      const user = await tx.users.create({
+        data: {
+          fullName: name,
+          email,
+          phone,
+          residentialAddress: otherRelevantInfo || null,
+          passwordHash: await hashPassword('TempPass@123'),
+        },
+      });
+      await assignRoleToUser(user.id, 'CUSTOMER');
+      if (vehicleDetails) {
+        await tx.vehicles.create({
+          data: {
+            userId: user.id,
+            vehicleNumber: vehicleDetails,
+          },
+        });
+      }
+      return user;
     });
 
-    return createdResponse(customer, 'Customer created successfully');
+    return createdResponse(
+      {
+        id: customer.id,
+        name: customer.fullName,
+        email: customer.email,
+        phone: customer.phone,
+        vehicleDetails,
+      },
+      'Customer created successfully'
+    );
   } catch (error) {
     console.error('Error creating washer customer:', error);
     return serverErrorResponse('Failed to create washer customer');

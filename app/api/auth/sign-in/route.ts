@@ -1,97 +1,137 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
-import { verifyPassword, generateToken } from '@/lib/auth';
+import bcrypt from 'bcryptjs';
+import { generateToken } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
 import { ensureAdminSeeded } from '@/lib/admin-seed';
+
+type UserRow = {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  nic: string | null;
+  residential_address: string | null;
+  password_hash: string;
+  is_active: boolean;
+  created_at: Date;
+};
+
+type RoleRow = {
+  name: string;
+};
+
+type RoleName = 'ADMIN' | 'CUSTOMER' | 'COUNTER' | 'LANDOWNER' | 'WASHER';
+
+const ROLE_PRIORITY: RoleName[] = ['ADMIN', 'LANDOWNER', 'COUNTER', 'WASHER', 'CUSTOMER'];
+
+function normalizeRole(value: unknown): RoleName | null {
+  const role = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  if (role === 'LAND_OWNER' || role === 'LANDOWNER') return 'LANDOWNER';
+  if (role === 'ADMIN' || role === 'CUSTOMER' || role === 'COUNTER' || role === 'WASHER') {
+    return role;
+  }
+  return null;
+}
+
+function getPrimaryRole(roles: RoleName[]): RoleName {
+  for (const role of ROLE_PRIORITY) {
+    if (roles.includes(role)) return role;
+  }
+  return 'CUSTOMER';
+}
 
 export async function POST(request: NextRequest) {
   try {
     await ensureAdminSeeded();
     const body = await request.json();
-    const { email, password } = body;
+    const email = String(body?.email ?? '').trim();
+    const password = String(body?.password ?? '');
 
     // Validation
     if (!email || !password) {
       return errorResponse('Email and password are required');
     }
 
-    // Allow a hardcoded demo customer login
-    if (email === 'customer@gmail.com' && password === '123456') {
-      const demoUser = {
-        id: 'hardcoded-customer',
-        email: 'customer@gmail.com',
-        fullName: 'Demo Customer',
-        contactNo: '0000000000',
-        vehicleNumber: 'ABC-1234',
-        role: 'CUSTOMER',
-      } as any;
-
-      const token = generateToken({
-        userId: demoUser.id,
-        email: demoUser.email,
-        role: demoUser.role,
-      });
-
-      const response = successResponse(
-        {
-          user: demoUser,
-          token,
-        },
-        'Signed in successfully (demo)'
-      );
-
-      response.cookies.set('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7,
-        path: '/',
-      });
-
-      return response;
-    }
-
     const emailLower = email.toLowerCase();
-    const adminEmail = (process.env.ADMIN_EMAIL || '').toLowerCase();
+    console.log('[auth/sign-in] lookup start', { email: emailLower });
 
-    // Find user in database
-    let user = await prisma.users.findUnique({
-      where: { email: emailLower },
-    });
-
-    // If admin is trying to log in and isn't found, retry after seeding.
-    if (!user && adminEmail && emailLower === adminEmail) {
-      await ensureAdminSeeded();
-      user = await prisma.users.findUnique({ where: { email: emailLower } });
-    }
+    const users = await prisma.$queryRaw<UserRow[]>`
+      SELECT *
+      FROM public.users
+      WHERE lower(email) = lower(${email})
+      LIMIT 1;
+    `;
+    const user = users[0];
+    console.log('[auth/sign-in] user found', { email: emailLower, found: Boolean(user) });
 
     if (!user) {
       return errorResponse('Invalid email or password', 401);
     }
 
-    // Verify password
-    const isValidPassword = await verifyPassword(password, user.password);
+    if (!user.is_active) {
+      console.log('[auth/sign-in] account disabled', { userId: user.id, email: user.email });
+      return errorResponse('Account disabled', 401);
+    }
+
+    let isValidPassword = false;
+    try {
+      isValidPassword = await bcrypt.compare(password, user.password_hash);
+    } catch (bcryptError) {
+      console.warn('[auth/sign-in] bcrypt compare failed', {
+        userId: user.id,
+        error: bcryptError instanceof Error ? bcryptError.message : 'unknown',
+      });
+      return errorResponse('Invalid email or password', 401);
+    }
+    console.log('[auth/sign-in] bcrypt result', { userId: user.id, isValidPassword });
     if (!isValidPassword) {
       return errorResponse('Invalid email or password', 401);
     }
 
-    // Generate JWT token
-    const token = generateToken({
-      userId: user.id,
+    const roleRows = await prisma.$queryRaw<RoleRow[]>`
+      SELECT r.name
+      FROM public.user_roles ur
+      JOIN public.roles r ON r.id = ur.role_id
+      WHERE ur.user_id = ${user.id}::uuid;
+    `;
+    const normalizedRoles = roleRows
+      .map((roleRow) => normalizeRole(roleRow.name))
+      .filter((role): role is RoleName => role !== null);
+    const uniqueRoles = [...new Set(normalizedRoles)];
+    const roles: RoleName[] = uniqueRoles.length > 0 ? uniqueRoles : ['CUSTOMER'];
+    console.log('[auth/sign-in] roles fetched', { userId: user.id, roles });
+
+    const primaryRole = getPrimaryRole(roles);
+
+    const clientUser = {
+      id: user.id,
       email: user.email,
-      role: user.role,
+      fullName: user.full_name,
+      contactNo: user.phone,
+      phone: user.phone,
+      nic: user.nic,
+      address: user.residential_address,
+      residentialAddress: user.residential_address,
+      role: primaryRole,
+      roles,
+      createdAt: user.created_at,
+    };
+
+    const token = generateToken({
+      userId: clientUser.id,
+      email: clientUser.email,
+      role: primaryRole,
+      roles,
     });
 
     const response = successResponse(
       {
-        user: {
-          id: user.id,
-          email: user.email,
-          fullName: user.fullName,
-          contactNo: user.contactNo,
-          vehicleNumber: user.vehicleNumber,
-          role: user.role,
-        },
+        user: clientUser,
+        roles,
         token,
       },
       'Signed in successfully'

@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth';
 import {
   successResponse,
   errorResponse,
@@ -8,68 +7,97 @@ import {
   serverErrorResponse,
   notFoundResponse,
 } from '@/lib/api-response';
+import { canAccessWasherRoutes, mapWashJobToWasherBooking, resolveWasherUser } from '@/app/api/washer/utils';
 
-/**
- * PATCH /api/washer/bookings/:id/confirm
- * Update booking status to "COMPLETED"
- * Valid transition: ACCEPTED → COMPLETED
- */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only WASHER, ADMIN, and COUNTER roles can confirm/complete bookings
-    if (!['WASHER', 'ADMIN', 'COUNTER'].includes(authUser.role)) {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (!canAccessWasherRoutes(auth.role)) {
       return errorResponse('Access denied. Insufficient permissions.', 403);
     }
 
     const { id } = await params;
-
-    // Find the booking
-    const booking = await prisma.washer_bookings.findUnique({
+    const existing = await prisma.wash_jobs.findUnique({
       where: { id },
-      include: { washer_customers: true },
-    });
-
-    if (!booking) {
-      return notFoundResponse('Booking not found');
-    }
-
-    // Validate status transition: Only ACCEPTED can be marked COMPLETED
-    if (booking.status !== 'ACCEPTED') {
-      return errorResponse(
-        `Invalid status transition. Cannot complete a booking with status "${booking.status}". Only ACCEPTED bookings can be completed.`,
-        400
-      );
-    }
-
-    // Update the booking status to COMPLETED
-    const updatedBooking = await prisma.washer_bookings.update({
-      where: { id },
-      data: {
-        status: 'COMPLETED',
-      },
       include: {
-        washer_customers: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            vehicleDetails: true,
+        bookingSlot: {
+          include: {
+            booking: { select: { status: true } },
           },
         },
       },
     });
+    if (!existing) return notFoundResponse('Booking not found');
+    if (existing.bookingSlot.booking.status === 'CANCELLED') {
+      return errorResponse('Cannot complete a cancelled booking.', 400);
+    }
+    if (existing.status !== 'ACCEPTED') {
+      return errorResponse(
+        `Cannot complete a booking with status "${existing.status}". Only ACCEPTED bookings can be completed.`,
+        400
+      );
+    }
 
-    return successResponse(updatedBooking, 'Booking completed successfully');
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.wash_jobs.update({
+        where: { id },
+        data: {
+          status: 'COMPLETED',
+          washerId: auth.userId,
+          completedAt: new Date(),
+        },
+        include: {
+          bookingSlot: {
+            include: {
+              slot: { select: { slotType: true } },
+              booking: {
+                include: {
+                  customer: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      email: true,
+                      phone: true,
+                      vehicles: {
+                        select: {
+                          vehicleNumber: true,
+                          type: true,
+                          createdAt: true,
+                        },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1,
+                      },
+                    },
+                  },
+                  vehicle: {
+                    select: {
+                      vehicleNumber: true,
+                      type: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      await tx.notifications.create({
+        data: {
+          userId: next.bookingSlot.booking.customer.id,
+          title: 'Car Wash Completed',
+          message: `Your wash job is completed for booking BK-${next.bookingSlot.booking.id.slice(-6).toUpperCase()}.`,
+        },
+      });
+
+      return next;
+    });
+
+    return successResponse(mapWashJobToWasherBooking(updated), 'Booking completed successfully');
   } catch (error) {
     console.error('Error completing washer booking:', error);
     return serverErrorResponse('Failed to complete washer booking');

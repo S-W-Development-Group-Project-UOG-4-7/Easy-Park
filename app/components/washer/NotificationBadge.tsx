@@ -120,9 +120,9 @@ export const NotificationBadge: React.FC<NotificationBadgeProps> = ({
                 </div>
               ) : (
                 <div className="divide-y divide-white/10">
-                  {notifications.map((notification) => (
+                  {notifications.map((notification, index) => (
                     <div
-                      key={notification.id}
+                      key={`${notification.id}-${notification.timestamp ?? ''}-${index}`}
                       onClick={() => handleNotificationClick(notification)}
                       className={`p-4 cursor-pointer hover:bg-white/5 transition ${!notification.read ? 'bg-white/5' : ''}`}
                     >

@@ -19,7 +19,8 @@ export default function AdminSidebar({ adminName = 'Admin', onLinkClick, onLogou
     { href: '/admin/properties', label: 'Manage Properties', icon: Building2 },
     { href: '/admin/properties/add', label: 'Add Properties', icon: Settings },
     { href: '/admin/users', label: 'Add Users', icon: UserPlus },
-    { href: '/admin/view-users', label: 'View Users', icon: Users },
+    { href: '/admin/view-users', label: 'View Staff Members', icon: Users },
+    { href: '/admin/view-customers', label: 'View Customers', icon: Users },
   ];
 
   const isActive = (path: string) => {

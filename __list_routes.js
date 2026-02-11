@@ -1,0 +1,1 @@
+const fs=require('fs'),path=require('path');function walk(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,e.name);if(e.isDirectory())walk(p);else if(e.name==='route.ts')console.log(p);}}walk('app\\api'); 

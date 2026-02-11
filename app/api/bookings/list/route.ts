@@ -4,82 +4,107 @@ import { getAuthUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+function mapSlotType(slotType: 'NORMAL' | 'EV' | 'CAR_WASH') {
+  if (slotType === 'EV') return 'ev';
+  if (slotType === 'CAR_WASH') return 'car-wash';
+  return 'normal';
+}
+
+async function resolveUser(authUser: { email?: string; userId?: string }) {
+  if (authUser.userId) {
+    const byId = await prisma.users.findUnique({ where: { id: authUser.userId }, select: { id: true, email: true } });
+    if (byId) return byId;
+  }
+  if (authUser.email) {
+    return prisma.users.findUnique({
+      where: { email: authUser.email.toLowerCase() },
+      select: { id: true, email: true },
+    });
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const authUser = await getAuthUser(request);
-    if (!authUser || !authUser.email) {
+    const authUser = getAuthUser(request);
+    if (!authUser) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.users.findUnique({ where: { email: authUser.email } });
-    if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    const user = await resolveUser(authUser);
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
 
     const bookings = await prisma.bookings.findMany({
-      where: { userId: user.id },
+      where: { customerId: user.id },
       include: {
-        booking_slots: {
-          include: {
-            parking_slots: {
-              include: { parking_locations: true }
-            }
-          }
+        property: {
+          select: { propertyName: true, address: true },
         },
-        payments: true // Important: Fetch related payment records
+        bookingSlots: {
+          include: {
+            slot: {
+              select: {
+                id: true,
+                slotNumber: true,
+                slotType: true,
+              },
+            },
+            washJob: {
+              select: {
+                status: true,
+              },
+            },
+          },
+        },
+        paymentSummary: true,
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
 
-    const data = bookings.map((b) => {
-      const firstSlot = b.booking_slots[0]?.parking_slots;
-      const locationName = firstSlot?.parking_locations?.name || 'Unknown Location';
-
-      const slots = b.booking_slots.map((bs) => ({
-        id: bs.parking_slots.id,
-        number: bs.parking_slots.number,
-        type: bs.parking_slots.type.toLowerCase(),
+    const data = bookings.map((booking) => {
+      const slots = booking.bookingSlots.map((bookingSlot) => ({
+        id: bookingSlot.slot.id,
+        bookingSlotId: bookingSlot.id,
+        number: bookingSlot.slot.slotNumber,
+        type: mapSlotType(bookingSlot.slot.slotType),
+        washStatus: bookingSlot.washJob?.status || null,
       }));
-
-      // --- DYNAMIC STATUS LOGIC ---
-
-      // 1. Calculate Real Paid Amount based on existing payment record
-      const realPaidAmount = b.payments?.amount || 0;
-
-      // 2. Determine Status
-      let dynamicStatus = b.status.toLowerCase();
-
-      // Priority Rule: If DB explicitly says 'cancelled', respect it.
-      if (dynamicStatus === 'cancelled') {
-         // Do nothing, keep it as 'cancelled'
-      } 
-      // Revert Rule: If DB says 'paid' but money is missing (manual deletion), revert to 'pending'
-      else if (realPaidAmount <= 0 && (dynamicStatus === 'paid' || dynamicStatus === 'confirmed')) {
-        dynamicStatus = 'pending';
-      }
-
-      // --- END LOGIC ---
-
-      // Calculate total bill if not stored
-      const calculatedTotal = b.totalAmount > 0 ? b.totalAmount : (b.duration * 300 * slots.length); 
+      const summary = booking.paymentSummary;
+      const totalAmount = Number(summary?.totalAmount ?? 0);
+      const paidAmount = Number(summary?.onlinePaid ?? 0) + Number(summary?.cashPaid ?? 0);
 
       return {
-        bookingId: b.id,
-        date: b.date.toISOString(),
-        location: locationName,
-        time: new Date(b.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        duration: b.duration,
-        slots: slots,
-        slotType: 'normal',
-        status: dynamicStatus, // Use the robust status
-        createdAt: b.createdAt.toISOString(),
-        totalAmount: calculatedTotal,
-        paidAmount: realPaidAmount,
-        paymentId: b.payments?.id || null
+        bookingId: booking.id,
+        date: booking.startTime.toISOString(),
+        location: booking.property.propertyName || booking.property.address || 'Unknown Location',
+        time: booking.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        duration: Math.max(
+          1,
+          Math.ceil((booking.endTime.getTime() - booking.startTime.getTime()) / (1000 * 60 * 60))
+        ),
+        slots,
+        slotType: slots[0]?.type || 'normal',
+        status: booking.status.toLowerCase(),
+        createdAt: booking.createdAt.toISOString(),
+        totalAmount,
+        paidAmount,
+        paymentId: booking.id,
+        paymentSummary: summary
+          ? {
+              totalAmount: Number(summary.totalAmount),
+              onlinePaid: Number(summary.onlinePaid),
+              cashPaid: Number(summary.cashPaid),
+              balanceDue: Number(summary.balanceDue),
+              currency: summary.currency,
+            }
+          : null,
       };
     });
 
     return NextResponse.json({ success: true, data });
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[BOOKING_LIST_ERROR]', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch bookings' }, { status: 500 });
   }

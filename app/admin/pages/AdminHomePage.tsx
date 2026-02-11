@@ -38,6 +38,14 @@ interface Activity {
   type: 'booking' | 'payment' | 'checkout' | 'registration' | 'update';
 }
 
+interface RecentBookingSummary {
+  status?: string;
+  name?: string;
+  parkingSlot?: string;
+  paymentAmount?: number | string;
+  date?: string;
+}
+
 export default function AdminHomePage() {
   const [stats, setStats] = useState<Stats>({
     totalRevenue: 0,
@@ -47,6 +55,7 @@ export default function AdminHomePage() {
     recentActivities: [],
   });
   const [loading, setLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStats();
@@ -54,20 +63,28 @@ export default function AdminHomePage() {
 
   const fetchStats = async () => {
     try {
-      const [dashboardData, bookings] = await Promise.all([
+      setStatsError(null);
+
+      const [dashboardResult, bookingsResult] = await Promise.allSettled([
         statsApi.getDashboard(),
         bookingsApi.getAll(),
       ]);
-      
-      // Calculate active bookings (confirmed or pending bookings)
-      const activeBookings = bookings.filter(
-        (b: any) => b.status === 'confirmed' || b.status === 'pending'
-      ).length;
-      
-      // Generate recent activities from real bookings
-      const recentActivities: Activity[] = bookings
+
+      const dashboardData =
+        dashboardResult.status === 'fulfilled'
+          ? dashboardResult.value
+          : { totalRevenue: 0, availableSlots: 0, totalCustomers: 0, activeBookings: 0 };
+      const bookings = bookingsResult.status === 'fulfilled' ? bookingsResult.value : [];
+
+      const toFiniteNumber = (value: unknown) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+
+      // Generate recent activities from bookings
+      const recentActivities: Activity[] = (bookings as RecentBookingSummary[])
         .slice(0, 5)
-        .map((booking: any, index: number) => {
+        .map((booking, index: number) => {
           let action = 'Booking';
           let type: Activity['type'] = 'booking';
           
@@ -94,14 +111,19 @@ export default function AdminHomePage() {
         });
       
       setStats({
-        totalRevenue: dashboardData.totalRevenue || 0,
-        availableSlots: dashboardData.availableSlots || 0,
-        totalCustomers: dashboardData.totalCustomers || 0,
-        activeBookings,
+        totalRevenue: toFiniteNumber(dashboardData.totalRevenue),
+        availableSlots: toFiniteNumber(dashboardData.availableSlots),
+        totalCustomers: toFiniteNumber(dashboardData.totalCustomers),
+        activeBookings: toFiniteNumber(dashboardData.activeBookings),
         recentActivities,
       });
+
+      if (dashboardResult.status === 'rejected') {
+        setStatsError('Unable to load dashboard KPIs right now. Showing fallback values.');
+      }
     } catch (error) {
       console.error('Error fetching stats:', error);
+      setStatsError('Unable to load dashboard KPIs right now. Showing fallback values.');
       // Keep zeros when no data is available
       setStats({
         totalRevenue: 0,
@@ -117,7 +139,7 @@ export default function AdminHomePage() {
 const statCards = [
     {
       title: 'Total Revenue',
-      value: `Rs. ${stats.totalRevenue.toLocaleString()}`,
+      value: `Rs. ${Number.isFinite(stats.totalRevenue) ? stats.totalRevenue.toLocaleString() : '0'}`,
       icon: DollarSign,
       gradient: 'from-emerald-500 to-teal-400',
       shadowColor: 'shadow-emerald-500/25',
@@ -133,7 +155,7 @@ const statCards = [
     },
     {
       title: 'Total Customers',
-      value: stats.totalCustomers.toString(),
+      value: Number.isFinite(stats.totalCustomers) ? stats.totalCustomers.toString() : '0',
       icon: Users,
       gradient: 'from-purple-500 to-pink-400',
       shadowColor: 'shadow-purple-500/25',
@@ -141,7 +163,7 @@ const statCards = [
     },
     {
       title: 'Active Bookings',
-      value: stats.activeBookings.toString(),
+      value: Number.isFinite(stats.activeBookings) ? stats.activeBookings.toString() : '0',
       icon: Car,
       gradient: 'from-orange-500 to-amber-400',
       shadowColor: 'shadow-orange-500/25',
@@ -169,7 +191,7 @@ const statCards = [
             <div>
               <h1 className="text-3xl font-bold dark:text-white text-slate-900">Welcome back, Admin!</h1>
               <p className="text-sm dark:text-slate-400 text-slate-600">
-                Here's what's happening with your parking system today.
+                Here&apos;s what&apos;s happening with your parking system today.
               </p>
             </div>
           </div>
@@ -185,6 +207,12 @@ const statCards = [
           </div>
         </div>
       </div>
+
+      {statsError ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          {statsError}
+        </div>
+      ) : null}
 
       {/* Stats Grid */}
       {loading ? (

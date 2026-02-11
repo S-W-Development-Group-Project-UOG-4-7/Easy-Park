@@ -1,198 +1,202 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import prisma from '@/lib/prisma';
-import { getAuthUser, hashPassword } from '@/lib/auth';
-
-const ALLOWED_ROLES = new Set(['COUNTER', 'WASHER', 'LAND_OWNER']);
-let cachedUserColumns: Set<string> | null = null;
-
-async function getUserColumns() {
-  if (cachedUserColumns) return cachedUserColumns;
-  const rows = await prisma.$queryRaw<Array<{ column_name: string }>>`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_name = 'users'
-  `;
-  cachedUserColumns = new Set(rows.map((row) => row.column_name));
-  return cachedUserColumns;
-}
-
-function requireAdmin(request: NextRequest) {
-  const user = getAuthUser(request);
-  if (!user) {
-    return { error: NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 }) };
-  }
-  if (user.role !== 'ADMIN') {
-    return { error: NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { user };
-}
+import { requireAdminAccess } from '@/lib/admin-rbac';
+import { getUserByIdWithPrimaryRole } from '@/lib/admin-user-directory';
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = requireAdmin(request);
-  if (auth.error) return auth.error;
+  const adminAuth = await requireAdminAccess(request);
+  if (!adminAuth.ok) return adminAuth.response;
 
   const { id } = await params;
   try {
-    const columns = await getUserColumns();
-    const select: Record<string, boolean> = {
-      id: true,
-      fullName: true,
-      email: true,
-      role: true,
-      createdAt: true,
-      updatedAt: true,
-    };
-    if (columns.has('address')) select.address = true;
-    if (columns.has('nic')) select.nic = true;
-    if (columns.has('contactNo')) select.contactNo = true;
-
-    const user = await prisma.users.findUnique({
-      where: { id },
-      select: select as any,
-    });
+    const user = await getUserByIdWithPrimaryRole(id);
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
+
     return NextResponse.json({
       success: true,
       data: {
-        ...user,
-        address: (user as any).address ?? null,
-        nic: (user as any).nic ?? null,
-        contactNo: (user as any).contactNo ?? null,
+        id: user.id,
+        full_name: user.fullName,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        phone: user.phone,
+        contactNo: user.phone,
+        nic: user.nic,
+        residentialAddress: user.residentialAddress,
+        address: user.residentialAddress,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       },
     });
   } catch (error) {
-    console.error('Admin get user error:', error);
+    console.error('Admin user GET error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch user' }, { status: 500 });
   }
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = requireAdmin(request);
-  if (auth.error) return auth.error;
+  const adminAuth = await requireAdminAccess(request);
+  if (!adminAuth.ok) return adminAuth.response;
 
   const { id } = await params;
   try {
     const body = await request.json();
-    const {
-      fullName,
-      address,
-      nic,
-      mobileNumber,
-      email,
-      role,
-      password,
-      passwordConfirm,
-    } = body ?? {};
 
-    if (email && !isValidEmail(email)) {
-      return NextResponse.json({ success: false, error: 'Invalid email format' }, { status: 400 });
-    }
+    const fullNameRaw = body?.fullName ?? body?.full_name;
+    const emailRaw = body?.email;
+    const phoneRaw = body?.phone ?? body?.mobileNumber ?? body?.contactNo;
+    const nicRaw = body?.nic;
+    const residentialAddressRaw = body?.residentialAddress ?? body?.residential_address ?? body?.address;
+    const isActiveRaw = body?.isActive ?? body?.is_active;
 
-    let normalizedRole: string | undefined;
-    if (role !== undefined) {
-      normalizedRole = String(role).toUpperCase();
-      if (!ALLOWED_ROLES.has(normalizedRole)) {
-        return NextResponse.json({ success: false, error: 'Role must be COUNTER, WASHER, or LAND_OWNER' }, { status: 400 });
-      }
-    }
-
-    if (password || passwordConfirm) {
-      if (!password || !passwordConfirm) {
-        return NextResponse.json({ success: false, error: 'Password and confirm password are required' }, { status: 400 });
-      }
-      if (password.length < 8) {
-        return NextResponse.json({ success: false, error: 'Password must be at least 8 characters' }, { status: 400 });
-      }
-      if (password !== passwordConfirm) {
-        return NextResponse.json({ success: false, error: 'Passwords do not match' }, { status: 400 });
-      }
-    }
-
-    const existing = await prisma.users.findUnique({ where: { id }, select: { role: true } });
-    if (!existing) {
+    const current = await getUserByIdWithPrimaryRole(id);
+    if (!current) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
-    if (existing.role === 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Admin users cannot be updated here' }, { status: 400 });
+
+    const updateData: {
+      fullName?: string;
+      email?: string;
+      phone?: string | null;
+      nic?: string | null;
+      residentialAddress?: string | null;
+      isActive?: boolean;
+    } = {};
+
+    if (fullNameRaw !== undefined) {
+      const value = String(fullNameRaw).trim();
+      if (!value) {
+        return NextResponse.json({ success: false, error: 'full_name cannot be empty' }, { status: 400 });
+      }
+      updateData.fullName = value;
     }
 
-    const emailLower = email ? String(email).toLowerCase() : undefined;
-    const columns = await getUserColumns();
-    if (emailLower || nic || mobileNumber) {
+    if (emailRaw !== undefined) {
+      const value = String(emailRaw).trim().toLowerCase();
+      if (!value || !isValidEmail(value)) {
+        return NextResponse.json({ success: false, error: 'Invalid email format' }, { status: 400 });
+      }
+      updateData.email = value;
+    }
+
+    if (phoneRaw !== undefined) {
+      const value = String(phoneRaw).trim();
+      updateData.phone = value ? value : null;
+    }
+
+    if (nicRaw !== undefined) {
+      const value = String(nicRaw).trim();
+      updateData.nic = value ? value : null;
+    }
+
+    if (residentialAddressRaw !== undefined) {
+      const value = String(residentialAddressRaw).trim();
+      updateData.residentialAddress = value ? value : null;
+    }
+
+    if (isActiveRaw !== undefined) {
+      updateData.isActive = Boolean(isActiveRaw);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ success: false, error: 'No valid fields provided' }, { status: 400 });
+    }
+
+    if (updateData.email || updateData.phone || updateData.nic) {
       const duplicate = await prisma.users.findFirst({
         where: {
-          OR: [
-            emailLower ? { email: emailLower } : undefined,
-            nic && columns.has('nic') ? { nic } : undefined,
-            mobileNumber && columns.has('contactNo') ? { contactNo: mobileNumber } : undefined,
-          ].filter(Boolean) as any,
           NOT: { id },
+          OR: [
+            ...(updateData.email ? [{ email: updateData.email }] : []),
+            ...(updateData.phone ? [{ phone: updateData.phone }] : []),
+            ...(updateData.nic ? [{ nic: updateData.nic }] : []),
+          ],
         },
         select: { id: true },
       });
       if (duplicate) {
-        return NextResponse.json({ success: false, error: 'Email, NIC, or mobile number already exists' }, { status: 409 });
+        return NextResponse.json(
+          { success: false, error: 'Email, phone, or NIC already exists' },
+          { status: 409 }
+        );
       }
     }
 
-    const updateData: Record<string, unknown> = {
-      updatedAt: new Date(),
-    };
-    if (fullName !== undefined) updateData.fullName = fullName;
-    if (columns.has('address') && address !== undefined) updateData.address = address;
-    if (columns.has('nic') && nic !== undefined) updateData.nic = nic;
-    if (columns.has('contactNo') && mobileNumber !== undefined) updateData.contactNo = mobileNumber;
-    if (emailLower !== undefined) updateData.email = emailLower;
-    if (normalizedRole !== undefined) updateData.role = normalizedRole;
-    if (password) updateData.password = await hashPassword(password);
-
-    const updated = await prisma.users.update({
+    await prisma.users.update({
       where: { id },
       data: updateData,
-      select: {
-        id: true,
-        fullName: true,
-        address: true,
-        nic: true,
-        contactNo: true,
-        email: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    const updated = await getUserByIdWithPrimaryRole(id);
+    if (!updated) {
+      return NextResponse.json({ success: false, error: 'User not found after update' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: updated.id,
+        full_name: updated.fullName,
+        fullName: updated.fullName,
+        email: updated.email,
+        role: updated.role,
+        phone: updated.phone,
+        contactNo: updated.phone,
+        nic: updated.nic,
+        residentialAddress: updated.residentialAddress,
+        address: updated.residentialAddress,
+        isActive: updated.isActive,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+      },
+    });
   } catch (error) {
-    console.error('Admin update user error:', error);
+    console.error('Admin user PUT error:', error);
     return NextResponse.json({ success: false, error: 'Failed to update user' }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = requireAdmin(request);
-  if (auth.error) return auth.error;
+  const adminAuth = await requireAdminAccess(request);
+  if (!adminAuth.ok) return adminAuth.response;
 
   const { id } = await params;
   try {
-    const user = await prisma.users.findUnique({ where: { id }, select: { role: true } });
+    const user = await prisma.users.findUnique({
+      where: { id },
+      select: { id: true },
+    });
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
-    if (user.role === 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Admin users cannot be deleted' }, { status: 400 });
-    }
 
-    await prisma.users.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.user_roles.deleteMany({
+        where: { userId: id },
+      });
+      await tx.users.delete({
+        where: { id },
+      });
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Admin delete user error:', error);
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2003') {
+      return NextResponse.json(
+        { success: false, error: 'User cannot be deleted because related records exist.' },
+        { status: 409 }
+      );
+    }
+    console.error('Admin user DELETE error:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete user' }, { status: 500 });
   }
 }

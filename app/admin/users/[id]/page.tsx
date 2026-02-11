@@ -9,11 +9,12 @@ import AdminSidebar from "../../components/AdminSidebar";
 type UserDetails = {
   id: string;
   fullName: string;
-  address: string | null;
+  residentialAddress: string | null;
   nic: string | null;
-  contactNo: string | null;
+  phone: string | null;
   email: string;
-  role: string;
+  role: string | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -178,11 +179,12 @@ export default function AdminUserDetailsPage() {
               <div className="rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 p-6 shadow-lg">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Detail label="Full Name" value={user.fullName} />
-                  <Detail label="Role" value={user.role} />
+                  <Detail label="Role" value={user.role || '-'} />
+                  <Detail label="Status" value={user.isActive ? 'Active' : 'Inactive'} />
                   <Detail label="Email" value={user.email} />
-                  <Detail label="Mobile" value={user.contactNo || '-'} />
+                  <Detail label="Mobile" value={user.phone || '-'} />
                   <Detail label="NIC" value={user.nic || '-'} />
-                  <Detail label="Address" value={user.address || '-'} />
+                  <Detail label="Address" value={user.residentialAddress || '-'} />
                   <Detail label="Created At" value={new Date(user.createdAt).toLocaleString()} />
                   <Detail label="Updated At" value={new Date(user.updatedAt).toLocaleString()} />
                 </div>

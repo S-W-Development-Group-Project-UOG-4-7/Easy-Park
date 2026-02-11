@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type RoleOption = 'COUNTER' | 'WASHER' | 'LAND_OWNER';
+type RoleOption = 'COUNTER' | 'WASHER' | 'LANDOWNER';
 
-const ROLE_OPTIONS: RoleOption[] = ['COUNTER', 'WASHER', 'LAND_OWNER'];
+const ROLE_OPTIONS: RoleOption[] = ['COUNTER', 'WASHER', 'LANDOWNER'];
 
 const initialForm = {
   fullName: '',
@@ -83,7 +83,7 @@ export default function AdminUsersPage() {
       <div>
         <h1 className="text-3xl font-bold dark:text-[#E5E7EB] text-[#111827]">Add Users</h1>
         <p className="mt-2 text-sm dark:text-[#94A3B8] text-[#6B7280]">
-          Create and manage COUNTER, WASHER, and LAND_OWNER accounts.
+          Create and manage COUNTER, WASHER, and LANDOWNER accounts.
         </p>
       </div>
 

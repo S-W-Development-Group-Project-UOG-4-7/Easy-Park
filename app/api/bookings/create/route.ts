@@ -2,109 +2,240 @@ import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 import { successResponse, errorResponse, serverErrorResponse } from '@/lib/api-response';
+import { refreshPaymentSummary } from '@/lib/payment-summary';
 
-// --- Helper: Date Parsing ---
-function parseDateTime(dateStr: string, timeStr: string): Date {
-  const [time, modifier] = timeStr.split(' ');
-  let [hours, minutes] = time.split(':');
-  if (hours === '12') hours = '00';
-  if (modifier === 'PM') hours = (parseInt(hours, 10) + 12).toString();
-  return new Date(`${dateStr}T${hours}:${minutes}:00`);
+function parseDateTime(date: string, time: string): Date {
+  const trimmed = String(time || '').trim();
+  const withMeridiem = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(trimmed);
+  if (withMeridiem) {
+    let hour = Number(withMeridiem[1]);
+    const minute = Number(withMeridiem[2]);
+    const meridiem = withMeridiem[3].toUpperCase();
+    if (hour === 12) hour = 0;
+    if (meridiem === 'PM') hour += 12;
+    return new Date(`${date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
+  }
+  return new Date(`${date}T${trimmed}:00`);
 }
 
-// --- Helper: Mock Payment Gateway ---
+async function resolveUser(authUser: { email?: string; userId?: string }) {
+  if (authUser.userId) {
+    const byId = await prisma.users.findUnique({ where: { id: authUser.userId }, select: { id: true } });
+    if (byId) return byId;
+  }
+  if (authUser.email) {
+    return prisma.users.findUnique({
+      where: { email: authUser.email.toLowerCase() },
+      select: { id: true },
+    });
+  }
+  return null;
+}
+
 async function chargeCreditCard(amount: number) {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  // Return fake transaction ID
-  return `txn_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  return `txn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${Math.round(amount * 100)}`;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Authenticate
-    const authUser = await getAuthUser(request);
-    if (!authUser || !authUser.email) return errorResponse('Unauthorized', 401);
+    const authUser = getAuthUser(request);
+    if (!authUser) return errorResponse('Unauthorized', 401);
 
-    // 2. Get Real User ID
-    const dbUser = await prisma.users.findUnique({
-      where: { email: authUser.email },
-      select: { id: true }
-    });
-
+    const dbUser = await resolveUser(authUser);
     if (!dbUser) return errorResponse('User not found', 404);
 
     const body = await request.json();
-    const { date, startTime, duration, slotIds, totalAmount, advanceAmount } = body;
+    const date = String(body?.date || '').trim();
+    const startTimeRaw = String(body?.startTime || '').trim();
+    const durationHours = Number(body?.duration);
+    const slotIds = Array.isArray(body?.slotIds) ? body.slotIds.map(String) : [];
+    const propertyId = String(body?.propertyId || body?.locationId || '').trim();
+    const advanceAmount = Number(body?.advanceAmount || 0);
+    const requestedTotalAmount = Number(body?.totalAmount || 0);
 
-    // 3. Validation
-    if (!slotIds?.length || !date || !startTime) {
+    if (!date || !startTimeRaw || !Number.isFinite(durationHours) || durationHours <= 0 || slotIds.length === 0 || !propertyId) {
       return errorResponse('Missing required fields', 400);
     }
+    if (!Number.isFinite(advanceAmount) || advanceAmount < 0) {
+      return errorResponse('advanceAmount must be a non-negative number', 400);
+    }
 
-    // 4. Time Calculation
-    const bookingDate = new Date(date);
-    const startDateTime = parseDateTime(date, startTime);
-    const endDateTime = new Date(startDateTime);
-    endDateTime.setHours(endDateTime.getHours() + Number(duration));
-    const now = new Date();
+    const startTime = parseDateTime(date, startTimeRaw);
+    if (Number.isNaN(startTime.getTime())) return errorResponse('Invalid date/time', 400);
+    const endTime = new Date(startTime);
+    endTime.setHours(endTime.getHours() + durationHours);
 
-    // 5. Process Payment (Mock Gateway)
-    // We do this BEFORE the DB transaction to ensure we don't book if payment fails
-    const transactionId = await chargeCreditCard(advanceAmount);
+    const selectedSlots = await prisma.parking_slots.findMany({
+      where: {
+        id: { in: slotIds },
+        propertyId,
+      },
+      select: {
+        id: true,
+        slotType: true,
+        isActive: true,
+        property: {
+          select: {
+            pricePerHour: true,
+            pricePerDay: true,
+          },
+        },
+      },
+    });
 
-    // 6. Database Transaction (Atomic Write)
-    const result = await prisma.$transaction(async (tx) => {
-      const newBookingId = crypto.randomUUID();
+    if (selectedSlots.length !== slotIds.length) {
+      return errorResponse('One or more selected slots are invalid for this property', 400);
+    }
+    if (selectedSlots.some((slot) => !slot.isActive)) {
+      return errorResponse('One or more selected slots are not active', 400);
+    }
 
-      // A. Create Booking (Status: PAID because advance is done)
-      const booking = await tx.bookings.create({
+    const overlapping = await prisma.bookings.findFirst({
+      where: {
+        status: { not: 'CANCELLED' },
+        startTime: { lt: endTime },
+        endTime: { gt: startTime },
+        bookingSlots: {
+          some: {
+            slotId: { in: slotIds },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    if (overlapping) {
+      return errorResponse('Selected slot(s) are already booked for that time', 409);
+    }
+
+    const property = selectedSlots[0]?.property;
+    const useDaily = durationHours >= 24 && Number(property?.pricePerDay || 0) > 0;
+    const calculatedTotal =
+      (useDaily ? Number(property?.pricePerDay || 0) : Number(property?.pricePerHour || 0) * durationHours) *
+      selectedSlots.length;
+    const totalAmount = Number.isFinite(requestedTotalAmount) && requestedTotalAmount > 0 ? requestedTotalAmount : calculatedTotal;
+    const parkingType = selectedSlots.some((slot) => slot.slotType === 'CAR_WASH')
+      ? 'CAR_WASH'
+      : selectedSlots.some((slot) => slot.slotType === 'EV')
+        ? 'EV'
+        : 'NORMAL';
+
+    const transactionId = advanceAmount > 0 ? await chargeCreditCard(advanceAmount) : null;
+
+    const booking = await prisma.$transaction(async (tx) => {
+      const createdBooking = await tx.bookings.create({
         data: {
-          id: newBookingId,
-          userId: dbUser.id,
-          date: bookingDate,
-          startTime: startDateTime,
-          endTime: endDateTime,
-          duration: Number(duration),
-          totalAmount: parseFloat(totalAmount),
-          paidAmount: parseFloat(advanceAmount), 
-          status: 'PAID', // Initial status is PAID (Advance received)
-          createdAt: now,
-          updatedAt: now,
+          customerId: dbUser.id,
+          propertyId,
+          startTime,
+          endTime,
+          status: 'PENDING',
+          parkingType,
+          bookingType: parkingType,
+          createdBy: dbUser.id,
         },
       });
 
-      // B. Link Slots
-      await tx.booking_slots.createMany({
-        data: slotIds.map((slotId: string) => ({
-          id: crypto.randomUUID(),
-          bookingId: newBookingId,
-          slotId: slotId,
-        })),
-      });
-
-      // C. Insert Payment Record
-      await tx.payments.create({
+      await tx.booking_status_history.create({
         data: {
-          id: crypto.randomUUID(),
-          bookingId: newBookingId,
-          amount: parseFloat(advanceAmount),
-          method: 'CARD',
-          status: 'COMPLETED',
-          transactionId: transactionId,
-          paidAt: now,
-          createdAt: now,
-          updatedAt: now,
-        }
+          bookingId: createdBooking.id,
+          oldStatus: null,
+          newStatus: 'PENDING',
+          changedBy: dbUser.id,
+          note: 'Booking created',
+        },
       });
 
-      return booking;
+      const bookingSlots = await Promise.all(
+        slotIds.map((slotId: string) =>
+          tx.booking_slots.create({
+            data: {
+              bookingId: createdBooking.id,
+              slotId,
+            },
+            select: {
+              id: true,
+              slot: {
+                select: { slotType: true },
+              },
+            },
+          })
+        )
+      );
+
+      await Promise.all(
+        bookingSlots
+          .filter((slot) => slot.slot.slotType === 'CAR_WASH')
+          .map((slot) =>
+            tx.wash_jobs.create({
+              data: {
+                bookingSlotId: slot.id,
+                status: 'PENDING',
+              },
+            })
+          )
+      );
+
+      await tx.payment_summary.create({
+        data: {
+          bookingId: createdBooking.id,
+          totalAmount,
+          onlinePaid: 0,
+          cashPaid: 0,
+          balanceDue: totalAmount,
+          currency: 'LKR',
+        },
+      });
+
+      if (advanceAmount > 0) {
+        await tx.payments.create({
+          data: {
+            bookingId: createdBooking.id,
+            payerId: dbUser.id,
+            amount: advanceAmount,
+            currency: 'LKR',
+            method: 'CARD',
+            paymentStatus: 'PAID',
+            gatewayStatus: 'COMPLETED',
+            gatewayProvider: 'MOCK_GATEWAY',
+            transactionId,
+            paidAt: new Date(),
+            createdBy: dbUser.id,
+          },
+        });
+      }
+
+      const summary = await refreshPaymentSummary(tx, createdBooking.id);
+      if (summary && Number(summary.balanceDue) <= 0.0001) {
+        await tx.bookings.update({
+          where: { id: createdBooking.id },
+          data: { status: 'PAID' },
+        });
+        await tx.booking_status_history.create({
+          data: {
+            bookingId: createdBooking.id,
+            oldStatus: 'PENDING',
+            newStatus: 'PAID',
+            changedBy: dbUser.id,
+            note: 'Fully paid on create',
+          },
+        });
+      }
+
+      await tx.notifications.create({
+        data: {
+          userId: dbUser.id,
+          title: 'Booking Created',
+          message: `Your parking booking (BK-${createdBooking.id.slice(-6).toUpperCase()}) for ${startTime.toLocaleString()} has been created successfully.`,
+        },
+      });
+
+      return createdBooking;
     });
 
-    return successResponse({ bookingId: result.id }, 'Booking and payment successful', 201);
-
-  } catch (error: any) {
+    return successResponse({ bookingId: booking.id }, 'Booking and payment successful', 201);
+  } catch (error) {
     console.error('[CREATE_BOOKING_ERROR]', error);
-    return serverErrorResponse(`Booking failed: ${error.message}`);
+    return serverErrorResponse('Booking failed');
   }
 }

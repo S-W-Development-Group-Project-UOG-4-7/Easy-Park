@@ -1,20 +1,31 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../AuthProvider';
+import { useAuthModal } from '../AuthModalProvider';
 
 // Map roles to their redirect paths
 const ROLE_REDIRECT_MAP: Record<string, string> = {
   ADMIN: '/admin',
   CUSTOMER: '/customer',
   COUNTER: '/counter',
-  LAND_OWNER: '/land_owner',
+  LANDOWNER: '/landowner',
+  LAND_OWNER: '/landowner',
   WASHER: '/washer',
 };
 
+function normalizeRole(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+}
+
 export function SignInCard() {
   const router = useRouter();
+  const { refreshUser, setUser } = useAuth();
+  const { openSignUp, openForgot } = useAuthModal();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -58,9 +69,28 @@ export function SignInCard() {
         return;
       }
 
-      // Success! Redirect based on user role
-      const userRole = data.data?.user?.role || 'CUSTOMER';
+      const roleCandidates: string[] = [];
+      const responseRoles = data.data?.roles;
+      const userRoles = data.data?.user?.roles;
+      if (Array.isArray(responseRoles)) {
+        roleCandidates.push(...responseRoles.map((role: unknown) => normalizeRole(role)));
+      }
+      if (Array.isArray(userRoles)) {
+        roleCandidates.push(...userRoles.map((role: unknown) => normalizeRole(role)));
+      }
+      roleCandidates.push(normalizeRole(data.data?.user?.role));
+      const userRole = roleCandidates.find((role) => Boolean(ROLE_REDIRECT_MAP[role])) || 'CUSTOMER';
       const redirectPath = ROLE_REDIRECT_MAP[userRole] || '/customer';
+      if (data.data?.user) {
+        setUser(data.data.user);
+        try {
+          localStorage.setItem('user', JSON.stringify(data.data.user));
+        } catch (error) {
+          console.error('Failed to cache user:', error);
+        }
+      }
+      // Hydrate auth context with server data in background as well.
+      refreshUser();
       router.push(redirectPath);
     } catch (err) {
       setError('Something went wrong. Please try again.');
@@ -105,6 +135,16 @@ export function SignInCard() {
               placeholder="Password"
               className="w-full px-4 py-3 rounded-lg bg-white/5 border border-[#334155] text-[#E5E7EB] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#84CC16] focus:border-transparent transition-all duration-200"
             />
+          </div>
+
+          <div className="text-right">
+            <button
+              type="button"
+              onClick={() => openForgot(formData.email || '')}
+              className="text-sm text-[#84CC16] hover:text-[#BEF264] underline"
+            >
+              Forgot Password?
+            </button>
           </div>
 
           <button
@@ -158,12 +198,13 @@ export function SignInCard() {
         <div className="mt-6 text-center">
           <p className="text-sm text-[#94A3B8]">
             Create new account?{' '}
-            <Link
-              href="/sign-up"
+            <button
+              type="button"
+              onClick={openSignUp}
               className="text-blue-500 hover:text-blue-400 underline transition-colors duration-200"
             >
               Sign up
-            </Link>
+            </button>
           </p>
         </div>
       </div>

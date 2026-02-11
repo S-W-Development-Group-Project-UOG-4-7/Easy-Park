@@ -2,378 +2,398 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
 
-/**
- * Admin Properties API
- * Uses the admin_properties table - THE main table for all property data
- * 
- * This ensures:
- * - Admin panel displays properties from admin_properties table
- * - Frontend property creation saves to admin_properties table
- * - Single source of truth for all property data
- */
+type SlotInputType = 'NORMAL' | 'EV' | 'CAR_WASH';
 
-// GET all properties for admin
+const ALLOWED_ROLES = new Set(['ADMIN', 'LANDOWNER', 'LAND_OWNER']);
+
+function normalizeSlotType(raw: unknown): SlotInputType {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  if (value === 'EV' || value === 'EV_SLOT') return 'EV';
+  if (value === 'CAR_WASH' || value === 'CAR_WASHING' || value === 'CARWASH') return 'CAR_WASH';
+  return 'NORMAL';
+}
+
+function toUiSlotType(value: SlotInputType): 'Normal' | 'EV' | 'Car Washing' {
+  if (value === 'EV') return 'EV';
+  if (value === 'CAR_WASH') return 'Car Washing';
+  return 'Normal';
+}
+
+function slotPrefix(slotType: SlotInputType) {
+  if (slotType === 'EV') return 'EV';
+  if (slotType === 'CAR_WASH') return 'CW';
+  return 'A';
+}
+
+function canManageProperties(role: string | undefined) {
+  return !!role && ALLOWED_ROLES.has(role.toUpperCase());
+}
+
+function parseSearchParams(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  return {
+    status: searchParams.get('status'),
+    search: searchParams.get('search'),
+    propertyId: searchParams.get('propertyId') || searchParams.get('id'),
+  };
+}
+
+function buildSlotsPayload(
+  slots: Array<{
+    id: string;
+    slotNumber: string;
+    slotType: SlotInputType;
+    isActive: boolean;
+  }>,
+  occupiedSlotIds: Set<string>
+) {
+  const mappedSlots = slots.map((slot) => {
+    const status = !slot.isActive ? 'maintenance' : occupiedSlotIds.has(slot.id) ? 'occupied' : 'available';
+    return {
+      id: slot.id,
+      number: slot.slotNumber,
+      slotNumber: slot.slotNumber,
+      type: toUiSlotType(slot.slotType),
+      status,
+    };
+  });
+
+  const normalSlots = slots.filter((slot) => slot.slotType === 'NORMAL').length;
+  const evSlots = slots.filter((slot) => slot.slotType === 'EV').length;
+  const carWashSlots = slots.filter((slot) => slot.slotType === 'CAR_WASH').length;
+  const availableSlots = mappedSlots.filter((slot) => slot.status === 'available').length;
+
+  return {
+    mappedSlots,
+    normalSlots,
+    evSlots,
+    carWashSlots,
+    availableSlots,
+  };
+}
+
+async function getPropertyList(request: NextRequest) {
+  const { status, search } = parseSearchParams(request);
+  const where: {
+    status?: 'ACTIVATED' | 'NOT_ACTIVATED';
+    OR?: Array<{ propertyName?: { contains: string; mode: 'insensitive' }; address?: { contains: string; mode: 'insensitive' } }>;
+  } = {};
+
+  if (status === 'ACTIVATED' || status === 'NOT_ACTIVATED') where.status = status;
+  if (search) {
+    where.OR = [
+      { propertyName: { contains: search, mode: 'insensitive' } },
+      { address: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const properties = await prisma.properties.findMany({
+    where,
+    include: {
+      parkingSlots: {
+        select: {
+          id: true,
+          slotNumber: true,
+          slotType: true,
+          isActive: true,
+        },
+        orderBy: { slotNumber: 'asc' },
+      },
+      owner: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const now = new Date();
+  const activeBookings = await prisma.bookings.findMany({
+    where: {
+      status: { not: 'CANCELLED' },
+      startTime: { lte: now },
+      endTime: { gt: now },
+      propertyId: { in: properties.map((property) => property.id) },
+    },
+    include: {
+      bookingSlots: {
+        select: { slotId: true },
+      },
+    },
+  });
+
+  const occupiedSlotIds = new Set<string>();
+  for (const booking of activeBookings) {
+    for (const slot of booking.bookingSlots) {
+      occupiedSlotIds.add(slot.slotId);
+    }
+  }
+
+  return properties.map((property) => {
+    const slotSummary = buildSlotsPayload(
+      property.parkingSlots.map((slot) => ({
+        id: slot.id,
+        slotNumber: slot.slotNumber,
+        slotType: slot.slotType as SlotInputType,
+        isActive: slot.isActive,
+      })),
+      occupiedSlotIds
+    );
+
+    return {
+      id: property.id,
+      propertyId: property.id,
+      name: property.propertyName,
+      propertyName: property.propertyName,
+      address: property.address,
+      location: property.address,
+      description: null,
+      pricePerHour: Number(property.pricePerHour),
+      pricePerDay: Number(property.pricePerDay),
+      status: property.status,
+      parkingAreaStatus: property.status,
+      totalSlots: property.totalSlots,
+      totalParkingSlots: property.totalSlots,
+      availableSlots: slotSummary.availableSlots,
+      availableParkingSlots: slotSummary.availableSlots,
+      normalSlots: slotSummary.normalSlots,
+      evSlots: slotSummary.evSlots,
+      carWashSlots: slotSummary.carWashSlots,
+      createdAt: property.createdAt,
+      createdDate: property.createdAt,
+      updatedAt: property.updatedAt,
+      lastUpdatedDate: property.updatedAt,
+      owner: property.owner
+        ? {
+            id: property.owner.id,
+            name: property.owner.fullName,
+            email: property.owner.email,
+            phone: property.owner.phone,
+          }
+        : null,
+      slots: slotSummary.mappedSlots,
+      slotBreakdown: {
+        normal: slotSummary.normalSlots,
+        ev: slotSummary.evSlots,
+        carWash: slotSummary.carWashSlots,
+      },
+    };
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    // Log for debugging
-    console.log('Admin Properties GET - User:', user);
-
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status'); // Filter by status
-    const search = searchParams.get('search'); // Search by name or location
-
-    // Build where clause
-    const whereClause: any = {};
-    
-    if (status && (status === 'ACTIVATED' || status === 'DEACTIVATED')) {
-      whereClause.status = status;
-    }
-    
-    if (search) {
-      whereClause.OR = [
-        { propertyName: { contains: search, mode: 'insensitive' } },
-        { location: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
-    // Fetch from admin_properties table (using snake_case model name from DB)
-    const properties = await prisma.admin_properties.findMany({
-      where: whereClause,
-      include: {
-        admin_parking_slots: {
-          select: {
-            id: true,
-            slotNumber: true,
-            status: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    // Transform to match expected format
-    const adminProperties = properties.map((property) => {
-      const slots = property.admin_parking_slots || [];
-      const totalSlots = slots.length || property.totalSlots;
-      const availableSlots = slots.filter(s => s.status === 'AVAILABLE').length;
-
-      return {
-        // Admin Property Table Fields
-        id: property.id,
-        propertyId: property.id,
-        name: property.propertyName,
-        propertyName: property.propertyName,
-        address: property.location,
-        location: property.location,
-        description: property.description,
-        pricePerHour: property.pricePerHour,
-        pricePerDay: property.pricePerHour * 8, // Calculated
-        status: property.status,
-        parkingAreaStatus: property.status,
-        totalSlots: totalSlots,
-        totalParkingSlots: totalSlots,
-        availableSlots: availableSlots,
-        availableParkingSlots: availableSlots,
-        normalSlots: totalSlots, // Since no slotType in DB, assume all are normal
-        evSlots: 0,
-        carWashSlots: 0,
-        createdAt: property.createdAt,
-        createdDate: property.createdAt,
-        updatedAt: property.updatedAt,
-        lastUpdatedDate: property.updatedAt,
-        slots: slots.map(slot => ({
-          id: slot.id,
-          number: slot.slotNumber,
-          slotNumber: slot.slotNumber,
-          type: 'Normal',
-          status: slot.status.toLowerCase(),
-        })),
-        slotBreakdown: {
-          normal: totalSlots,
-          ev: 0,
-          carWash: 0,
-        },
-      };
-    });
-
+    const properties = await getPropertyList(request);
     return NextResponse.json({
       success: true,
-      properties: adminProperties,
-      // Also return as parkingLots for compatibility with existing frontend
-      parkingLots: adminProperties,
-      total: adminProperties.length,
+      properties,
+      parkingLots: properties,
+      total: properties.length,
     });
   } catch (error) {
-    console.error('Admin get properties error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch properties' },
-      { status: 500 }
-    );
+    console.error('Admin properties GET error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to fetch properties' }, { status: 500 });
   }
 }
 
-// POST create a new property (saves to admin_properties table)
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    if (!user || !['ADMIN', 'LAND_OWNER'].includes(user.role)) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin access required' },
-        { status: 403 }
-      );
+    const authUser = getAuthUser(request);
+    if (!authUser || !canManageProperties(authUser.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { 
-      propertyName, 
-      name, // Alternative field name
-      location,
-      address, // Alternative field name 
-      description,
-      pricePerHour = 300, 
-      status = 'ACTIVATED',
-      parkingAreaStatus,
-      slots = [],
-      parkingSlots = [] // Alternative field name
-    } = body;
+    const propertyName = String(body?.propertyName || body?.name || '').trim();
+    const address = String(body?.location || body?.address || '').trim();
+    const pricePerHour = Number(body?.pricePerHour ?? 0);
+    const pricePerDay = Number(body?.pricePerDay ?? 0);
+    const status = String(body?.parkingAreaStatus || body?.status || 'NOT_ACTIVATED')
+      .toUpperCase()
+      .replace(/\s+/g, '_');
+    const slotConfigRaw = Array.isArray(body?.slots) ? body.slots : Array.isArray(body?.parkingSlots) ? body.parkingSlots : [];
 
-    const finalName = propertyName || name;
-    const finalLocation = location || address;
-    const finalStatus = parkingAreaStatus || status;
-    const finalSlots = slots.length > 0 ? slots : parkingSlots;
-
-    // Validation
-    if (!finalName || !finalLocation) {
-      return NextResponse.json(
-        { error: 'Property name and location are required' },
-        { status: 400 }
-      );
+    if (!propertyName || !address) {
+      return NextResponse.json({ success: false, error: 'Property name and location are required' }, { status: 400 });
+    }
+    if (!Number.isFinite(pricePerHour) || pricePerHour < 0 || !Number.isFinite(pricePerDay) || pricePerDay < 0) {
+      return NextResponse.json({ success: false, error: 'Prices must be non-negative numbers' }, { status: 400 });
     }
 
-    // Calculate total slots
-    const totalSlotCount = finalSlots.reduce((sum: number, slot: any) => sum + (slot.count || 1), 0);
-
-    // Generate a unique ID
-    const propertyId = `cm${Date.now().toString(36)}${Math.random().toString(36).substr(2, 9)}`;
-
-    // Create property in admin_properties table (using snake_case model)
-    const property = await prisma.admin_properties.create({
-      data: {
-        id: propertyId,
-        propertyName: finalName,
-        location: finalLocation,
-        description,
-        pricePerHour,
-        status: finalStatus === 'ACTIVATED' ? 'ACTIVATED' : 'DEACTIVATED',
-        totalSlots: totalSlotCount,
-        updatedAt: new Date(),
-      },
+    const owner = await prisma.users.findFirst({
+      where: authUser.userId ? { id: authUser.userId } : { email: String(authUser.email || '').toLowerCase() },
+      select: { id: true },
     });
+    if (!owner) {
+      return NextResponse.json({ success: false, error: 'Authenticated user not found' }, { status: 404 });
+    }
 
-    // Create parking slots if provided
-    if (finalSlots && finalSlots.length > 0) {
-      let slotNumber = 1;
-      for (const slotConfig of finalSlots) {
-        const slotType = slotConfig.type || 'Normal';
-        const count = slotConfig.count || 1;
-        
-        for (let i = 0; i < count; i++) {
-          const prefix = slotType === 'EV' || slotType === 'EV Slot' ? 'EV' : 
-                        slotType === 'Car Washing' ? 'CW' : 
-                        String.fromCharCode(65 + Math.floor((slotNumber - 1) / 9));
-          const num = slotType === 'EV' || slotType === 'EV Slot' || slotType === 'Car Washing' 
-                      ? i + 1 
-                      : ((slotNumber - 1) % 9) + 1;
-          
-          const slotId = `cm${Date.now().toString(36)}${Math.random().toString(36).substr(2, 9)}`;
-          await prisma.admin_parking_slots.create({
-            data: {
-              id: slotId,
-              slotNumber: `${prefix}${num}`,
-              status: 'AVAILABLE',
-              propertyId: property.id,
-              updatedAt: new Date(),
-            },
-          });
-          slotNumber++;
-        }
+    const slotTypeCounts: Record<SlotInputType, number> = { NORMAL: 0, EV: 0, CAR_WASH: 0 };
+    const slotRows: Array<{ slotType: SlotInputType; slotNumber: string }> = [];
+
+    for (const raw of slotConfigRaw) {
+      const slotType = normalizeSlotType(raw?.type);
+      const count = Math.max(0, Number(raw?.count ?? 0));
+      if (!Number.isFinite(count) || count <= 0) continue;
+      for (let i = 0; i < count; i += 1) {
+        slotTypeCounts[slotType] += 1;
+        slotRows.push({
+          slotType,
+          slotNumber: `${slotPrefix(slotType)}${slotTypeCounts[slotType]}`,
+        });
       }
     }
 
-    // Fetch the created property with slots
-    const createdProperty = await prisma.admin_properties.findUnique({
-      where: { id: property.id },
-      include: {
-        admin_parking_slots: true,
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      const property = await tx.properties.create({
+        data: {
+          ownerId: owner.id,
+          propertyName,
+          address,
+          pricePerHour,
+          pricePerDay,
+          currency: 'LKR',
+          status: status === 'ACTIVATED' ? 'ACTIVATED' : 'NOT_ACTIVATED',
+          totalSlots: slotRows.length,
+          totalNormalSlots: slotTypeCounts.NORMAL,
+          totalEvSlots: slotTypeCounts.EV,
+          totalCarWashSlots: slotTypeCounts.CAR_WASH,
+        },
+      });
+
+      if (slotRows.length > 0) {
+        await tx.parking_slots.createMany({
+          data: slotRows.map((slot) => ({
+            propertyId: property.id,
+            slotNumber: slot.slotNumber,
+            slotType: slot.slotType,
+            isActive: true,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return property.id;
     });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Property created successfully',
-      property: {
-        id: createdProperty?.id,
-        propertyId: createdProperty?.id,
-        name: createdProperty?.propertyName,
-        propertyName: createdProperty?.propertyName,
-        address: createdProperty?.location,
-        location: createdProperty?.location,
-        pricePerHour: createdProperty?.pricePerHour,
-        status: createdProperty?.status,
-        totalSlots: createdProperty?.admin_parking_slots?.length || createdProperty?.totalSlots || 0,
-        availableSlots: createdProperty?.admin_parking_slots?.filter(s => s.status === 'AVAILABLE').length || 0,
-        createdAt: createdProperty?.createdAt,
-        updatedAt: createdProperty?.updatedAt,
-      },
-      // For compatibility with frontend
-      parkingLot: {
-        id: createdProperty?.id,
-        name: createdProperty?.propertyName,
-        address: createdProperty?.location,
-      },
-    }, { status: 201 });
-  } catch (error) {
-    console.error('Admin create property error:', error);
+    const refreshed = await getPropertyList(new NextRequest(`${request.nextUrl.origin}/api/admin/properties?propertyId=${created}`));
+    const createdProperty = refreshed.find((item) => item.propertyId === created);
+
     return NextResponse.json(
-      { error: 'Failed to create property' },
-      { status: 500 }
+      {
+        success: true,
+        message: 'Property created successfully',
+        property: createdProperty,
+        parkingLot: createdProperty
+          ? {
+              id: createdProperty.id,
+              name: createdProperty.propertyName,
+              address: createdProperty.location,
+            }
+          : null,
+      },
+      { status: 201 }
     );
+  } catch (error) {
+    console.error('Admin properties POST error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to create property' }, { status: 500 });
   }
 }
 
-// PATCH update property status or details
 export async function PATCH(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    if (!user || !['ADMIN', 'LAND_OWNER'].includes(user.role)) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin access required' },
-        { status: 403 }
-      );
+    const authUser = getAuthUser(request);
+    if (!authUser || !canManageProperties(authUser.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { 
-      id,
-      propertyId, 
-      propertyName,
-      name,
-      location,
-      address,
-      description,
-      pricePerHour, 
-      pricePerDay,
-      status,
-      parkingAreaStatus,
-      totalSlots
-    } = body;
-
-    const finalId = propertyId || id;
-
-    if (!finalId) {
-      return NextResponse.json(
-        { error: 'Property ID is required' },
-        { status: 400 }
-      );
+    const propertyId = String(body?.propertyId || body?.id || '').trim();
+    if (!propertyId) {
+      return NextResponse.json({ success: false, error: 'Property ID is required' }, { status: 400 });
     }
 
-    // Build update data for admin_properties table
-    const updateData: any = { updatedAt: new Date() };
-    if (propertyName || name) updateData.propertyName = propertyName || name;
-    if (location || address) updateData.location = location || address;
-    if (description !== undefined) updateData.description = description;
-    if (pricePerHour !== undefined) updateData.pricePerHour = pricePerHour;
-    if (totalSlots !== undefined) updateData.totalSlots = totalSlots;
-    if (parkingAreaStatus || status) {
-      const newStatus = parkingAreaStatus || status;
-      updateData.status = newStatus === 'ACTIVATED' ? 'ACTIVATED' : 'DEACTIVATED';
+    const data: {
+      propertyName?: string;
+      address?: string;
+      pricePerHour?: number;
+      pricePerDay?: number;
+      status?: 'ACTIVATED' | 'NOT_ACTIVATED';
+    } = {};
+
+    if (body?.propertyName || body?.name) data.propertyName = String(body.propertyName || body.name).trim();
+    if (body?.location || body?.address) data.address = String(body.location || body.address).trim();
+
+    if (body?.pricePerHour !== undefined) {
+      const value = Number(body.pricePerHour);
+      if (!Number.isFinite(value) || value < 0) {
+        return NextResponse.json({ success: false, error: 'pricePerHour must be non-negative' }, { status: 400 });
+      }
+      data.pricePerHour = value;
+    }
+    if (body?.pricePerDay !== undefined) {
+      const value = Number(body.pricePerDay);
+      if (!Number.isFinite(value) || value < 0) {
+        return NextResponse.json({ success: false, error: 'pricePerDay must be non-negative' }, { status: 400 });
+      }
+      data.pricePerDay = value;
+    }
+    if (body?.status || body?.parkingAreaStatus) {
+      const raw = String(body.status || body.parkingAreaStatus).toUpperCase().replace(/\s+/g, '_');
+      data.status = raw === 'ACTIVATED' ? 'ACTIVATED' : 'NOT_ACTIVATED';
     }
 
-    const updatedProperty = await prisma.admin_properties.update({
-      where: { id: finalId },
-      data: updateData,
-      include: {
-        admin_parking_slots: true,
-      },
+    const updated = await prisma.properties.update({
+      where: { id: propertyId },
+      data,
+      select: { id: true },
     });
 
-    const slots = updatedProperty.admin_parking_slots || [];
+    const refreshed = await getPropertyList(new NextRequest(`${request.nextUrl.origin}/api/admin/properties?propertyId=${updated.id}`));
+    const property = refreshed.find((item) => item.propertyId === updated.id) || null;
 
     return NextResponse.json({
       success: true,
       message: 'Property updated successfully',
-      property: {
-        id: updatedProperty.id,
-        propertyId: updatedProperty.id,
-        name: updatedProperty.propertyName,
-        propertyName: updatedProperty.propertyName,
-        address: updatedProperty.location,
-        location: updatedProperty.location,
-        pricePerHour: updatedProperty.pricePerHour,
-        status: updatedProperty.status,
-        totalSlots: slots.length || updatedProperty.totalSlots,
-        availableSlots: slots.filter(s => s.status === 'AVAILABLE').length,
-        updatedAt: updatedProperty.updatedAt,
-      },
-      // For compatibility
-      parkingLot: {
-        id: updatedProperty.id,
-        name: updatedProperty.propertyName,
-        address: updatedProperty.location,
-        status: updatedProperty.status,
-      },
+      property,
+      parkingLot: property
+        ? {
+            id: property.id,
+            name: property.propertyName,
+            address: property.location,
+            status: property.status,
+          }
+        : null,
     });
   } catch (error) {
-    console.error('Admin update property error:', error);
-    return NextResponse.json(
-      { error: 'Failed to update property' },
-      { status: 500 }
-    );
+    console.error('Admin properties PATCH error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to update property' }, { status: 500 });
   }
 }
 
-// DELETE a property
 export async function DELETE(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    if (!user || !['ADMIN', 'LAND_OWNER'].includes(user.role)) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin access required' },
-        { status: 403 }
-      );
+    const authUser = getAuthUser(request);
+    if (!authUser || !canManageProperties(authUser.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId') || searchParams.get('id');
-
+    const { propertyId } = parseSearchParams(request);
     if (!propertyId) {
-      return NextResponse.json(
-        { error: 'Property ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Property ID is required' }, { status: 400 });
     }
 
-    // Delete property from admin_properties (cascade will delete slots)
-    await prisma.admin_properties.delete({
-      where: { id: propertyId },
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Property deleted successfully',
-    });
+    await prisma.properties.delete({ where: { id: propertyId } });
+    return NextResponse.json({ success: true, message: 'Property deleted successfully' });
   } catch (error) {
-    console.error('Admin delete property error:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete property' },
-      { status: 500 }
-    );
+    console.error('Admin properties DELETE error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to delete property' }, { status: 500 });
   }
 }

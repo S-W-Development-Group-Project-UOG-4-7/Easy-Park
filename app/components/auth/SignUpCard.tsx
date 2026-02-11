@@ -1,20 +1,22 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuthModal } from '../AuthModalProvider';
 
 // Map roles to their redirect paths
 const ROLE_REDIRECT_MAP: Record<string, string> = {
   ADMIN: '/admin',
   CUSTOMER: '/customer',
   COUNTER: '/counter',
+  LANDOWNER: '/land_owner',
   LAND_OWNER: '/land_owner',
   WASHER: '/washer',
 };
 
 export function SignUpCard() {
   const router = useRouter();
+  const { openSignIn } = useAuthModal();
   const [formData, setFormData] = useState({
     fullName: '',
     contactNo: '',
@@ -193,12 +195,13 @@ export function SignUpCard() {
         <div className="mt-6 text-center">
           <p className="text-sm text-[#94A3B8]">
             Already have an account?{' '}
-            <Link
-              href="/sign-in"
+            <button
+              type="button"
+              onClick={() => openSignIn()}
               className="text-blue-500 hover:text-blue-400 underline transition-colors duration-200"
             >
               Sign in
-            </Link>
+            </button>
           </p>
         </div>
       </div>

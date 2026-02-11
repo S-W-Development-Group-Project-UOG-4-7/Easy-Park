@@ -1,129 +1,172 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { unstable_cache } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
+import { extractRoles, normalizeRole } from '@/lib/user-roles';
 
-const getActivatedParkingLots = unstable_cache(
-  async () => {
-    return prisma.parking_locations.findMany({
-      where: { status: 'ACTIVATED' as const },
+function toSlotType(raw: unknown): 'NORMAL' | 'EV' | 'CAR_WASH' {
+  const value = String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  if (value === 'EV' || value === 'EV_SLOT') return 'EV';
+  if (value === 'CAR_WASH' || value === 'CAR_WASHING' || value === 'CARWASH') return 'CAR_WASH';
+  return 'NORMAL';
+}
+
+async function syncPropertyTotals(propertyId: string) {
+  const counts = await prisma.parking_slots.groupBy({
+    by: ['slotType'],
+    where: { propertyId },
+    _count: { _all: true },
+  });
+  let normal = 0;
+  let ev = 0;
+  let carWash = 0;
+  for (const row of counts) {
+    if (row.slotType === 'EV') ev = row._count._all;
+    else if (row.slotType === 'CAR_WASH') carWash = row._count._all;
+    else normal = row._count._all;
+  }
+  await prisma.properties.update({
+    where: { id: propertyId },
+    data: {
+      totalSlots: normal + ev + carWash,
+      totalNormalSlots: normal,
+      totalEvSlots: ev,
+      totalCarWashSlots: carWash,
+    },
+  });
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const authUser = getAuthUser(request);
+    const showAll = request.nextUrl.searchParams.get('showAll') === 'true';
+    let isAdmin = false;
+    let isLandOwner = false;
+    let resolvedUserId: string | null = null;
+
+    if (authUser?.userId || authUser?.email) {
+      const user = authUser.userId
+        ? await prisma.users.findUnique({
+            where: { id: authUser.userId },
+            include: { roles: { include: { role: true } } },
+          })
+        : await prisma.users.findUnique({
+            where: { email: String(authUser.email || '').toLowerCase() },
+            include: { roles: { include: { role: true } } },
+          });
+
+      if (user) {
+        resolvedUserId = user.id;
+        const roles = new Set(extractRoles(user));
+        isAdmin = roles.has('ADMIN');
+        isLandOwner = roles.has('LANDOWNER');
+      }
+    }
+
+    if (!isAdmin && !isLandOwner) {
+      const normalized = normalizeRole(authUser?.role);
+      if (normalized === 'ADMIN') isAdmin = true;
+      if (normalized === 'LANDOWNER') isLandOwner = true;
+      resolvedUserId = resolvedUserId || authUser?.userId || null;
+    }
+
+    let where: { status?: 'ACTIVATED'; ownerId?: string } = { status: 'ACTIVATED' };
+    if (isAdmin) {
+      where = showAll ? {} : { status: 'ACTIVATED' };
+    } else if (isLandOwner && resolvedUserId) {
+      const ownedCount = await prisma.properties.count({ where: { ownerId: resolvedUserId } });
+      where = ownedCount > 0 ? { ownerId: resolvedUserId } : { status: 'ACTIVATED' };
+    }
+
+    const properties = await prisma.properties.findMany({
+      where,
       include: {
-        users: {
+        parkingSlots: {
+          select: {
+            id: true,
+            slotType: true,
+            isActive: true,
+          },
+        },
+        owner: {
           select: {
             id: true,
             fullName: true,
             email: true,
           },
         },
-        parking_slots: {
-          select: {
-            id: true,
-            status: true,
-            type: true,
-            pricePerHour: true,
-          },
-        },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
-  },
-  ['parking-lots:activated'],
-  { revalidate: 60 }
-);
 
-// GET all parking lots
-export async function GET(request: NextRequest) {
-  try {
-    const user = getAuthUser(request);
-    const isAdmin = user?.role === 'ADMIN';
-    const showAll = request.nextUrl.searchParams.get('showAll') === 'true';
-    
-    // Build where clause based on user role
-    // Only admins can see non-activated parking lots (when showAll=true)
-    // Regular users and washers only see ACTIVATED parking lots
-    const whereClause = (isAdmin && showAll) ? {} : { status: 'ACTIVATED' as const };
+    const now = new Date();
+    const activeBookings = await prisma.bookings.findMany({
+      where: {
+        status: { not: 'CANCELLED' },
+        startTime: { lte: now },
+        endTime: { gt: now },
+        propertyId: { in: properties.map((property) => property.id) },
+      },
+      include: { bookingSlots: { select: { slotId: true } } },
+    });
+    const occupiedSlotIds = new Set<string>();
+    for (const booking of activeBookings) {
+      for (const bookingSlot of booking.bookingSlots) occupiedSlotIds.add(bookingSlot.slotId);
+    }
 
-    const useCache = !isAdmin && !showAll;
-    const parkingLots = useCache
-      ? await getActivatedParkingLots()
-      : await prisma.parking_locations.findMany({
-          where: whereClause,
-          include: {
-            users: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
-              },
-            },
-            parking_slots: {
-              select: {
-                id: true,
-                status: true,
-                type: true,
-                pricePerHour: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        });
-
-    // Transform the data to include slot counts and pricing
-    const transformedParkingLots = parkingLots.map((lot) => ({
-      id: lot.id,
-      name: lot.name,
-      address: lot.address,
-      description: lot.description,
-      ownerId: lot.ownerId,
-      owner: lot.users
-        ? {
-            id: lot.users.id,
-            name: lot.users.fullName,
-            email: lot.users.email,
-          }
-        : null,
-      totalSlots: lot.parking_slots.length,
-      availableSlots: lot.parking_slots.filter((s) => s.status === 'AVAILABLE').length,
-      normalSlots: lot.parking_slots.filter((s) => s.type === 'NORMAL').length,
-      evSlots: lot.parking_slots.filter((s) => s.type === 'EV').length,
-      carWashSlots: lot.parking_slots.filter((s) => s.type === 'CAR_WASH').length,
-      pricePerHour: lot.pricePerHour,
-      pricePerDay: lot.pricePerDay,
-      status: lot.status,
-      createdAt: lot.createdAt,
-      updatedAt: lot.updatedAt,
-    }));
+    const parkingLots = properties.map((property) => {
+      const totalSlots = property.parkingSlots.length;
+      const availableSlots = property.parkingSlots.filter(
+        (slot) => slot.isActive && !occupiedSlotIds.has(slot.id)
+      ).length;
+      return {
+        id: property.id,
+        name: property.propertyName,
+        address: property.address,
+        description: null,
+        ownerId: property.ownerId,
+        owner: property.owner
+          ? {
+              id: property.owner.id,
+              name: property.owner.fullName,
+              email: property.owner.email,
+            }
+          : null,
+        totalSlots,
+        availableSlots,
+        normalSlots: property.parkingSlots.filter((slot) => slot.slotType === 'NORMAL').length,
+        evSlots: property.parkingSlots.filter((slot) => slot.slotType === 'EV').length,
+        carWashSlots: property.parkingSlots.filter((slot) => slot.slotType === 'CAR_WASH').length,
+        pricePerHour: Number(property.pricePerHour),
+        pricePerDay: Number(property.pricePerDay),
+        status: property.status,
+        createdAt: property.createdAt,
+        updatedAt: property.updatedAt,
+      };
+    });
 
     return NextResponse.json(
-      { parkingLots: transformedParkingLots },
+      { parkingLots },
       {
         headers: {
-          'Cache-Control': useCache
-            ? 'public, s-maxage=60, stale-while-revalidate=300'
-            : 'no-store',
+          'Cache-Control':
+            (isAdmin && showAll) || isLandOwner ? 'no-store' : 'public, s-maxage=60, stale-while-revalidate=300',
         },
       }
     );
   } catch (error) {
     console.error('Error fetching parking lots:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch parking lots' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch parking lots' }, { status: 500 });
   }
 }
 
-// POST create a new parking lot
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    // Only ADMIN and LAND_OWNER can create parking lots
-    if (!user || !['ADMIN', 'LAND_OWNER'].includes(user.role)) {
+    const authUser = getAuthUser(request);
+    const authRole = String(authUser?.role || '');
+    if (!authUser || !['ADMIN', 'LANDOWNER', 'LAND_OWNER'].includes(authRole)) {
       return NextResponse.json(
         { error: 'Unauthorized: Only admins and land owners can create parking lots' },
         { status: 403 }
@@ -131,288 +174,152 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, address, ownerId, pricePerHour, pricePerDay, status, slots } = body;
+    const name = String(body?.name || '').trim();
+    const address = String(body?.address || '').trim();
+    const ownerIdInput = String(body?.ownerId || authUser.userId || '').trim();
+    const pricePerHour = Number(body?.pricePerHour ?? 0);
+    const pricePerDay = Number(body?.pricePerDay ?? 0);
+    const status = String(body?.status || 'NOT_ACTIVATED').toUpperCase().replace(/\s+/g, '_');
+    const slots = Array.isArray(body?.slots) ? body.slots : [];
 
-    // Validation
-    if (!name || !address || !ownerId) {
-      return NextResponse.json(
-        { error: 'Name, address, and ownerId are required' },
-        { status: 400 }
-      );
+    if (!name || !address || !ownerIdInput) {
+      return NextResponse.json({ error: 'Name, address, and ownerId are required' }, { status: 400 });
     }
 
-    // Validate slots if provided
-    if (slots && slots.length > 0) {
-      const totalSlotCount = slots.reduce((sum: number, slot: { count?: number }) => sum + (slot.count || 0), 0);
-      if (totalSlotCount <= 0) {
-        return NextResponse.json(
-          { error: 'Total parking slots must be greater than 0' },
-          { status: 400 }
-        );
-      }
-    }
+    const owner = await prisma.users.findUnique({ where: { id: ownerIdInput }, select: { id: true } });
+    if (!owner) return NextResponse.json({ error: 'Owner not found' }, { status: 404 });
 
-    // Validate prices
-    if (pricePerHour !== undefined && pricePerHour <= 0) {
-      return NextResponse.json(
-        { error: 'Price per hour must be greater than 0' },
-        { status: 400 }
-      );
-    }
-
-    if (pricePerDay !== undefined && pricePerDay <= 0) {
-      return NextResponse.json(
-        { error: 'Price per day must be greater than 0' },
-        { status: 400 }
-      );
-    }
-
-    // Only admin can set status to ACTIVATED directly
-    const locationStatus = user.role === 'ADMIN' && status === 'ACTIVATED' ? 'ACTIVATED' : 'NOT_ACTIVATED';
-
-    const parkingLot = await prisma.parking_locations.create({
-      data: {
-        id: crypto.randomUUID(),
-        name,
-        address,
-        ownerId,
-        totalSlots: 0,
-        pricePerHour: pricePerHour || 300,
-        pricePerDay: pricePerDay || 2000,
-        status: locationStatus,
-        updatedAt: new Date(),
-      },
-      include: {
-        users: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
+    const created = await prisma.$transaction(async (tx) => {
+      const property = await tx.properties.create({
+        data: {
+          ownerId: owner.id,
+          propertyName: name,
+          address,
+          pricePerHour: Number.isFinite(pricePerHour) ? pricePerHour : 0,
+          pricePerDay: Number.isFinite(pricePerDay) ? pricePerDay : 0,
+          status: authUser.role === 'ADMIN' && status === 'ACTIVATED' ? 'ACTIVATED' : 'NOT_ACTIVATED',
+          totalSlots: 0,
+          totalNormalSlots: 0,
+          totalEvSlots: 0,
+          totalCarWashSlots: 0,
         },
-      },
+      });
+
+      if (slots.length > 0) {
+        const rows: Array<{ propertyId: string; slotNumber: string; slotType: 'NORMAL' | 'EV' | 'CAR_WASH'; isActive: boolean }> = [];
+        const counters: Record<'NORMAL' | 'EV' | 'CAR_WASH', number> = { NORMAL: 0, EV: 0, CAR_WASH: 0 };
+        for (const slotConfig of slots) {
+          const slotType = toSlotType(slotConfig?.type);
+          const count = Math.max(0, Number(slotConfig?.count ?? 0));
+          const prefix = slotType === 'EV' ? 'EV' : slotType === 'CAR_WASH' ? 'CW' : 'A';
+          for (let i = 0; i < count; i += 1) {
+            counters[slotType] += 1;
+            rows.push({
+              propertyId: property.id,
+              slotNumber: `${prefix}${counters[slotType]}`,
+              slotType,
+              isActive: true,
+            });
+          }
+        }
+        if (rows.length > 0) await tx.parking_slots.createMany({ data: rows, skipDuplicates: true });
+      }
+      return property;
     });
 
-    // Create parking slots if provided
-    if (slots && slots.length > 0) {
-      let slotNumber = 1;
-      for (const slotConfig of slots) {
-        const slotType = slotConfig.type === 'Normal' ? 'NORMAL' : 
-                        slotConfig.type === 'EV' ? 'EV' : 'CAR_WASH';
-        const count = slotConfig.count || 1;
-        
-        for (let i = 0; i < count; i++) {
-          const zone = slotType === 'EV' ? 'K' : slotType === 'CAR_WASH' ? 'CW' : 
-                      String.fromCharCode(65 + Math.floor((slotNumber - 1) / 9));
-          const num = slotType === 'EV' || slotType === 'CAR_WASH' ? i + 1 : ((slotNumber - 1) % 9) + 1;
-          
-          await prisma.parking_slots.create({
-            data: {
-              id: crypto.randomUUID(),
-              number: `${zone}${num}`,
-              zone: zone,
-              type: slotType,
-              status: 'AVAILABLE',
-              pricePerHour: pricePerHour || (slotType === 'EV' ? 400 : slotType === 'CAR_WASH' ? 500 : 300),
-              locationId: parkingLot.id,
-              updatedAt: new Date(),
-            },
-          });
-          slotNumber++;
-        }
-      }
+    await syncPropertyTotals(created.id);
 
-      // Update total slots count
-      const totalSlots = await prisma.parking_slots.count({ where: { locationId: parkingLot.id } });
-      await prisma.parking_locations.update({
-        where: { id: parkingLot.id },
-        data: { totalSlots, updatedAt: new Date() },
-      });
-    }
+    const property = await prisma.properties.findUnique({
+      where: { id: created.id },
+      include: { owner: { select: { id: true, fullName: true, email: true } } },
+    });
 
     return NextResponse.json(
       {
-        parkingLot: {
-          id: parkingLot.id,
-          name: parkingLot.name,
-          address: parkingLot.address,
-          ownerId: parkingLot.ownerId,
-          pricePerHour: parkingLot.pricePerHour,
-          pricePerDay: parkingLot.pricePerDay,
-        status: parkingLot.status,
-        owner: parkingLot.users
+        parkingLot: property
           ? {
-              id: parkingLot.users.id,
-              name: parkingLot.users.fullName,
-              email: parkingLot.users.email,
+              id: property.id,
+              name: property.propertyName,
+              address: property.address,
+              ownerId: property.ownerId,
+              pricePerHour: Number(property.pricePerHour),
+              pricePerDay: Number(property.pricePerDay),
+              status: property.status,
+              owner: property.owner
+                ? { id: property.owner.id, name: property.owner.fullName, email: property.owner.email }
+                : null,
+              createdAt: property.createdAt,
+              updatedAt: property.updatedAt,
             }
           : null,
-        createdAt: parkingLot.createdAt,
-        updatedAt: parkingLot.updatedAt,
-      },
       },
       { status: 201 }
     );
   } catch (error) {
     console.error('Error creating parking lot:', error);
-    return NextResponse.json(
-      { error: 'Failed to create parking lot' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create parking lot' }, { status: 500 });
   }
 }
 
-// PATCH update parking lot (admin only for status, prices, and slots)
 export async function PATCH(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Please login to continue' },
-        { status: 401 }
-      );
+    const authUser = getAuthUser(request);
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized: Please login to continue' }, { status: 401 });
     }
 
     const body = await request.json();
-    const { id, status, pricePerHour, pricePerDay, name, address, description, totalSlots } = body;
+    const id = String(body?.id || '').trim();
+    if (!id) return NextResponse.json({ error: 'Parking lot ID is required' }, { status: 400 });
 
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Parking lot ID is required' },
-        { status: 400 }
-      );
+    const existing = await prisma.properties.findUnique({ where: { id }, select: { ownerId: true } });
+    if (!existing) return NextResponse.json({ error: 'Parking lot not found' }, { status: 404 });
+
+    const isAdmin = authUser.role === 'ADMIN';
+    const isOwner = authUser.userId === existing.ownerId;
+    if (!isAdmin && !isOwner) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Get existing parking lot
-    const existingLot = await prisma.parking_locations.findUnique({
+    const data: {
+      status?: 'ACTIVATED' | 'NOT_ACTIVATED';
+      pricePerHour?: number;
+      pricePerDay?: number;
+      propertyName?: string;
+      address?: string;
+    } = {};
+
+    if (body?.status !== undefined) {
+      if (!isAdmin) return NextResponse.json({ error: 'Only admins can change status' }, { status: 403 });
+      data.status = String(body.status).toUpperCase() === 'ACTIVATED' ? 'ACTIVATED' : 'NOT_ACTIVATED';
+    }
+    if (body?.pricePerHour !== undefined) {
+      if (!isAdmin) return NextResponse.json({ error: 'Only admins can update prices' }, { status: 403 });
+      data.pricePerHour = Number(body.pricePerHour);
+    }
+    if (body?.pricePerDay !== undefined) {
+      if (!isAdmin) return NextResponse.json({ error: 'Only admins can update prices' }, { status: 403 });
+      data.pricePerDay = Number(body.pricePerDay);
+    }
+    if (body?.name !== undefined) data.propertyName = String(body.name);
+    if (body?.address !== undefined) data.address = String(body.address);
+
+    const parkingLot = await prisma.properties.update({
       where: { id },
-    });
-
-    if (!existingLot) {
-      return NextResponse.json(
-        { error: 'Parking lot not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check permissions for different operations
-    const isAdmin = user.role === 'ADMIN';
-    const isOwner = existingLot.ownerId === user.userId;
-
-    // Only admin can change status
-    if (status !== undefined && !isAdmin) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Only admins can change parking lot status' },
-        { status: 403 }
-      );
-    }
-
-    // Only admin can update prices
-    if ((pricePerHour !== undefined || pricePerDay !== undefined) && !isAdmin) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Only admins can update parking prices' },
-        { status: 403 }
-      );
-    }
-
-    // Only admin can update total slots
-    if (totalSlots !== undefined && !isAdmin) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Only admins can update available slots' },
-        { status: 403 }
-      );
-    }
-
-    // Only admin or owner can update name, address, description
-    if ((name !== undefined || address !== undefined || description !== undefined) && !isAdmin && !isOwner) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Only admins or owners can update parking lot details' },
-        { status: 403 }
-      );
-    }
-
-    // Validate prices
-    if (pricePerHour !== undefined && pricePerHour <= 0) {
-      return NextResponse.json(
-        { error: 'Price per hour must be greater than 0' },
-        { status: 400 }
-      );
-    }
-
-    if (pricePerDay !== undefined && pricePerDay <= 0) {
-      return NextResponse.json(
-        { error: 'Price per day must be greater than 0' },
-        { status: 400 }
-      );
-    }
-
-    // Build update data
-    const updateData: Record<string, unknown> = {};
-    if (status !== undefined) updateData.status = status;
-    if (pricePerHour !== undefined) updateData.pricePerHour = pricePerHour;
-    if (pricePerDay !== undefined) updateData.pricePerDay = pricePerDay;
-    if (name !== undefined) updateData.name = name;
-    if (address !== undefined) updateData.address = address;
-    if (description !== undefined) updateData.description = description;
-    if (totalSlots !== undefined) updateData.totalSlots = totalSlots;
-    updateData.updatedAt = new Date();
-
-    const updatedLot = await prisma.parking_locations.update({
-      where: { id },
-      data: updateData,
+      data,
       include: {
-        users: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        parking_slots: true,
+        owner: { select: { id: true, fullName: true, email: true } },
+        parkingSlots: true,
       },
     });
-
-    // If price updated, update all slot prices for this location
-    if (pricePerHour !== undefined) {
-      await prisma.parking_slots.updateMany({
-        where: { 
-          locationId: id,
-          type: 'NORMAL',
-        },
-        data: { pricePerHour },
-      });
-      
-      // EV slots get 33% more
-      await prisma.parking_slots.updateMany({
-        where: { 
-          locationId: id,
-          type: 'EV',
-        },
-        data: { pricePerHour: Math.round(pricePerHour * 1.33) },
-      });
-      
-      // Car wash slots get 67% more
-      await prisma.parking_slots.updateMany({
-        where: { 
-          locationId: id,
-          type: 'CAR_WASH',
-        },
-        data: { pricePerHour: Math.round(pricePerHour * 1.67) },
-      });
-    }
 
     return NextResponse.json({
       success: true,
       message: 'Parking lot updated successfully',
-      parkingLot: updatedLot,
+      parkingLot,
     });
   } catch (error) {
     console.error('Error updating parking lot:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to update parking lot';
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to update parking lot' }, { status: 500 });
   }
 }

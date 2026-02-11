@@ -7,13 +7,25 @@ import { ArrowRight, Plus, Calendar, Settings, Car, MapPin } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react';
 
 export default function CustomerDashboard() {
-  const { user } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const [now, setNow] = useState<Date | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     // Avoid hydration mismatches from Date() while still rendering instantly.
     setNow(new Date());
   }, []);
+
+  useEffect(() => {
+    if (authChecked) return;
+    if (user) {
+      setAuthChecked(true);
+      return;
+    }
+    if (!loading) {
+      refreshUser().finally(() => setAuthChecked(true));
+    }
+  }, [authChecked, loading, refreshUser, user]);
 
   const greeting = useMemo(() => {
     if (!now) return 'Welcome';
@@ -69,7 +81,7 @@ export default function CustomerDashboard() {
             <h1 className="text-5xl md:text-7xl font-black text-white leading-tight">
               {greeting}, <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">
-                {user?.fullName?.split(' ')[0] || 'Driver'}
+                {user?.fullName?.split(' ')[0] || (loading ? 'Loading...' : 'Driver')}
               </span>
             </h1>
           </div>
