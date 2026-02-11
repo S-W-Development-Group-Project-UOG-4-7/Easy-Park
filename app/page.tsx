@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Navigation } from "./components/Navigation";
-import { AuthModalProvider } from "./components/AuthModalProvider";
+import AuthModalController from "./components/AuthModalController";
 
 export const dynamic = "force-static";
 
@@ -48,7 +48,7 @@ const features = [
 
 export default function Home() {
   return (
-    <AuthModalProvider>
+    <AuthModalController>
       <div className="flex min-h-screen flex-col text-slate-100">
         <Navigation />
 
@@ -428,6 +428,6 @@ export default function Home() {
         </div>
       </footer>
       </div>
-    </AuthModalProvider>
+    </AuthModalController>
   );
 }

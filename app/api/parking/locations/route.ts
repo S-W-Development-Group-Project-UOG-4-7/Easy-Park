@@ -2,32 +2,32 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { serverErrorResponse } from '@/lib/api-response';
 
-// Parking hub list changes infrequently; cache for fast navigation + fewer DB hits.
 export const revalidate = 60;
 
 export async function GET() {
   try {
-    // Fetch all active parking locations
-    const locations = await prisma.parking_locations.findMany({
-      where: { 
-        status: 'ACTIVATED' // Only show active hubs
-      },
+    const locations = await prisma.properties.findMany({
+      where: { status: 'ACTIVATED' },
       select: {
         id: true,
-        name: true,
+        propertyName: true,
         pricePerHour: true,
       },
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: { propertyName: 'asc' },
     });
 
     return NextResponse.json(
-      { success: true, data: locations },
+      {
+        success: true,
+        data: locations.map((location) => ({
+          id: location.id,
+          name: location.propertyName,
+          pricePerHour: Number(location.pricePerHour),
+        })),
+      },
       { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } }
     );
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[LOCATIONS_API_ERROR]', error);
     return serverErrorResponse('Failed to fetch locations');
   }

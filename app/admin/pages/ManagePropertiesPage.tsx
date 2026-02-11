@@ -1,37 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Building2, MapPin, Trash2, Eye, EyeOff, Plus, Zap, Car, Droplets, Power, DollarSign, Edit2, Save, X } from 'lucide-react';
-import { propertiesApi } from '../../services/api';
-import { adminCard, adminInput, adminInputCompact, adminPrimaryButton, adminSecondaryButton, adminIconButton } from '../components/adminTheme';
+import { propertiesApi, type PropertySummary, type PropertySlot } from '../../services/api';
+import { adminCard, adminInputCompact, adminPrimaryButton, adminSecondaryButton, adminIconButton } from '../components/adminTheme';
 
-interface Slot {
-  id: string | number;
-  number: string;
-  type: string;
-  status: string;
-}
-
-interface Property {
-  id: string | number;
-  name: string;
-  address: string;
-  description?: string;
-  totalSlots: number;
-  normalSlots?: number;
-  evSlots?: number;
-  carWashSlots?: number;
-  availableSlots: number;
-  pricePerHour: number;
-  pricePerDay: number;
-  status: 'ACTIVATED' | 'NOT_ACTIVATED';
-  slots: Slot[];
-  createdAt: string | Date;
-}
+type Slot = PropertySlot;
+type Property = PropertySummary;
 
 export default function ManagePropertiesPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [expandedProperty, setExpandedProperty] = useState<string | number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | number | null>(null);
   const [editingProperty, setEditingProperty] = useState<string | number | null>(null);
@@ -43,21 +23,42 @@ export default function ManagePropertiesPage() {
   const [togglingStatus, setTogglingStatus] = useState<string | number | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  useEffect(() => {
-    fetchProperties();
-  }, []);
-
-  const fetchProperties = async () => {
+  const fetchProperties = useCallback(async () => {
     setLoading(true);
+    setErrorMessage(null);
     try {
       const data = await propertiesApi.getAll();
       setProperties(data);
     } catch (error) {
       console.error('Error fetching properties:', error);
+      setErrorMessage('Failed to load properties. Please refresh and try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchProperties();
+  }, [fetchProperties]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      fetchProperties();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchProperties();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [fetchProperties]);
 
   const handleDelete = async (id: string | number) => {
     try {
@@ -66,6 +67,7 @@ export default function ManagePropertiesPage() {
       setDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting property:', error);
+      setErrorMessage('Failed to delete property.');
       alert('Failed to delete property');
     }
   };
@@ -86,6 +88,7 @@ export default function ManagePropertiesPage() {
     } catch (error) {
       console.error('Error toggling status:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to update status';
+      setErrorMessage(errorMessage);
       alert(errorMessage);
     } finally {
       setTogglingStatus(null);
@@ -122,6 +125,7 @@ export default function ManagePropertiesPage() {
       setEditingProperty(null);
     } catch (error) {
       console.error('Error updating property:', error);
+      setErrorMessage('Failed to update property. Only admins can update prices and slots.');
       alert('Failed to update property. Only admins can update prices and slots.');
     } finally {
       setSavingEdit(false);
@@ -139,9 +143,21 @@ export default function ManagePropertiesPage() {
     const carWash: Slot[] = [];
 
     slots.forEach(slot => {
-      if (slot.type === 'Normal') normal.push(slot);
-      else if (slot.type === 'EV Slot' || slot.type === 'EV') ev.push(slot);
-      else if (slot.type === 'Car Washing') carWash.push(slot);
+      const normalizedType = (slot.type || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+      const slotNumber = (slot.slotNumber || slot.number || '').toUpperCase();
+
+      if (normalizedType === 'EV' || normalizedType === 'EV_SLOT' || slotNumber.startsWith('EV')) {
+        ev.push(slot);
+      } else if (
+        normalizedType === 'CAR_WASH' ||
+        normalizedType === 'CAR_WASHING' ||
+        normalizedType === 'CARWASH' ||
+        slotNumber.startsWith('CW')
+      ) {
+        carWash.push(slot);
+      } else {
+        normal.push(slot);
+      }
     });
 
     return { normal, ev, carWash };
@@ -155,7 +171,7 @@ export default function ManagePropertiesPage() {
 
     return (
       <div className="space-y-2">
-        {rows.map((row, rowIdx) => {
+        {rows.map((row) => {
           if (slotIndex >= slots.length) return null;
           const rowSlots: (Slot | null)[] = [];
           for (let col = 1; col <= cols && slotIndex < slots.length; col++) {
@@ -299,6 +315,12 @@ export default function ManagePropertiesPage() {
           Add Property
         </a>
       </div>
+
+      {errorMessage && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {errorMessage}
+        </div>
+      )}
 
       {loading ? (
         <div className="grid gap-6 md:grid-cols-2">

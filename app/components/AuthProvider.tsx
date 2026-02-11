@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 interface User {
   id: string;
@@ -18,6 +18,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
   const initializedRef = useRef(false);
   const inFlightRef = useRef<AbortController | null>(null);
 
@@ -88,6 +90,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
+    // Hydrate from localStorage immediately for instant UI on first paint.
+    try {
+      const cached = localStorage.getItem('user');
+      if (cached) {
+        setUser(JSON.parse(cached));
+      }
+    } catch (error) {
+      console.error('Failed to read cached user:', error);
+    }
+
     (async () => {
       setLoading(true);
       await refreshUser();
@@ -99,8 +111,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshUser, router]);
 
+  // Revalidate auth on navigation if user is missing.
+  useEffect(() => {
+    if (!user && !loading) {
+      refreshUser();
+    }
+  }, [pathname, user, loading, refreshUser]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, signOut, refreshUser, setUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -7,240 +7,263 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model admin_bookings {
-  id                  String              @id
-  propertyId          String
-  slotId              String
-  customerId          String
-  bookingDate         DateTime
-  startTime           DateTime
-  endTime             DateTime
-  totalPrice          Float
-  status              AdminBookingStatus  @default(PENDING)
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime
-  admin_customers     admin_customers     @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  admin_properties    admin_properties    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  admin_parking_slots admin_parking_slots @relation(fields: [slotId], references: [id], onDelete: Cascade)
+model users {
+  id                  String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName            String                   @map("full_name")
+  email               String                   @unique
+  phone               String?                  @unique
+  nic                 String?                  @unique
+  residentialAddress  String?                  @map("residential_address")
+  passwordHash        String                   @map("password_hash")
+  isActive            Boolean                  @default(true) @map("is_active")
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt           DateTime                 @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  customerBookings    bookings[]               @relation("BookingCustomer")
+  createdBookings     bookings[]               @relation("BookingCreator")
+  bookingStatusEvents booking_status_history[] @relation("BookingStatusChangedBy")
+  counterTransactions counter_transactions[]
+  notifications       notifications[]
+  ownedProperties     properties[]             @relation("PropertyOwner")
+  createdPayments     payments[]               @relation("PaymentCreatedBy")
+  payments            payments[]               @relation("PaymentPayer")
+  roles               user_roles[]
+  vehicles            vehicles[]
+  washJobs            wash_jobs[]              @relation("WashJobWasher")
+
+  @@index([email])
+  @@map("users")
 }
 
-model admin_customers {
-  id             String           @id
-  name           String
-  email          String           @unique
-  phone          String
-  registeredDate DateTime         @default(now())
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime
-  admin_bookings admin_bookings[]
+model roles {
+  id    Int       @id @default(autoincrement()) @db.SmallInt
+  name  RoleName  @unique
+  users user_roles[]
+
+  @@map("roles")
 }
 
-model admin_parking_slots {
-  id               String           @id
-  propertyId       String
-  slotNumber       String
-  status           AdminSlotStatus  @default(AVAILABLE)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime
-  admin_bookings   admin_bookings[]
-  admin_properties admin_properties @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+model user_roles {
+  userId String @db.Uuid @map("user_id")
+  roleId Int    @db.SmallInt @map("role_id")
+  role   roles  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user   users  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([propertyId, slotNumber])
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
 }
 
-model admin_properties {
-  id                  String                @id
-  propertyName        String
-  location            String
-  description         String?
-  pricePerHour        Float                 @default(300)
-  status              AdminPropertyStatus   @default(ACTIVATED)
-  totalSlots          Int                   @default(0)
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime
-  admin_bookings      admin_bookings[]
-  admin_parking_slots admin_parking_slots[]
-}
+model properties {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId           String          @db.Uuid @map("owner_id")
+  propertyName      String          @map("property_name")
+  address           String
+  pricePerHour      Decimal         @default(0) @db.Decimal(10, 2) @map("price_per_hour")
+  pricePerDay       Decimal         @default(0) @db.Decimal(10, 2) @map("price_per_day")
+  currency          String          @default("LKR")
+  status            PropertyStatus  @default(NOT_ACTIVATED)
+  totalSlots        Int             @default(0) @map("total_slots")
+  totalNormalSlots  Int             @default(0) @map("total_normal_slots")
+  totalEvSlots      Int             @default(0) @map("total_ev_slots")
+  totalCarWashSlots Int             @default(0) @map("total_car_wash_slots")
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt         DateTime        @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  bookings          bookings[]
+  owner             users           @relation("PropertyOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  parkingSlots      parking_slots[]
 
-model booking_slots {
-  id            String        @id
-  bookingId     String
-  slotId        String
-  bookings      bookings      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  parking_slots parking_slots @relation(fields: [slotId], references: [id], onDelete: Cascade)
-
-  @@unique([bookingId, slotId])
-}
-
-model bookings {
-  id            String          @id
-  userId        String
-  date          DateTime
-  startTime     DateTime
-  endTime       DateTime
-  duration      Int
-  totalAmount   Float
-  paidAmount    Float           @default(0)
-  status        BookingStatus   @default(PENDING)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime
-  booking_slots booking_slots[]
-  users         users           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payments      payments?
-}
-
-model parking_locations {
-  id            String                @id
-  name          String
-  address       String
-  description   String?
-  totalSlots    Int
-  ownerId       String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime
-  pricePerDay   Float                 @default(2000)
-  pricePerHour  Float                 @default(300)
-  status        ParkingLocationStatus @default(NOT_ACTIVATED)
-  users         users?                @relation(fields: [ownerId], references: [id])
-  parking_slots parking_slots[]
+  @@index([ownerId])
+  @@index([status])
+  @@map("properties")
 }
 
 model parking_slots {
-  id                String            @id
-  number            String
-  zone              String            @default("A")
-  type              SlotType          @default(NORMAL)
-  status            SlotStatus        @default(AVAILABLE)
-  pricePerHour      Float             @default(300)
-  locationId        String
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime
-  booking_slots     booking_slots[]
-  parking_locations parking_locations @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  propertyId   String        @db.Uuid @map("property_id")
+  slotNumber   String        @map("slot_number")
+  slotType     SlotType      @map("slot_type")
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6) @map("created_at")
+  bookingSlots booking_slots[]
+  property     properties    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
-  @@unique([locationId, number])
+  @@unique([propertyId, slotNumber])
+  @@index([propertyId])
+  @@index([slotType])
+  @@map("parking_slots")
+}
+
+model vehicles {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @db.Uuid @map("user_id")
+  vehicleNumber String    @unique @map("vehicle_number")
+  type          String?
+  model         String?
+  color         String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  bookings      bookings[]
+  user          users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("vehicles")
+}
+
+model bookings {
+  id              String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId      String                   @db.Uuid @map("customer_id")
+  propertyId      String                   @db.Uuid @map("property_id")
+  vehicleId       String?                  @db.Uuid @map("vehicle_id")
+  startTime       DateTime                 @db.Timestamptz(6) @map("start_time")
+  endTime         DateTime                 @db.Timestamptz(6) @map("end_time")
+  status          BookingStatus            @default(PENDING)
+  parkingType     SlotType                 @default(NORMAL) @map("parking_type")
+  bookingType     String                   @default("NORMAL") @map("booking_type")
+  createdBy       String?                  @db.Uuid @map("created_by")
+  createdAt       DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime                 @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  bookingSlots    booking_slots[]
+  customer        users                    @relation("BookingCustomer", fields: [customerId], references: [id], onDelete: Restrict)
+  creator         users?                   @relation("BookingCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  counterLogs     counter_transactions[]
+  paymentSummary  payment_summary?
+  payments        payments[]
+  property        properties               @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  statusHistory   booking_status_history[]
+  vehicle         vehicles?                @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([propertyId])
+  @@index([vehicleId])
+  @@index([status])
+  @@index([startTime, endTime])
+  @@index([createdBy])
+  @@map("bookings")
+}
+
+model booking_slots {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId   String        @db.Uuid @map("booking_id")
+  slotId      String        @db.Uuid @map("slot_id")
+  createdAt   DateTime      @default(now()) @db.Timestamptz(6) @map("created_at")
+  booking     bookings      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  slot        parking_slots @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  washJob     wash_jobs?
+
+  @@unique([bookingId, slotId])
+  @@index([slotId])
+  @@map("booking_slots")
+}
+
+model booking_status_history {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId String    @db.Uuid @map("booking_id")
+  oldStatus String?   @map("old_status")
+  newStatus String    @map("new_status")
+  changedBy String?   @db.Uuid @map("changed_by")
+  note      String?
+  changedAt DateTime  @default(now()) @db.Timestamptz(6) @map("changed_at")
+  booking   bookings  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  changer   users?    @relation("BookingStatusChangedBy", fields: [changedBy], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, changedAt])
+  @@index([changedBy])
+  @@map("booking_status_history")
+}
+
+model payment_summary {
+  bookingId   String   @id @db.Uuid @map("booking_id")
+  totalAmount Decimal  @default(0) @db.Decimal(10, 2) @map("total_amount")
+  onlinePaid  Decimal  @default(0) @db.Decimal(10, 2) @map("online_paid")
+  cashPaid    Decimal  @default(0) @db.Decimal(10, 2) @map("cash_paid")
+  balanceDue  Decimal  @default(0) @db.Decimal(10, 2) @map("balance_due")
+  currency    String   @default("LKR")
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  booking     bookings @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("payment_summary")
 }
 
 model payments {
-  id            String        @id
-  bookingId     String        @unique
-  amount        Float
-  method        PaymentMethod @default(CARD)
-  status        PaymentStatus @default(PENDING)
-  transactionId String?
-  paidAt        DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime
-  bookings      bookings      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId      String        @db.Uuid @map("booking_id")
+  payerId        String        @db.Uuid @map("payer_id")
+  amount         Decimal       @db.Decimal(10, 2)
+  currency       String        @default("LKR")
+  method         PaymentMethod
+  paymentStatus  PaymentStatus @default(UNPAID) @map("payment_status")
+  gatewayStatus  GatewayStatus @default(PENDING) @map("gateway_status")
+  gatewayProvider String?      @map("gateway_provider")
+  transactionId  String?       @map("transaction_id")
+  cardLast4      String?       @map("card_last4")
+  cardBrand      String?       @map("card_brand")
+  cardExpMonth   Int?          @map("card_exp_month")
+  cardExpYear    Int?          @map("card_exp_year")
+  paidAt         DateTime?     @db.Timestamptz(6) @map("paid_at")
+  createdBy      String?       @db.Uuid @map("created_by")
+  createdAt      DateTime      @default(now()) @db.Timestamptz(6) @map("created_at")
+  booking        bookings      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  creator        users?        @relation("PaymentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  payer          users         @relation("PaymentPayer", fields: [payerId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId])
+  @@index([paymentStatus])
+  @@index([payerId])
+  @@index([bookingId, paymentStatus])
+  @@map("payments")
 }
 
-model users {
-  id                String              @id
-  email             String              @unique
-  password          String
-  fullName          String
-  contactNo         String?             @unique
-  address           String?
-  vehicleNumber     String?
-  nic               String?             @unique
-  role              Role                @default(CUSTOMER)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime
-  bookings          bookings[]
-  parking_locations parking_locations[]
+model wash_jobs {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingSlotId String      @unique @db.Uuid @map("booking_slot_id")
+  washerId      String?     @db.Uuid @map("washer_id")
+  status        WashStatus  @default(PENDING)
+  acceptedAt    DateTime?   @db.Timestamptz(6) @map("accepted_at")
+  completedAt   DateTime?   @db.Timestamptz(6) @map("completed_at")
+  note          String?
+  createdAt     DateTime    @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime    @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  bookingSlot   booking_slots @relation(fields: [bookingSlotId], references: [id], onDelete: Cascade)
+  washer        users?      @relation("WashJobWasher", fields: [washerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([washerId, status])
+  @@map("wash_jobs")
 }
 
-model washer_bookings {
-  id               String              @id
-  customerId       String
-  slotTime         DateTime
-  vehicle          String
-  serviceType      String
-  status           WasherBookingStatus @default(PENDING)
-  notes            String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime
-  washer_customers washer_customers    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+model counter_transactions {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  counterUserId String   @db.Uuid @map("counter_user_id")
+  bookingId     String   @db.Uuid @map("booking_id")
+  action        String
+  note          String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  booking       bookings @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  counterUser   users    @relation(fields: [counterUserId], references: [id], onDelete: Restrict)
+
+  @@index([counterUserId])
+  @@index([bookingId])
+  @@map("counter_transactions")
 }
 
-model washer_customers {
-  id                String            @id
-  name              String
-  email             String            @unique
-  phone             String
-  vehicleDetails    String
-  otherRelevantInfo String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime
-  washer_bookings   washer_bookings[]
-}
-
-model washer_notifications {
-  id        String   @id
-  type      String
+model notifications {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  title     String
   message   String
-  bookingId String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime
-}
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  user      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-enum AdminBookingStatus {
-  PENDING
-  CONFIRMED
-  COMPLETED
-  CANCELLED
-}
-
-enum AdminPropertyStatus {
-  ACTIVATED
-  DEACTIVATED
-}
-
-enum AdminSlotStatus {
-  AVAILABLE
-  BOOKED
-  DISABLED
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }
 
 enum BookingStatus {
   PENDING
-  CONFIRMED
   PAID
-  COMPLETED
   CANCELLED
-}
-
-enum ParkingLocationStatus {
-  ACTIVATED
-  NOT_ACTIVATED
-}
-
-enum PaymentMethod {
-  CARD
-  CASH
-  ONLINE
-}
-
-enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
-}
-
-enum Role {
-  ADMIN
-  CUSTOMER
-  COUNTER
-  LAND_OWNER
-  WASHER
-}
-
-enum SlotStatus {
-  AVAILABLE
-  OCCUPIED
-  MAINTENANCE
 }
 
 enum SlotType {
@@ -249,9 +272,39 @@ enum SlotType {
   CAR_WASH
 }
 
-enum WasherBookingStatus {
+enum WashStatus {
   PENDING
   ACCEPTED
   COMPLETED
-  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum GatewayStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum PaymentMethod {
+  CARD
+  CASH
+}
+
+enum PropertyStatus {
+  ACTIVATED
+  NOT_ACTIVATED
+}
+
+enum RoleName {
+  ADMIN
+  CUSTOMER
+  LANDOWNER
+  WASHER
+  COUNTER
 }

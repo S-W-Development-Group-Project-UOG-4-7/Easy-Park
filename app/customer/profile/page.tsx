@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../components/AuthProvider'; // Import Auth to get current user data
 
 type InputFieldProps = {
   label: string;
@@ -10,16 +9,19 @@ type InputFieldProps = {
   onChange: (value: string) => void;
 };
 
-type TextAreaFieldProps = {
-  label: string;
-  value: string;
-  placeholder: string;
-  onChange: (value: string) => void;
+type ProfileUpdatePayload = {
+  fullName: string;
+  email: string;
+  contactNo: string;
+  residentialAddress: string;
+  vehicleNumber: string;
+  vehicleType: string;
+  vehicleModel: string;
+  vehicleColor: string;
+  nic: string;
 };
 
 export default function ProfilePage() {
-  const { user } = useAuth();
-  
   const [formData, setFormData] = useState({
     fullName: '',
     nic: '',
@@ -32,19 +34,45 @@ export default function ProfilePage() {
     vehicleColor: ''
   });
 
-  // Load existing user data when page opens
   useEffect(() => {
-    if (user) {
-      setFormData(prev => ({
-        ...prev,
-        fullName: user.fullName || '',
-        email: user.email || '',
-        phone: user.contactNo || '',
-        vehicleNumber: user.vehicleNumber || '',
-        nic: user.nic || '',
-      }));
-    }
-  }, [user]);
+    let isMounted = true;
+    const loadProfile = async () => {
+      try {
+        const response = await fetch('/api/customer/profile', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        const data = payload?.data || payload;
+        const vehicle = data?.vehicle || {};
+        if (!isMounted || !data) return;
+
+        setFormData((prev) => ({
+          ...prev,
+          fullName: data.fullName || prev.fullName,
+          email: data.email || prev.email,
+          phone: data.contactNo || data.phone || prev.phone,
+          nic: data.nic || prev.nic,
+          address: data.residentialAddress || data.address || prev.address,
+          vehicleNumber:
+            vehicle.registrationNumber || vehicle.vehicleNumber || data.vehicleNumber || prev.vehicleNumber,
+          vehicleType: vehicle.type || prev.vehicleType,
+          vehicleModel: vehicle.model || prev.vehicleModel,
+          vehicleColor: vehicle.color || prev.vehicleColor,
+        }));
+      } catch (error) {
+        console.error('Failed to load customer profile:', error);
+      }
+    };
+
+    loadProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -52,11 +80,15 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     try {
-      const updateData: any = {
+      const updateData: ProfileUpdatePayload = {
         fullName: formData.fullName,
         email: formData.email,
         contactNo: formData.phone,
+        residentialAddress: formData.address,
         vehicleNumber: formData.vehicleNumber,
+        vehicleType: formData.vehicleType,
+        vehicleModel: formData.vehicleModel,
+        vehicleColor: formData.vehicleColor,
         nic: formData.nic,
       };
 
@@ -205,20 +237,6 @@ function InputField({ label, value, placeholder, onChange }: InputFieldProps) {
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-lime-400 transition-all"
-      />
-    </div>
-  );
-}
-
-function TextAreaField({ label, value, placeholder, onChange }: TextAreaFieldProps) {
-  return (
-    <div className="space-y-2 col-span-1 md:col-span-2">
-      <label className="block text-sm font-medium text-slate-300">{label}</label>
-      <textarea
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-lime-400 transition-all resize-none h-24"
       />
     </div>
   );

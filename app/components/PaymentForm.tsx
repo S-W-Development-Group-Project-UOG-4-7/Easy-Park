@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 interface PaymentFormProps {
   booking: any;
   total: number;
-  onSuccess: (paymentId: string) => void;
+  onSuccess: (payload: { paymentId: string; booking: any }) => void;
   onClose: () => void;
 }
 
@@ -48,7 +48,7 @@ export default function PaymentForm({ booking, total, onSuccess, onClose }: Paym
       const data = await res.json();
 
       if (data.success) {
-        onSuccess(data.data.id); // Pass the new payment ID back to parent
+        onSuccess({ paymentId: data.data.payment.id, booking: data.data.booking });
       } else {
         setError(data.error || 'Payment failed. Please try again.');
       }

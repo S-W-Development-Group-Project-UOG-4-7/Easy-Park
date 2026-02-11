@@ -9,36 +9,44 @@ import {
   notFoundResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
+import { refreshPaymentSummary } from '@/lib/payment-summary';
 
-// GET all payments for the authenticated user
+async function resolveUserId(authUser: { email?: string; userId?: string }) {
+  if (authUser.userId) return authUser.userId;
+  if (!authUser.email) return null;
+  const user = await prisma.users.findUnique({
+    where: { email: authUser.email.toLowerCase() },
+    select: { id: true },
+  });
+  return user?.id || null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
+    if (!authUser) return unauthorizedResponse();
+
+    const userId = await resolveUserId(authUser);
+    if (!userId) return unauthorizedResponse('User not found');
 
     const payments = await prisma.payments.findMany({
       where: {
-        bookings: {
-          userId: authUser.userId,
+        booking: {
+          customerId: userId,
         },
       },
       include: {
-        bookings: {
+        booking: {
           include: {
-            booking_slots: {
-              include: {
-                parking_slots: true,
-              },
+            bookingSlots: {
+              include: { slot: true },
             },
+            property: true,
+            paymentSummary: true,
           },
         },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
 
     return successResponse(payments);
@@ -48,81 +56,69 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST process a payment
 export async function POST(request: NextRequest) {
   try {
     const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
+    if (!authUser) return unauthorizedResponse();
+
+    const userId = await resolveUserId(authUser);
+    if (!userId) return unauthorizedResponse('User not found');
 
     const body = await request.json();
-    const { bookingId, amount, method, cardDetails } = body;
+    const bookingId = String(body?.bookingId || '').trim();
+    const amount = Number(body?.amount);
+    const method = String(body?.method || 'CARD').toUpperCase() === 'CASH' ? 'CASH' : 'CARD';
 
-    // Validation
-    if (!bookingId || !amount) {
-      return errorResponse('Booking ID and amount are required');
+    if (!bookingId || !Number.isFinite(amount) || amount <= 0) {
+      return errorResponse('Booking ID and valid amount are required');
     }
 
-    // Find the booking
     const booking = await prisma.bookings.findFirst({
       where: {
         id: bookingId,
-        userId: authUser.userId,
+        customerId: userId,
       },
-      include: {
-        payments: true,
-      },
+      include: { paymentSummary: true },
     });
+    if (!booking) return notFoundResponse('Booking not found');
+    if (booking.status === 'CANCELLED') return errorResponse('Cannot pay for a cancelled booking');
 
-    if (!booking) {
-      return notFoundResponse('Booking not found');
+    const summary = booking.paymentSummary;
+    const total = Number(summary?.totalAmount ?? 0);
+    const paid = Number(summary?.onlinePaid ?? 0) + Number(summary?.cashPaid ?? 0);
+    const balanceDue = Math.max(0, Number(summary?.balanceDue ?? total - paid));
+    if (amount > balanceDue) {
+      return errorResponse('Payment amount exceeds balance due');
     }
 
-    if (booking.payments) {
-      return errorResponse('Payment already exists for this booking');
-    }
-
-    if (booking.status === 'CANCELLED') {
-      return errorResponse('Cannot pay for a cancelled booking');
-    }
-
-    // Simulate payment processing
-    // In production, integrate with a real payment gateway like Stripe
-    const transactionId = `TXN_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Create payment and update booking status in a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      const payment = await tx.payments.create({
+    const payment = await prisma.$transaction(async (tx) => {
+      const created = await tx.payments.create({
         data: {
-          id: crypto.randomUUID(),
-          bookings: { connect: { id: bookingId } },
+          bookingId,
+          payerId: userId,
           amount,
-          method: method || 'CARD',
-          status: 'COMPLETED',
-          transactionId,
+          currency: summary?.currency || 'LKR',
+          method,
+          paymentStatus: 'PAID',
+          gatewayStatus: method === 'CARD' ? 'COMPLETED' : 'PENDING',
+          gatewayProvider: method === 'CARD' ? 'DEMO_GATEWAY' : null,
+          transactionId: method === 'CARD' ? `TXN_${Date.now()}_${Math.random().toString(36).slice(2, 9)}` : null,
           paidAt: new Date(),
-          updatedAt: new Date(),
+          createdBy: userId,
         },
       });
 
-      await tx.bookings.update({
-        where: { id: bookingId },
-        data: {
-          status: 'PAID',
-          paidAmount: amount,
-          updatedAt: new Date(),
-        },
-      });
-
-      return payment;
+      const updatedSummary = await refreshPaymentSummary(tx, bookingId);
+      if (updatedSummary && Number(updatedSummary.balanceDue) <= 0) {
+        await tx.bookings.update({ where: { id: bookingId }, data: { status: 'PAID' } });
+      }
+      return created;
     });
 
     return createdResponse(
       {
-        payment: result,
-        transactionId,
+        payment,
+        transactionId: payment.transactionId,
       },
       'Payment processed successfully'
     );

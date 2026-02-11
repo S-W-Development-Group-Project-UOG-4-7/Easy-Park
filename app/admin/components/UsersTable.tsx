@@ -7,7 +7,8 @@ type AdminUser = {
   fullName: string;
   email: string;
   role: string;
-  contactNo: string | null;
+  phone: string | null;
+  contactNo?: string | null;
   nic: string | null;
   createdAt: string;
 };
@@ -16,6 +17,8 @@ interface UsersTableProps {
   users: AdminUser[];
   loading: boolean;
   error?: string;
+  title?: string;
+  emptyMessage?: string;
   onRefresh: () => void;
   onView: (id: string) => void;
   onEdit: (id: string) => void;
@@ -26,6 +29,8 @@ export default function UsersTable({
   users,
   loading,
   error,
+  title = 'Users',
+  emptyMessage = 'No users found.',
   onRefresh,
   onView,
   onEdit,
@@ -36,7 +41,7 @@ export default function UsersTable({
   return (
     <div className="rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/60 p-6 shadow-lg">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Added Users</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
         <button
           onClick={onRefresh}
           className="text-xs font-semibold text-lime-500 hover:text-lime-400 transition"
@@ -50,7 +55,7 @@ export default function UsersTable({
       {loading ? (
         <div className="py-10 text-center text-sm text-slate-500">Loading users...</div>
       ) : rows.length === 0 ? (
-        <div className="py-10 text-center text-sm text-slate-500">No users added yet.</div>
+        <div className="py-10 text-center text-sm text-slate-500">{emptyMessage}</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -74,7 +79,9 @@ export default function UsersTable({
                       {user.role}
                     </span>
                   </td>
-                  <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{user.contactNo || '-'}</td>
+                  <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">
+                    {user.phone || user.contactNo || '-'}
+                  </td>
                   <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">{user.nic || '-'}</td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">

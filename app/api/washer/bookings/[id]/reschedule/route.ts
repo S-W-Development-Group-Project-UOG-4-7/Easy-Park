@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth';
 import {
   successResponse,
   errorResponse,
@@ -8,86 +7,77 @@ import {
   serverErrorResponse,
   notFoundResponse,
 } from '@/lib/api-response';
+import { canAccessWasherRoutes, mapWashJobToWasherBooking, resolveWasherUser } from '@/app/api/washer/utils';
 
-/**
- * PATCH /api/washer/bookings/:id/reschedule
- * Update the slotTime for a booking
- * Only PENDING or ACCEPTED bookings can be rescheduled
- */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only WASHER, ADMIN, and COUNTER roles can reschedule bookings
-    if (!['WASHER', 'ADMIN', 'COUNTER'].includes(authUser.role)) {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (!canAccessWasherRoutes(auth.role)) {
       return errorResponse('Access denied. Insufficient permissions.', 403);
     }
 
     const { id } = await params;
     const body = await request.json();
-    const { slotTime } = body;
+    const slotTime = String(body?.slotTime || '').trim();
+    if (!slotTime) return errorResponse('Missing required field: slotTime');
 
-    // Validate required field
-    if (!slotTime) {
-      return errorResponse('Missing required field: slotTime');
-    }
+    const newStart = new Date(slotTime);
+    if (Number.isNaN(newStart.getTime())) return errorResponse('Invalid slotTime format.');
+    if (newStart <= new Date()) return errorResponse('Cannot reschedule to a past date/time.');
 
-    // Validate the new slot time is a valid date
-    const newSlotTime = new Date(slotTime);
-    if (isNaN(newSlotTime.getTime())) {
-      return errorResponse('Invalid slotTime format. Please provide a valid date/time.');
-    }
-
-    // Ensure the new slot time is in the future
-    if (newSlotTime <= new Date()) {
-      return errorResponse('Cannot reschedule to a past date/time.');
-    }
-
-    // Find the booking
-    const booking = await prisma.washer_bookings.findUnique({
+    const existing = await prisma.wash_jobs.findUnique({
       where: { id },
-      include: { washer_customers: true },
+      include: {
+        bookingSlot: {
+          include: {
+            booking: { select: { id: true, status: true, endTime: true, startTime: true } },
+          },
+        },
+      },
+    });
+    if (!existing) return notFoundResponse('Booking not found');
+    if (existing.bookingSlot.booking.status === 'CANCELLED') {
+      return errorResponse('Cannot reschedule a cancelled booking.', 400);
+    }
+    if (!['PENDING', 'ACCEPTED'].includes(existing.status)) {
+      return errorResponse(`Cannot reschedule a booking with status "${existing.status}".`, 400);
+    }
+
+    const durationMs =
+      existing.bookingSlot.booking.endTime.getTime() - existing.bookingSlot.booking.startTime.getTime();
+    const newEnd = new Date(newStart.getTime() + Math.max(durationMs, 60 * 60 * 1000));
+
+    await prisma.bookings.update({
+      where: { id: existing.bookingSlot.booking.id },
+      data: {
+        startTime: newStart,
+        endTime: newEnd,
+      },
     });
 
-    if (!booking) {
-      return notFoundResponse('Booking not found');
-    }
-
-    // Only PENDING or ACCEPTED bookings can be rescheduled
-    if (!['PENDING', 'ACCEPTED'].includes(booking.status)) {
-      return errorResponse(
-        `Cannot reschedule a booking with status "${booking.status}". Only PENDING or ACCEPTED bookings can be rescheduled.`,
-        400
-      );
-    }
-
-    // Update the booking's slot time
-    const updatedBooking = await prisma.washer_bookings.update({
+    const updated = await prisma.wash_jobs.findUnique({
       where: { id },
-      data: {
-        slotTime: newSlotTime,
-      },
       include: {
-        washer_customers: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            vehicleDetails: true,
+        bookingSlot: {
+          include: {
+            slot: { select: { slotType: true } },
+            booking: {
+              include: {
+                customer: { select: { id: true, fullName: true, email: true, phone: true } },
+                vehicle: { select: { vehicleNumber: true } },
+              },
+            },
           },
         },
       },
     });
 
-    return successResponse(updatedBooking, 'Booking rescheduled successfully');
+    if (!updated) return notFoundResponse('Booking not found');
+    return successResponse(mapWashJobToWasherBooking(updated), 'Booking rescheduled successfully');
   } catch (error) {
     console.error('Error rescheduling washer booking:', error);
     return serverErrorResponse('Failed to reschedule washer booking');

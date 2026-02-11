@@ -1,34 +1,28 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Calendar, Building2, Eye, Clock, DollarSign, BookOpen } from 'lucide-react';
+import { Search, Calendar, Building2, Clock, DollarSign, BookOpen } from 'lucide-react';
 import ParkingSlotVisualization from '../components/ParkingSlotVisualization';
-import { propertiesApi, bookingsApi } from '../../services/api';
+import CustomerDetailsModal from '../components/CustomerDetailsModal';
+import PaymentDetailsModal from '../components/PaymentDetailsModal';
+import {
+  propertiesApi,
+  bookingsApi,
+  customersApi,
+  type AdminBookingRow,
+  type AdminCustomerProfile,
+  type BookingPaymentDetails,
+} from '../../services/api';
 import {
   adminCard,
   adminInputWithIcon,
-  adminPrimaryButtonSm,
   adminSecondaryButton,
 } from '../components/adminTheme';
 
-interface Booking {
-  id: string;
-  customerId: string;
-  name: string;
-  address: string;
-  propertyName: string;
-  propertyId: string;
-  parkingSlot: string;
-  parkingSlotId: string;
-  date: string;
-  time: string;
-  parkingType: 'Car Washing' | 'Normal' | 'EV Slot';
-  hoursSelected: number;
-  checkOutTime: string;
-  paymentAmount: number;
-  paymentMethod: string;
-  extras?: string;
-}
+type Booking = Omit<AdminBookingRow, 'address'> & {
+  customerEmail: string;
+  vehicleNumber: string;
+};
 
 interface Property {
   id: string;
@@ -49,10 +43,11 @@ interface FilterStats {
 export default function ViewBookingDetailsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [propertiesError, setPropertiesError] = useState<string | null>(null);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
-  const [expandedBooking, setExpandedBooking] = useState<string | null>(null);
   const [sortField, setSortField] = useState<keyof Booking>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [searchTerm, setSearchTerm] = useState('');
@@ -61,6 +56,14 @@ export default function ViewBookingDetailsPage() {
   const [showSlotVisualization, setShowSlotVisualization] = useState(false);
   const itemsPerPage = 10;
   const [loading, setLoading] = useState(true);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<AdminCustomerProfile | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [selectedPaymentDetails, setSelectedPaymentDetails] = useState<BookingPaymentDetails | null>(null);
 
   useEffect(() => {
     fetchProperties();
@@ -76,73 +79,52 @@ export default function ViewBookingDetailsPage() {
 
   const fetchProperties = async () => {
     try {
+      setPropertiesError(null);
       const data = await propertiesApi.getAll();
-      setProperties(data);
+      setProperties(
+        data.map((property) => ({
+          id: String(property.id),
+          name: property.name,
+          address: property.address,
+          slots: (property.slots || []).map((slot) => ({
+            id: String(slot.id),
+            number: slot.number,
+            type: slot.type === 'EV' ? 'EV Slot' : slot.type,
+          })),
+        }))
+      );
     } catch (error) {
       console.error('Error fetching properties:', error);
-      // Mock data
-      setProperties([
-        {
-          id: '1',
-          name: 'Downtown Parking',
-          address: '123 Main St, City',
-          slots: [
-            { id: 's1', number: 'A-01', type: 'Normal' },
-            { id: 's2', number: 'A-02', type: 'Normal' },
-            { id: 's3', number: 'A-03', type: 'Normal' },
-            { id: 's4', number: 'B-01', type: 'Car Washing' },
-            { id: 's5', number: 'B-02', type: 'Car Washing' },
-            { id: 's6', number: 'C-01', type: 'EV Slot' },
-            { id: 's7', number: 'C-02', type: 'EV Slot' },
-          ],
-        },
-        {
-          id: '2',
-          name: 'Mall Parking',
-          address: '456 Oak Ave, City',
-          slots: [
-            { id: 's8', number: 'D-01', type: 'Normal' },
-            { id: 's9', number: 'D-02', type: 'Normal' },
-            { id: 's10', number: 'E-01', type: 'Car Washing' },
-            { id: 's11', number: 'F-01', type: 'EV Slot' },
-          ],
-        },
-      ]);
+      setPropertiesError(error instanceof Error ? error.message : 'Failed to load properties');
+      setProperties([]);
     }
   };
 
   const fetchBookings = async () => {
     setLoading(true);
     try {
+      setBookingsError(null);
       const data = await bookingsApi.getAll({
         propertyId: selectedProperty,
         date: selectedDate,
         time: selectedTime,
       });
-      setBookings(data);
+      console.log('[AdminBookings] bookings API payload', data);
+      const missingCustomerIds = data.filter((booking) => !booking.customerId);
+      if (missingCustomerIds.length > 0) {
+        console.warn('[AdminBookings] bookings missing customerId', missingCustomerIds);
+      }
+      setBookings(
+        data.map((booking) => ({
+          ...booking,
+          customerEmail: booking.customerEmail || 'N/A',
+          vehicleNumber: booking.vehicleNumber || 'N/A',
+        }))
+      );
     } catch (error) {
       console.error('Error fetching bookings:', error);
-      // Fallback mock data for when server is not running
-      setBookings([
-        {
-          id: '1',
-          customerId: 'C001',
-          name: 'John Doe',
-          address: '123 Main St, City',
-          propertyName: 'Downtown Parking',
-          propertyId: '1',
-          parkingSlot: 'A-01',
-          parkingSlotId: 's1',
-          date: '2024-01-15',
-          time: '10:00',
-          parkingType: 'Normal',
-          hoursSelected: 3,
-          checkOutTime: '2024-01-15T15:30:00',
-          paymentAmount: 15.00,
-          paymentMethod: 'Credit Card',
-          extras: 'None',
-        },
-      ]);
+      setBookingsError(error instanceof Error ? error.message : 'Failed to load bookings');
+      setBookings([]);
     } finally {
       setLoading(false);
     }
@@ -187,13 +169,15 @@ export default function ViewBookingDetailsPage() {
     const matchesSearch = !searchTerm || 
       (booking.name || '').toLowerCase().includes(searchLower) ||
       (booking.customerId || '').toLowerCase().includes(searchLower) ||
+      (booking.customerEmail || '').toLowerCase().includes(searchLower) ||
+      (booking.vehicleNumber || '').toLowerCase().includes(searchLower) ||
       (booking.propertyName || '').toLowerCase().includes(searchLower) ||
       (booking.parkingSlot || '').toLowerCase().includes(searchLower);
     
     // Property filter - match by ID or by name
     let matchesProperty = selectedProperty === 'all';
     if (!matchesProperty) {
-      const selectedProp = properties.find(p => p.id === selectedProperty);
+      const selectedProp = properties.find(p => String(p.id) === selectedProperty);
       matchesProperty = booking.propertyId === selectedProperty || 
         (selectedProp ? booking.propertyName === selectedProp.name : false);
     }
@@ -224,15 +208,54 @@ export default function ViewBookingDetailsPage() {
 
   const totalPages = Math.ceil(filteredBookings.length / itemsPerPage);
 
-  const viewBookingDetails = (bookingId: string) => {
-    setExpandedBooking(expandedBooking === bookingId ? null : bookingId);
+  const viewCustomerDetails = async (booking: Booking) => {
+    console.log('[AdminBookings] clicked booking payload', booking);
+    setShowCustomerModal(true);
+    setCustomerLoading(true);
+    setCustomerError(null);
+    setSelectedCustomer(null);
+
+    const customerId = String(booking.customerId || '').trim();
+    if (!customerId || customerId.toUpperCase() === 'N/A') {
+      setCustomerError('This booking does not contain a valid customerId.');
+      setCustomerLoading(false);
+      return;
+    }
+
+    try {
+      const customer = await customersApi.getById(customerId);
+      console.log('[AdminBookings] customer API payload', customer);
+      setSelectedCustomer(customer);
+    } catch (error) {
+      console.error('Error fetching customer profile:', error);
+      setCustomerError(error instanceof Error ? error.message : 'Failed to fetch customer details');
+    } finally {
+      setCustomerLoading(false);
+    }
+  };
+
+  const viewPaymentDetails = async (booking: Booking) => {
+    setShowPaymentModal(true);
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setSelectedPaymentDetails(null);
+
+    try {
+      const paymentDetails = await bookingsApi.getPaymentDetails(booking.id);
+      setSelectedPaymentDetails(paymentDetails);
+    } catch (error) {
+      console.error('Error fetching payment details:', error);
+      setPaymentError(error instanceof Error ? error.message : 'Failed to fetch payment details');
+    } finally {
+      setPaymentLoading(false);
+    }
   };
 
   // Get parking slots for visualization
   const getParkingSlotsForVisualization = () => {
     if (selectedProperty === 'all') return null;
     
-    const property = properties.find(p => p.id === selectedProperty);
+    const property = properties.find(p => String(p.id) === selectedProperty);
     if (!property || !property.slots) return null;
 
     const bookedSlotIds = new Set(
@@ -254,7 +277,7 @@ export default function ViewBookingDetailsPage() {
 
   const parkingSlots = getParkingSlotsForVisualization();
   const selectedPropertyName = selectedProperty !== 'all' 
-    ? properties.find(p => p.id === selectedProperty)?.name || 'Property'
+    ? properties.find(p => String(p.id) === selectedProperty)?.name || 'Property'
     : '';
 
   return (
@@ -265,6 +288,14 @@ export default function ViewBookingDetailsPage() {
           Filter and view all customer bookings
         </p>
       </div>
+
+      {(propertiesError || bookingsError) && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+          {propertiesError ? `Properties: ${propertiesError}` : null}
+          {propertiesError && bookingsError ? ' | ' : null}
+          {bookingsError ? `Bookings: ${bookingsError}` : null}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -374,9 +405,9 @@ export default function ViewBookingDetailsPage() {
             <thead>
               <tr className="border-b dark:border-slate-800/60 border-slate-200/60">
                 {[
-                  { key: 'customerId', label: 'Customer ID', sortable: true },
-                  { key: 'name', label: 'Name', sortable: true },
-                  { key: 'address', label: 'Address', sortable: true },
+                  { key: 'name', label: 'Customer Name', sortable: true },
+                  { key: 'customerEmail', label: 'Customer Email', sortable: true },
+                  { key: 'vehicleNumber', label: 'Vehicle Number', sortable: true },
                   { key: 'propertyName', label: 'Property', sortable: true },
                   { key: 'parkingSlot', label: 'Parking Slot', sortable: true },
                   { key: 'date', label: 'Date', sortable: true },
@@ -414,60 +445,33 @@ export default function ViewBookingDetailsPage() {
                 </tr>
               ) : (
                 paginatedBookings.map((booking) => (
-                  <React.Fragment key={booking.id}>
-                    <tr
-                      className="transition-colors hover:bg-slate-100/50 dark:hover:bg-slate-800/30"
-                    >
-                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.customerId}</td>
-                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.name}</td>
-                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.address}</td>
-                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.propertyName}</td>
-                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.parkingSlot}</td>
-                      <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.date}</td>
-                      <td className="px-6 py-4 text-sm">
+                  <tr
+                    key={booking.id}
+                    className="transition-colors hover:bg-slate-100/50 dark:hover:bg-slate-800/30"
+                  >
+                    <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.customerEmail || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.vehicleNumber || 'N/A'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.propertyName}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.parkingSlot}</td>
+                    <td className="px-6 py-4 text-sm text-slate-900 dark:text-slate-100">{booking.date}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => viewBookingDetails(booking.id)}
-                          className={`flex items-center space-x-2 ${adminPrimaryButtonSm}`}
+                          onClick={() => viewPaymentDetails(booking)}
+                          className={`${adminSecondaryButton} px-3 py-1.5 text-xs`}
                         >
-                          <Eye className="h-4 w-4" />
-                          <span>View</span>
+                          View Payment
                         </button>
-                      </td>
-                    </tr>
-                    {expandedBooking === booking.id && (
-                      <tr>
-                        <td colSpan={7} className="px-6 py-6 bg-slate-50/50 dark:bg-slate-950/40">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div>
-                              <h4 className="mb-3 text-sm font-semibold dark:text-[#E5E7EB] text-[#111827]">Customer Information</h4>
-                              <div className="space-y-2 text-sm">
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Name:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.name}</span></p>
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Address:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.address}</span></p>
-                              </div>
-                            </div>
-                            <div>
-                              <h4 className="mb-3 text-sm font-semibold dark:text-[#E5E7EB] text-[#111827]">Booking Details</h4>
-                              <div className="space-y-2 text-sm">
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Property:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.propertyName}</span></p>
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Parking Slot:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.parkingSlot}</span></p>
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Parking Type:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.parkingType}</span></p>
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Hours Selected:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.hoursSelected}</span></p>
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Check Out Time:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{new Date(booking.checkOutTime).toLocaleString()}</span></p>
-                              </div>
-                            </div>
-                            <div>
-                              <h4 className="mb-3 text-sm font-semibold dark:text-[#E5E7EB] text-[#111827]">Payment Details</h4>
-                              <div className="space-y-2 text-sm">
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Amount:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">Rs. {booking.paymentAmount.toFixed(2)}</span></p>
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Method:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.paymentMethod}</span></p>
-                                <p><span className="dark:text-[#94A3B8] text-[#6B7280]">Extras:</span> <span className="dark:text-[#E5E7EB] text-[#111827]">{booking.extras || 'None'}</span></p>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                      <button
+                        onClick={() => viewCustomerDetails(booking)}
+                        className={`${adminSecondaryButton} px-3 py-1.5 text-xs`}
+                      >
+                        View Customer
+                      </button>
+                      </div>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
@@ -501,6 +505,32 @@ export default function ViewBookingDetailsPage() {
           </div>
         )}
       </div>
+
+      <CustomerDetailsModal
+        isOpen={showCustomerModal}
+        onClose={() => {
+          setShowCustomerModal(false);
+          setCustomerError(null);
+          setCustomerLoading(false);
+          setSelectedCustomer(null);
+        }}
+        loading={customerLoading}
+        error={customerError}
+        customer={selectedCustomer}
+      />
+
+      <PaymentDetailsModal
+        isOpen={showPaymentModal}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setPaymentLoading(false);
+          setPaymentError(null);
+          setSelectedPaymentDetails(null);
+        }}
+        loading={paymentLoading}
+        error={paymentError}
+        details={selectedPaymentDetails}
+      />
     </div>
   );
 }

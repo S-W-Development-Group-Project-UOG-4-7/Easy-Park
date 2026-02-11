@@ -6,7 +6,7 @@ const protectedRoutes: { path: string; roles: string[] }[] = [
   { path: '/customer', roles: ['CUSTOMER', 'ADMIN'] },
   { path: '/admin', roles: ['ADMIN'] },
   { path: '/counter', roles: ['COUNTER', 'ADMIN'] },
-  { path: '/land_owner', roles: ['LAND_OWNER', 'ADMIN'] },
+  { path: '/land_owner', roles: ['LANDOWNER', 'LAND_OWNER', 'ADMIN'] },
   { path: '/washer', roles: ['WASHER', 'ADMIN'] },
 ];
 
@@ -46,16 +46,17 @@ export function middleware(request: NextRequest) {
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
       const payload = JSON.parse(atob(padded));
-      const userRole = payload.role;
+      let userRole = String(payload.role || '').toUpperCase();
+      if (userRole === 'LAND_OWNER') userRole = 'LANDOWNER';
 
       // Check if user has required role for this route
-      if (!protectedRoute.roles.includes(userRole)) {
+      if (!userRole || !protectedRoute.roles.includes(userRole)) {
         // Redirect to appropriate page based on their role
         const roleRedirects: Record<string, string> = {
           ADMIN: '/admin',
           CUSTOMER: '/customer',
           COUNTER: '/counter',
-          LAND_OWNER: '/land_owner',
+          LANDOWNER: '/land_owner',
           WASHER: '/washer',
         };
         const redirectPath = roleRedirects[userRole] || '/';

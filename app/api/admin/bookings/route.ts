@@ -1,85 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
+import { BookingStatus } from '@prisma/client';
 
-/**
- * Admin Bookings API
- * Uses the unified Booking table - same table used by frontend
- * 
- * This ensures:
- * - All bookings created from frontend are visible in admin
- * - Admin can view, filter, and search bookings
- * - Bookings are grouped by property as needed
- * 
- * View Booking Details Table Fields:
- * - Booking ID = Booking.id
- * - Property ID = via BookingSlot -> ParkingSlot -> ParkingLocation
- * - Property Name = ParkingLocation.name
- * - Booking Date = Booking.date
- * - Start Time = Booking.startTime
- * - End Time = Booking.endTime
- * - Slot Number = ParkingSlot.number
- * - User ID / Customer Name = User.id / User.fullName
- * - Booking Status = Booking.status
- */
+function minutesFromHHmm(value: string) {
+  const [h, m] = value.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
 
-// GET all bookings for admin with filters
+function computeDurationHours(start: Date, end: Date) {
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60)));
+}
+
+function slotZone(slotNumber: string) {
+  const prefix = slotNumber.toUpperCase().replace(/[0-9]+$/, '');
+  return prefix || 'A';
+}
+
+function paymentCollectionStatus(total: number, onlinePaid: number, cashPaid: number) {
+  const paid = onlinePaid + cashPaid;
+  if (paid <= 0) return 'UNPAID';
+  if (paid >= total) return 'PAID';
+  return 'PARTIAL';
+}
+
+function isAdmin(role?: string) {
+  return role === 'ADMIN';
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin access required' },
-        { status: 403 }
-      );
+    const authUser = getAuthUser(request);
+    if (!authUser || !isAdmin(authUser.role)) {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId'); // Filter by property
-    const date = searchParams.get('date'); // Filter by date (YYYY-MM-DD)
-    const startTime = searchParams.get('startTime'); // Filter by start time
-    const endTime = searchParams.get('endTime'); // Filter by end time
-    const status = searchParams.get('status'); // Filter by status
-    const search = searchParams.get('search'); // Search by customer name/email
+    const propertyId = searchParams.get('propertyId');
+    const date = searchParams.get('date');
+    const startTime = searchParams.get('startTime');
+    const endTime = searchParams.get('endTime');
+    const status = searchParams.get('status');
+    const search = searchParams.get('search');
     const groupByProperty = searchParams.get('groupByProperty') === 'true';
 
-    // Build where clause
-    const whereClause: any = {};
+    const where: {
+      propertyId?: string;
+      status?: 'PENDING' | 'PAID' | 'CANCELLED';
+      startTime?: { gte: Date; lte: Date };
+      customer?: {
+        OR: Array<{ fullName?: { contains: string; mode: 'insensitive' }; email?: { contains: string; mode: 'insensitive' } }>;
+      };
+    } = {};
 
-    // Filter by status
+    if (propertyId) where.propertyId = propertyId;
     if (status) {
-      whereClause.status = status.toUpperCase();
+      const normalized = status.toUpperCase();
+      if (normalized === 'PENDING' || normalized === 'PAID' || normalized === 'CANCELLED') {
+        where.status = normalized;
+      }
     }
-
-    // Filter by date
     if (date) {
-      const filterDate = new Date(date);
-      const startOfDay = new Date(filterDate);
+      const day = new Date(date);
+      const startOfDay = new Date(day);
       startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(filterDate);
+      const endOfDay = new Date(day);
       endOfDay.setHours(23, 59, 59, 999);
-      
-      whereClause.date = {
-        gte: startOfDay,
-        lte: endOfDay,
-      };
+      where.startTime = { gte: startOfDay, lte: endOfDay };
     }
-
-    // Filter by property
-    if (propertyId) {
-      whereClause.booking_slots = {
-        some: {
-          parking_slots: {
-            locationId: propertyId,
-          },
-        },
-      };
-    }
-
-    // Search by customer name or email
     if (search) {
-      whereClause.users = {
+      where.customer = {
         OR: [
           { fullName: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
@@ -88,220 +79,220 @@ export async function GET(request: NextRequest) {
     }
 
     const bookings = await prisma.bookings.findMany({
-      where: whereClause,
+      where,
       include: {
-        users: {
+        customer: {
           select: {
             id: true,
             fullName: true,
             email: true,
-            contactNo: true,
+            phone: true,
+            residentialAddress: true,
+            nic: true,
+          },
+        },
+        vehicle: {
+          select: {
             vehicleNumber: true,
           },
         },
-        booking_slots: {
+        property: {
+          select: {
+            id: true,
+            propertyName: true,
+            address: true,
+          },
+        },
+        bookingSlots: {
           include: {
-            parking_slots: {
-              include: {
-                parking_locations: true,
+            slot: {
+              select: {
+                id: true,
+                slotNumber: true,
+                slotType: true,
               },
             },
           },
         },
-        payments: true,
+        paymentSummary: true,
       },
-      orderBy: [
-        { date: 'desc' },
-        { startTime: 'desc' },
-      ],
+      orderBy: [{ startTime: 'desc' }, { createdAt: 'desc' }],
     });
 
-    // Filter by time range if provided (post-fetch filtering for complex time logic)
-    let filteredBookings = bookings;
-    
-    if (startTime || endTime) {
-      filteredBookings = bookings.filter((booking) => {
-        const bookingStart = new Date(booking.startTime);
-        const bookingEnd = new Date(booking.endTime);
-        
-        if (startTime) {
-          const [filterHour, filterMin] = startTime.split(':').map(Number);
-          const filterStartMinutes = filterHour * 60 + filterMin;
-          const bookingStartMinutes = bookingStart.getHours() * 60 + bookingStart.getMinutes();
-          if (bookingStartMinutes < filterStartMinutes) return false;
-        }
-        
-        if (endTime) {
-          const [filterHour, filterMin] = endTime.split(':').map(Number);
-          const filterEndMinutes = filterHour * 60 + filterMin;
-          const bookingEndMinutes = bookingEnd.getHours() * 60 + bookingEnd.getMinutes();
-          if (bookingEndMinutes > filterEndMinutes) return false;
-        }
-        
-        return true;
-      });
-    }
+    const startMinutes = startTime ? minutesFromHHmm(startTime) : null;
+    const endMinutes = endTime ? minutesFromHHmm(endTime) : null;
 
-    // Transform to Admin Booking Details format
-    const adminBookings = filteredBookings.map((booking) => {
-      const firstSlot = booking.booking_slots[0]?.parking_slots;
-      const property = firstSlot?.parking_locations;
-      const user = booking.users;
-      const payment = booking.payments;
+    const filtered = bookings.filter((booking) => {
+      if (startMinutes === null && endMinutes === null) return true;
+      const bookingStart = booking.startTime.getHours() * 60 + booking.startTime.getMinutes();
+      const bookingEnd = booking.endTime.getHours() * 60 + booking.endTime.getMinutes();
+      if (startMinutes !== null && bookingStart < startMinutes) return false;
+      if (endMinutes !== null && bookingEnd > endMinutes) return false;
+      return true;
+    });
+
+    const payload = filtered.map((booking) => {
+      const totalAmount = Number(booking.paymentSummary?.totalAmount ?? 0);
+      const onlinePaid = Number(booking.paymentSummary?.onlinePaid ?? 0);
+      const cashPaid = Number(booking.paymentSummary?.cashPaid ?? 0);
+      const paidAmount = onlinePaid + cashPaid;
+      const balanceDue = Math.max(0, Number(booking.paymentSummary?.balanceDue ?? totalAmount - paidAmount));
+      const duration = computeDurationHours(booking.startTime, booking.endTime);
+      const allSlots = booking.bookingSlots.map((bookingSlot) => ({
+        id: bookingSlot.slot.id,
+        number: bookingSlot.slot.slotNumber,
+        zone: slotZone(bookingSlot.slot.slotNumber),
+        type: bookingSlot.slot.slotType,
+      }));
+      const firstSlot = allSlots[0];
 
       return {
-        // View Booking Details Table Fields
         bookingId: booking.id,
         bookingNumber: `BK-${booking.id.slice(-6).toUpperCase()}`,
-        propertyId: property?.id || null,
-        propertyName: property?.name || 'Unknown',
-        propertyAddress: property?.address || '',
-        bookingDate: booking.date,
+        propertyId: booking.property.id,
+        propertyName: booking.property.propertyName,
+        propertyAddress: booking.property.address,
+        bookingDate: booking.startTime,
         startTime: booking.startTime,
         endTime: booking.endTime,
         slotNumber: firstSlot?.number || 'N/A',
         slotZone: firstSlot?.zone || 'A',
-        userId: user.id,
-        customerName: user.fullName,
-        customerEmail: user.email,
-        customerPhone: user.contactNo,
-        vehicleNumber: user.vehicleNumber,
+        customerId: booking.customer.id,
+        userId: booking.customer.id,
+        customerName: booking.customer.fullName,
+        customerEmail: booking.customer.email,
+        customerPhone: booking.customer.phone,
+        customerAddress: booking.customer.residentialAddress,
+        customerNic: booking.customer.nic,
+        vehicleNumber: booking.vehicle?.vehicleNumber || null,
         bookingStatus: booking.status,
-        // Additional useful fields
-        duration: booking.duration,
-        totalAmount: booking.totalAmount,
-        paidAmount: booking.paidAmount,
-        paymentStatus: payment?.status || 'PENDING',
-        paymentMethod: payment?.method || null,
-        allSlots: booking.booking_slots.map((bs) => ({
-          id: bs.parking_slots.id,
-          number: bs.parking_slots.number,
-          zone: bs.parking_slots.zone,
-          type: bs.parking_slots.type,
-        })),
+        status: booking.status,
+        duration,
+        bookingType: booking.bookingType,
+        extrasCost: 0,
+        extras: null,
+        checkInTime: booking.startTime,
+        checkOutTime: booking.endTime,
+        totalAmount,
+        paidAmount,
+        onlinePaid,
+        balanceDue,
+        paymentStatus: paymentCollectionStatus(totalAmount, onlinePaid, cashPaid),
+        paymentMethod: onlinePaid > 0 && cashPaid > 0 ? 'CARD,CASH' : onlinePaid > 0 ? 'CARD' : cashPaid > 0 ? 'CASH' : 'N/A',
+        allSlots,
         createdAt: booking.createdAt,
         updatedAt: booking.updatedAt,
       };
     });
 
-    // Group by property if requested
     if (groupByProperty) {
-      const grouped: Record<string, any> = {};
-      
-      adminBookings.forEach((booking) => {
-        const propId = booking.propertyId || 'unknown';
-        if (!grouped[propId]) {
-          grouped[propId] = {
-            propertyId: propId,
+      const grouped = new Map<
+        string,
+        {
+          propertyId: string;
+          propertyName: string;
+          propertyAddress: string;
+          bookings: typeof payload;
+          totalBookings: number;
+          totalRevenue: number;
+        }
+      >();
+
+      for (const booking of payload) {
+        if (!grouped.has(booking.propertyId)) {
+          grouped.set(booking.propertyId, {
+            propertyId: booking.propertyId,
             propertyName: booking.propertyName,
             propertyAddress: booking.propertyAddress,
             bookings: [],
             totalBookings: 0,
             totalRevenue: 0,
-          };
+          });
         }
-        grouped[propId].bookings.push(booking);
-        grouped[propId].totalBookings++;
-        grouped[propId].totalRevenue += booking.totalAmount;
-      });
+        const bucket = grouped.get(booking.propertyId)!;
+        bucket.bookings.push(booking);
+        bucket.totalBookings += 1;
+        bucket.totalRevenue += Number(booking.totalAmount || 0);
+      }
 
       return NextResponse.json({
         success: true,
-        groupedByProperty: Object.values(grouped),
-        total: adminBookings.length,
+        groupedByProperty: Array.from(grouped.values()),
+        total: payload.length,
       });
     }
 
     return NextResponse.json({
       success: true,
-      bookings: adminBookings,
-      total: adminBookings.length,
+      bookings: payload,
+      total: payload.length,
     });
   } catch (error) {
-    console.error('Admin get bookings error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch bookings' },
-      { status: 500 }
-    );
+    console.error('Admin bookings GET error:', error);
+    return NextResponse.json({ error: 'Failed to fetch bookings' }, { status: 500 });
   }
 }
 
-// PATCH update booking status
 export async function PATCH(request: NextRequest) {
   try {
-    const user = getAuthUser(request);
-    
-    if (!user || user.role !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin access required' },
-        { status: 403 }
-      );
+    const authUser = getAuthUser(request);
+    if (!authUser || !isAdmin(authUser.role)) {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { bookingId, status } = body;
+    const bookingId = String(body?.bookingId || '').trim();
+    const status = String(body?.status || '').toUpperCase();
 
     if (!bookingId || !status) {
-      return NextResponse.json(
-        { error: 'Booking ID and status are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Booking ID and status are required' }, { status: 400 });
+    }
+    if (!['PENDING', 'PAID', 'CANCELLED'].includes(status)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
-    const validStatuses = ['PENDING', 'CONFIRMED', 'PAID', 'COMPLETED', 'CANCELLED'];
-    if (!validStatuses.includes(status.toUpperCase())) {
-      return NextResponse.json(
-        { error: 'Invalid status. Must be one of: ' + validStatuses.join(', ') },
-        { status: 400 }
-      );
-    }
-
-    const updatedBooking = await prisma.bookings.update({
+    const existing = await prisma.bookings.findUnique({
       where: { id: bookingId },
-      data: { status: status.toUpperCase() },
-      include: {
-        users: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        booking_slots: {
-          include: {
-            parking_slots: {
-              include: {
-                parking_locations: true,
-              },
-            },
-          },
-        },
-      },
+      select: { id: true, status: true },
     });
-
-    // If booking is cancelled, release the slots
-    if (status.toUpperCase() === 'CANCELLED') {
-      const slotIds = updatedBooking.booking_slots.map(bs => bs.slotId);
-      await prisma.parking_slots.updateMany({
-        where: { id: { in: slotIds } },
-        data: { status: 'AVAILABLE' },
-      });
+    if (!existing) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const booking = await tx.bookings.update({
+        where: { id: bookingId },
+        data: { status: status as BookingStatus },
+        select: {
+          id: true,
+          status: true,
+          updatedAt: true,
+        },
+      });
+
+      await tx.booking_status_history.create({
+        data: {
+          bookingId,
+          oldStatus: existing.status,
+          newStatus: status,
+          changedBy: authUser.userId || null,
+          note: 'Status updated by admin endpoint',
+        },
+      });
+      return booking;
+    });
 
     return NextResponse.json({
       success: true,
       message: 'Booking status updated successfully',
       booking: {
-        bookingId: updatedBooking.id,
-        bookingStatus: updatedBooking.status,
-        updatedAt: updatedBooking.updatedAt,
+        bookingId: updated.id,
+        bookingStatus: updated.status,
+        updatedAt: updated.updatedAt,
       },
     });
   } catch (error) {
-    console.error('Admin update booking error:', error);
-    return NextResponse.json(
-      { error: 'Failed to update booking' },
-      { status: 500 }
-    );
+    console.error('Admin bookings PATCH error:', error);
+    return NextResponse.json({ error: 'Failed to update booking' }, { status: 500 });
   }
 }

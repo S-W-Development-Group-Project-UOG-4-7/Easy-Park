@@ -7,43 +7,64 @@ import {
   serverErrorResponse,
 } from '@/lib/api-response';
 
-// The full location list is read-heavy; cache briefly for snappy UX.
 export const revalidate = 30;
 
-// GET all parking locations
 export async function GET() {
   try {
-    const locations = await prisma.parking_locations.findMany({
+    const locations = await prisma.properties.findMany({
       include: {
-        parking_slots: {
+        parkingSlots: {
           select: {
             id: true,
-            number: true,
-            type: true,
-            status: true,
-            pricePerHour: true,
+            slotNumber: true,
+            slotType: true,
+            isActive: true,
           },
         },
         _count: {
           select: {
-            parking_slots: true,
+            parkingSlots: true,
           },
         },
       },
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: { propertyName: 'asc' },
     });
 
-    // Add availability stats
+    const now = new Date();
+    const activeBookings = await prisma.bookings.findMany({
+      where: {
+        status: { not: 'CANCELLED' },
+        startTime: { lte: now },
+        endTime: { gt: now },
+        propertyId: { in: locations.map((location) => location.id) },
+      },
+      include: { bookingSlots: { select: { slotId: true } } },
+    });
+    const occupiedSlotIds = new Set<string>();
+    for (const booking of activeBookings) {
+      for (const bookingSlot of booking.bookingSlots) occupiedSlotIds.add(bookingSlot.slotId);
+    }
+
     const locationsWithStats = locations.map((location) => {
-      const availableSlots = location.parking_slots.filter((s) => s.status === 'AVAILABLE').length;
+      const availableSlots = location.parkingSlots.filter(
+        (slot) => slot.isActive && !occupiedSlotIds.has(slot.id)
+      ).length;
+      const total = location.parkingSlots.length;
       return {
-        ...location,
+        id: location.id,
+        name: location.propertyName,
+        address: location.address,
+        description: null,
+        totalSlots: total,
         availableSlots,
-        occupancyRate: location.parking_slots.length > 0 
-          ? ((location.parking_slots.length - availableSlots) / location.parking_slots.length * 100).toFixed(1)
-          : 0,
+        parking_slots: location.parkingSlots.map((slot) => ({
+          id: slot.id,
+          number: slot.slotNumber,
+          type: slot.slotType,
+          status: !slot.isActive ? 'MAINTENANCE' : occupiedSlotIds.has(slot.id) ? 'OCCUPIED' : 'AVAILABLE',
+        })),
+        _count: { parking_slots: location._count.parkingSlots },
+        occupancyRate: total > 0 ? (((total - availableSlots) / total) * 100).toFixed(1) : 0,
       };
     });
 
@@ -56,29 +77,41 @@ export async function GET() {
   }
 }
 
-// POST create a new parking location (admin only)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, address, description, totalSlots } = body;
+    const name = String(body?.name || '').trim();
+    const address = String(body?.address || '').trim();
+    const description = body?.description ? String(body.description) : null;
+    const totalSlots = Number(body?.totalSlots || 0);
+    const ownerId = String(body?.ownerId || '').trim();
 
-    // Validation
-    if (!name || !address) {
-      return errorResponse('Name and address are required');
+    if (!name || !address || !ownerId) {
+      return errorResponse('name, address, and ownerId are required');
     }
 
-    const location = await prisma.parking_locations.create({
+    const location = await prisma.properties.create({
       data: {
-        id: crypto.randomUUID(),
-        name,
+        ownerId,
+        propertyName: name,
         address,
-        description,
-        totalSlots: totalSlots || 0,
-        updatedAt: new Date(),
+        pricePerHour: 0,
+        pricePerDay: 0,
+        status: 'NOT_ACTIVATED',
+        totalSlots: Math.max(0, totalSlots),
+        totalNormalSlots: Math.max(0, totalSlots),
+        totalEvSlots: 0,
+        totalCarWashSlots: 0,
       },
     });
 
-    return createdResponse(location, 'Location created successfully');
+    return createdResponse(
+      {
+        ...location,
+        name: location.propertyName,
+      },
+      'Location created successfully'
+    );
   } catch (error) {
     console.error('Create location error:', error);
     return serverErrorResponse('Failed to create location');

@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth';
 import {
   successResponse,
   errorResponse,
@@ -8,37 +7,25 @@ import {
   serverErrorResponse,
   notFoundResponse,
 } from '@/lib/api-response';
+import { canAccessWasherRoutes, resolveWasherUser } from '@/app/api/washer/utils';
 
-/**
- * GET /api/washer/notifications/:id
- * Fetch a single notification by ID
- */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only WASHER, ADMIN, and COUNTER roles can access notifications
-    if (!['WASHER', 'ADMIN', 'COUNTER'].includes(authUser.role)) {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (!canAccessWasherRoutes(auth.role)) {
       return errorResponse('Access denied. Insufficient permissions.', 403);
     }
 
     const { id } = await params;
-
-    const notification = await prisma.washer_notifications.findUnique({
-      where: { id },
+    const notification = await prisma.notifications.findFirst({
+      where: { id, userId: auth.userId },
     });
 
-    if (!notification) {
-      return notFoundResponse('Notification not found');
-    }
-
+    if (!notification) return notFoundResponse('Notification not found');
     return successResponse(notification, 'Notification retrieved successfully');
   } catch (error) {
     console.error('Error fetching notification:', error);
@@ -46,91 +33,58 @@ export async function GET(
   }
 }
 
-/**
- * PATCH /api/washer/notifications/:id
- * Mark a single notification as read/unread
- */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only WASHER, ADMIN, and COUNTER roles can update notifications
-    if (!['WASHER', 'ADMIN', 'COUNTER'].includes(authUser.role)) {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (!canAccessWasherRoutes(auth.role)) {
       return errorResponse('Access denied. Insufficient permissions.', 403);
     }
 
     const { id } = await params;
     const body = await request.json();
-    const { read } = body;
-
+    const read = body?.read;
     if (typeof read !== 'boolean') {
       return errorResponse('Missing or invalid required field: read (must be boolean)');
     }
 
-    const notification = await prisma.washer_notifications.findUnique({
+    const notification = await prisma.notifications.findFirst({
+      where: { id, userId: auth.userId },
+      select: { id: true },
+    });
+    if (!notification) return notFoundResponse('Notification not found');
+
+    const updated = await prisma.notifications.update({
       where: { id },
+      data: { isRead: read },
     });
 
-    if (!notification) {
-      return notFoundResponse('Notification not found');
-    }
-
-    const updatedNotification = await prisma.washer_notifications.update({
-      where: { id },
-      data: { read },
-    });
-
-    return successResponse(
-      updatedNotification,
-      `Notification marked as ${read ? 'read' : 'unread'}`
-    );
+    return successResponse(updated, `Notification marked as ${read ? 'read' : 'unread'}`);
   } catch (error) {
     console.error('Error updating notification:', error);
     return serverErrorResponse('Failed to update notification');
   }
 }
 
-/**
- * DELETE /api/washer/notifications/:id
- * Delete a single notification
- */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only ADMIN can delete notifications
-    if (authUser.role !== 'ADMIN') {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (auth.role !== 'ADMIN') {
       return errorResponse('Access denied. Only admins can delete notifications.', 403);
     }
 
     const { id } = await params;
+    const notification = await prisma.notifications.findUnique({ where: { id }, select: { id: true } });
+    if (!notification) return notFoundResponse('Notification not found');
 
-    const notification = await prisma.washer_notifications.findUnique({
-      where: { id },
-    });
-
-    if (!notification) {
-      return notFoundResponse('Notification not found');
-    }
-
-    await prisma.washer_notifications.delete({
-      where: { id },
-    });
-
+    await prisma.notifications.delete({ where: { id } });
     return successResponse({ id }, 'Notification deleted successfully');
   } catch (error) {
     console.error('Error deleting notification:', error);

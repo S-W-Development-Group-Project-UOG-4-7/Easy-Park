@@ -6,17 +6,15 @@ import { useParams, useRouter } from "next/navigation";
 import { Loader2, Menu, X } from "lucide-react";
 import AdminSidebar from "../../../components/AdminSidebar";
 
-type RoleOption = 'COUNTER' | 'WASHER' | 'LAND_OWNER';
-const ROLE_OPTIONS: RoleOption[] = ['COUNTER', 'WASHER', 'LAND_OWNER'];
-
 type UserDetails = {
   id: string;
   fullName: string;
-  address: string | null;
+  residentialAddress: string | null;
   nic: string | null;
-  contactNo: string | null;
+  phone: string | null;
   email: string;
   role: string;
+  isActive: boolean;
 };
 
 export default function AdminUserEditPage() {
@@ -34,13 +32,11 @@ export default function AdminUserEditPage() {
 
   const [formData, setFormData] = useState({
     fullName: '',
-    address: '',
+    residentialAddress: '',
     nic: '',
-    mobileNumber: '',
+    phone: '',
     email: '',
-    role: 'COUNTER' as RoleOption,
-    password: '',
-    passwordConfirm: '',
+    isActive: true,
   });
 
   useEffect(() => {
@@ -72,13 +68,11 @@ export default function AdminUserEditPage() {
         const user: UserDetails = data.data;
         setFormData({
           fullName: user.fullName || '',
-          address: user.address || '',
+          residentialAddress: user.residentialAddress || '',
           nic: user.nic || '',
-          mobileNumber: user.contactNo || '',
+          phone: user.phone || '',
           email: user.email || '',
-          role: (user.role as RoleOption) || 'COUNTER',
-          password: '',
-          passwordConfirm: '',
+          isActive: Boolean(user.isActive),
         });
       } catch (err) {
         console.error(err);
@@ -93,7 +87,7 @@ export default function AdminUserEditPage() {
     };
   }, [params, router]);
 
-  const onChange = (field: keyof typeof formData, value: string) => {
+  const onChange = (field: keyof typeof formData, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setFieldErrors((prev) => ({ ...prev, [field]: '' }));
     setError('');
@@ -102,16 +96,8 @@ export default function AdminUserEditPage() {
   const validate = () => {
     const errors: Record<string, string> = {};
     if (!formData.fullName.trim()) errors.fullName = 'Full name is required';
-    if (!formData.address.trim()) errors.address = 'Address is required';
-    if (!formData.nic.trim()) errors.nic = 'NIC is required';
-    if (!formData.mobileNumber.trim()) errors.mobileNumber = 'Mobile number is required';
     if (!formData.email.trim()) errors.email = 'Email is required';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errors.email = 'Invalid email';
-    if (!ROLE_OPTIONS.includes(formData.role)) errors.role = 'Invalid role';
-    if (formData.password || formData.passwordConfirm) {
-      if (formData.password.length < 8) errors.password = 'Password must be at least 8 characters';
-      if (formData.password !== formData.passwordConfirm) errors.passwordConfirm = 'Passwords do not match';
-    }
     return errors;
   };
 
@@ -129,18 +115,14 @@ export default function AdminUserEditPage() {
 
     try {
       setSaving(true);
-      const payload: any = {
+      const payload = {
         fullName: formData.fullName,
-        address: formData.address,
+        residentialAddress: formData.residentialAddress,
         nic: formData.nic,
-        mobileNumber: formData.mobileNumber,
+        phone: formData.phone,
         email: formData.email,
-        role: formData.role,
+        isActive: formData.isActive,
       };
-      if (formData.password) {
-        payload.password = formData.password;
-        payload.passwordConfirm = formData.passwordConfirm;
-      }
       const res = await fetch(`/api/admin/users/${userId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -251,7 +233,7 @@ export default function AdminUserEditPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold dark:text-[#E5E7EB] text-[#111827]">Edit User</h1>
-                <p className="mt-1 text-sm text-slate-500">Update account details.</p>
+                <p className="mt-1 text-sm text-slate-500">Update profile and account status.</p>
               </div>
             </div>
 
@@ -263,27 +245,22 @@ export default function AdminUserEditPage() {
             >
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Full Name" value={formData.fullName} error={fieldErrors.fullName} onChange={(v) => onChange('fullName', v)} />
-                <Field label="Address" value={formData.address} error={fieldErrors.address} onChange={(v) => onChange('address', v)} />
+                <Field label="Residential Address" value={formData.residentialAddress} error={fieldErrors.residentialAddress} onChange={(v) => onChange('residentialAddress', v)} />
                 <Field label="NIC" value={formData.nic} error={fieldErrors.nic} onChange={(v) => onChange('nic', v)} />
-                <Field label="Mobile Number" value={formData.mobileNumber} error={fieldErrors.mobileNumber} onChange={(v) => onChange('mobileNumber', v)} />
+                <Field label="Mobile Number" value={formData.phone} error={fieldErrors.phone} onChange={(v) => onChange('phone', v)} />
                 <Field label="Email" value={formData.email} error={fieldErrors.email} onChange={(v) => onChange('email', v)} type="email" />
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Role</label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => onChange('role', e.target.value)}
-                    className="w-full rounded-lg border border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                  >
-                    {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                  {fieldErrors.role && <p className="text-xs text-rose-400">{fieldErrors.role}</p>}
+                  <label className="text-sm font-medium text-slate-600 dark:text-slate-300">Account Status</label>
+                  <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-950/60 px-3 py-2 text-sm text-slate-900 dark:text-slate-100">
+                    <input
+                      type="checkbox"
+                      checked={formData.isActive}
+                      onChange={(e) => onChange('isActive', e.target.checked)}
+                      className="h-4 w-4 accent-lime-500"
+                    />
+                    Active
+                  </label>
                 </div>
-                <Field label="New Password (optional)" value={formData.password} error={fieldErrors.password} onChange={(v) => onChange('password', v)} type="password" />
-                <Field label="Confirm New Password" value={formData.passwordConfirm} error={fieldErrors.passwordConfirm} onChange={(v) => onChange('passwordConfirm', v)} type="password" />
               </div>
 
               <div className="flex justify-end gap-2">

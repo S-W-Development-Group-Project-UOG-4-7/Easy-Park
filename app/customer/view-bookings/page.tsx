@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../components/AuthProvider';
 import PaymentGatewayModal from '../../components/PaymentGatewayModal';
+import { propertiesApi, slotsApi } from '../../services/api';
 import { 
   Calendar, Clock, MapPin, Zap, Shield, AlertCircle, 
   Loader2, Search, Droplets
@@ -93,7 +94,7 @@ export default function ViewBookingsPage() {
 
   // --- UI State ---
   const [hubs, setHubs] = useState<Hub[]>([]);
-  const [selectedHubId, setSelectedHubId] = useState('');
+  const [selectedPropertyId, setSelectedPropertyId] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('1');
@@ -107,6 +108,7 @@ export default function ViewBookingsPage() {
   // --- Loading & Status ---
   const [loading, setLoading] = useState(false);
   const [loadingHubs, setLoadingHubs] = useState(true);
+  const [hubsError, setHubsError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
@@ -140,30 +142,46 @@ export default function ViewBookingsPage() {
     const fetchHubs = async () => {
       setLoadingHubs(true);
       try {
-        const res = await fetch('/api/parking/locations');
-        const json = await res.json();
-        
-        if (json.success) {
-          const mappedHubs: Hub[] = json.data.map((h: any) => ({
-            id: h.id,
-            name: h.name,
-            address: h.address || 'Sri Lanka',
-            city: h.name.split(' ')[0] || 'City',
-            pricePerHour: h.pricePerHour,
-            totalSlots: h.totalSlots || 50,
-            availableSlots: h.availableSlots ?? 20,
-            amenities: ['CCTV', 'Security', 'EV'],
-            rating: 4.8,
-            openingHours: '24/7',
-            contact: h.contact || 'N/A'
-          }));
-          setHubs(mappedHubs);
-          if (mappedHubs.length > 0) {
-            setSelectedHubId(mappedHubs[0].id);
-          }
+        setHubsError(null);
+        const properties = await propertiesApi.getActive();
+        console.log('[BookNow] Active properties API response:', properties);
+        const mappedHubs: Hub[] = Array.from(
+          new Map(
+            properties.map((property) => [
+              String(property.id),
+              {
+                id: String(property.id),
+                name: property.propertyName,
+                address: property.location || 'Sri Lanka',
+                city:
+                  property.location?.split(',')[0]?.trim() ||
+                  property.propertyName ||
+                  'City',
+                pricePerHour: property.pricePerHour,
+                totalSlots: property.totalSlots || 0,
+                availableSlots: property.totalSlots || 0,
+                amenities: ['CCTV', 'Security', 'EV'],
+                rating: 4.8,
+                openingHours: '24/7',
+                contact: 'N/A',
+              } as Hub,
+            ])
+          ).values()
+        );
+
+        setHubs(mappedHubs);
+        if (mappedHubs.length > 0) {
+          setSelectedPropertyId((prev) =>
+            prev && mappedHubs.some((hub) => hub.id === prev) ? prev : mappedHubs[0].id
+          );
+        } else {
+          setSelectedPropertyId('');
         }
       } catch (err) {
-        console.error("Hub fetch error:", err);
+        console.error('Hub fetch error:', err);
+        setHubs([]);
+        setSelectedPropertyId('');
+        setHubsError(err instanceof Error ? err.message : 'Failed to load locations');
       } finally {
         setLoadingHubs(false);
       }
@@ -174,36 +192,43 @@ export default function ViewBookingsPage() {
 
   // --- 2. Update Selected Hub ---
   useEffect(() => {
-    const hub = hubs.find(h => h.id === selectedHubId);
+    const hub = hubs.find(h => h.id === selectedPropertyId);
     setSelectedHubDetails(hub || null);
-  }, [selectedHubId, hubs]);
+  }, [selectedPropertyId, hubs]);
 
   // --- 3. Fetch Slots ---
   const fetchSlots = useCallback(async () => {
-    if (!selectedHubId || !selectedDate) return;
+    if (!selectedPropertyId || !selectedDate) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/parking/slots?locationId=${selectedHubId}&date=${selectedDate}`);
-      const json = await res.json();
-      
-      if (json.success) {
-        // Map backend slot data
-        const mappedSlots: Slot[] = json.data.map((s: any) => ({
-          id: s.id,
-          number: s.number,
-          type: s.type, 
-          status: s.status, // AVAILABLE, OCCUPIED, etc.
-          pricePerHour: s.pricePerHour
-        }));
-        setAllSlots(mappedSlots);
-        setSelectedSlots([]); // Clear selections on new fetch
-      }
+      const slots = await slotsApi.getByProperty(selectedPropertyId, {
+        date: selectedDate,
+        time: selectedTime || undefined,
+        duration: selectedDuration,
+      });
+
+      const mappedSlots: Slot[] = slots.map((slot) => ({
+        id: slot.id,
+        number: slot.number,
+        type: slot.type,
+        status:
+          slot.status === 'MAINTENANCE'
+            ? 'MAINTENANCE'
+            : slot.isBooked || slot.status === 'OCCUPIED'
+              ? 'OCCUPIED'
+              : 'AVAILABLE',
+        pricePerHour: selectedHubDetails?.pricePerHour || 300,
+      }));
+
+      setAllSlots(mappedSlots);
+      setSelectedSlots((prev) => prev.filter((id) => mappedSlots.some((slot) => slot.id === id && slot.status === 'AVAILABLE')));
     } catch (err) {
-      console.error("Slot fetch error", err);
+      console.error('Slot fetch error', err);
+      setAllSlots([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedHubId, selectedDate]);
+  }, [selectedPropertyId, selectedDate, selectedTime, selectedDuration, selectedHubDetails?.pricePerHour]);
 
   useEffect(() => {
     fetchSlots();
@@ -226,8 +251,8 @@ export default function ViewBookingsPage() {
     // Total = Duration (hours) * Rate (300/hour) * Number of Slots
     const totalPrice = duration * hourlyRate * selectedSlots.length;
     
-    // Advance = Fixed 150 (NOT multiplied by slots)
-    const advanceToPay = 150;
+    // Advance = 150 per slot
+    const advanceToPay = ADVANCE_FEE_PER_SLOT * selectedSlots.length;
 
     return { totalPrice, advanceToPay, hourlyRate, isPeakHour };
   }, [selectedHubDetails, selectedSlots.length, selectedDuration, selectedTime, timeSlots]);
@@ -235,6 +260,33 @@ export default function ViewBookingsPage() {
   const filteredSlots = useMemo(() => {
     return filterType === 'ALL' ? allSlots : allSlots.filter(s => s.type === filterType);
   }, [allSlots, filterType]);
+
+  const groupedSlots = useMemo(
+    () => ({
+      NORMAL: filteredSlots.filter((slot) => slot.type === 'NORMAL'),
+      CAR_WASH: filteredSlots.filter((slot) => slot.type === 'CAR_WASH'),
+      EV: filteredSlots.filter((slot) => slot.type === 'EV'),
+    }),
+    [filteredSlots]
+  );
+
+  const visibleSections = useMemo(() => {
+    if (filterType === 'ALL') {
+      return [
+        { key: 'NORMAL', title: 'Normal Slots', slots: groupedSlots.NORMAL },
+        { key: 'CAR_WASH', title: 'Car Wash Slots', slots: groupedSlots.CAR_WASH },
+        { key: 'EV', title: 'EV Slots', slots: groupedSlots.EV },
+      ].filter((section) => section.slots.length > 0);
+    }
+
+    if (filterType === 'CAR_WASH') {
+      return [{ key: 'CAR_WASH', title: 'Car Wash Slots', slots: groupedSlots.CAR_WASH }];
+    }
+    if (filterType === 'NORMAL') {
+      return [{ key: 'NORMAL', title: 'Normal Slots', slots: groupedSlots.NORMAL }];
+    }
+    return [{ key: 'EV', title: 'EV Slots', slots: groupedSlots.EV }];
+  }, [filterType, groupedSlots]);
 
   // --- Handlers ---
   const handleSlotClick = useCallback((slotId: string) => {
@@ -276,7 +328,7 @@ export default function ViewBookingsPage() {
 
     const payload = {
       userId: user.id,
-      locationId: selectedHubId,
+      locationId: selectedPropertyId,
       date: selectedDate,
       startTime: selectedTime,
       duration: Number(selectedDuration),
@@ -356,20 +408,38 @@ export default function ViewBookingsPage() {
                   <MapPin className="w-3 h-3 text-lime-400"/> Location
                 </label>
                 {loadingHubs ? (
-                  <div className="h-12 w-full bg-slate-800/50 rounded-xl animate-pulse"/>
+                  <div className="h-12 w-full bg-slate-800/50 rounded-xl animate-pulse flex items-center px-4 text-xs text-slate-400">
+                    Loading locations...
+                  </div>
                 ) : (
                   <div className="relative">
                     <select
-                      value={selectedHubId}
-                      onChange={(e) => setSelectedHubId(e.target.value)}
+                      value={selectedPropertyId}
+                      onChange={(e) => {
+                        const nextPropertyId = e.target.value;
+                        console.log('[BookNow] selectedPropertyId:', nextPropertyId);
+                        setSelectedPropertyId(nextPropertyId);
+                      }}
+                      disabled={hubs.length === 0}
                       className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3.5 text-white text-sm focus:border-lime-500/50 focus:ring-1 focus:ring-lime-500/50 outline-none appearance-none transition-all hover:bg-slate-900"
                     >
-                      {hubs.map(h => (
-                        <option key={h.id} value={h.id}>{h.name} — {h.city}</option>
-                      ))}
+                      {hubs.length === 0 ? (
+                        <option value="">
+                          {hubsError ? 'Failed to load locations' : 'No active properties'}
+                        </option>
+                      ) : (
+                        hubs.map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name} — {h.city}
+                          </option>
+                        ))
+                      )}
                     </select>
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">▼</div>
                   </div>
+                )}
+                {hubsError && !loadingHubs && (
+                  <p className="text-xs text-rose-400">{hubsError}</p>
                 )}
               </div>
 
@@ -489,44 +559,49 @@ export default function ViewBookingsPage() {
                   <p>No slots match criteria</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
-                  {filteredSlots.map(slot => {
-                    const isSel = selectedSlots.includes(slot.id);
-                    const isAvail = slot.status === 'AVAILABLE';
-                    
-                    // Dynamic styles
-                    let slotStyle = "bg-slate-950 border-slate-800 text-slate-500";
-                    if (slot.status === 'OCCUPIED') slotStyle = "bg-rose-950/20 border-rose-900/30 text-rose-800/50 cursor-not-allowed";
-                    else if (slot.status === 'MAINTENANCE') slotStyle = "bg-amber-950/20 border-amber-900/30 text-amber-800/50 cursor-not-allowed";
-                    else if (isSel) slotStyle = "bg-lime-400 border-lime-300 text-slate-900 shadow-[0_0_20px_rgba(132,204,22,0.6)] scale-110 z-10 font-bold";
-                    else if (isAvail) slotStyle = "bg-slate-800/30 border-slate-700/50 text-slate-300 hover:border-lime-500/50 hover:text-white hover:bg-slate-800 hover:shadow-[0_0_10px_rgba(132,204,22,0.1)]";
+                <div className="space-y-5">
+                  {visibleSections.map((section) => (
+                    <div key={section.key} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">{section.title}</h3>
+                        <span className="text-[10px] uppercase tracking-widest text-slate-500">{section.slots.length} slots</span>
+                      </div>
+                      <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+                        {section.slots.map((slot) => {
+                          const isSel = selectedSlots.includes(slot.id);
+                          const isAvail = slot.status === 'AVAILABLE';
 
-                    return (
-                      <motion.button 
-                        key={slot.id} 
-                        disabled={!isAvail} 
-                        onClick={() => handleSlotClick(slot.id)}
-                        whileHover={isAvail ? { scale: 1.1 } : {}}
-                        whileTap={isAvail ? { scale: 0.9 } : {}}
-                        className={`
-                          aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 relative transition-all duration-300
-                          ${slotStyle}
-                        `}
-                      >
-                        <span className="text-[8px] font-bold uppercase tracking-wide opacity-70">
-                          {slot.type === 'NORMAL' ? 'STD' : slot.type}
-                        </span>
-                        <span className="text-sm">{slot.number}</span>
-                        
-                        {/* Icons */}
-                        {slot.type === 'EV' && <Zap className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.8)]'}`} />}
-                        {slot.type === 'CAR_WASH' && <Droplets className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]'}`} />}
-                        
-                        {/* Status Dot */}
-                        {!isAvail && <div className="absolute top-1.5 left-1.5 w-1 h-1 rounded-full bg-current opacity-50"/>}
-                      </motion.button>
-                    );
-                  })}
+                          let slotStyle = 'bg-slate-950 border-slate-800 text-slate-500';
+                          if (slot.status === 'OCCUPIED') slotStyle = 'bg-rose-950/20 border-rose-900/30 text-rose-800/50 cursor-not-allowed';
+                          else if (slot.status === 'MAINTENANCE') slotStyle = 'bg-amber-950/20 border-amber-900/30 text-amber-800/50 cursor-not-allowed';
+                          else if (isSel) slotStyle = 'bg-lime-400 border-lime-300 text-slate-900 shadow-[0_0_20px_rgba(132,204,22,0.6)] scale-110 z-10 font-bold';
+                          else if (isAvail) slotStyle = 'bg-slate-800/30 border-slate-700/50 text-slate-300 hover:border-lime-500/50 hover:text-white hover:bg-slate-800 hover:shadow-[0_0_10px_rgba(132,204,22,0.1)]';
+
+                          return (
+                            <motion.button
+                              key={slot.id}
+                              disabled={!isAvail}
+                              onClick={() => handleSlotClick(slot.id)}
+                              whileHover={isAvail ? { scale: 1.1 } : {}}
+                              whileTap={isAvail ? { scale: 0.9 } : {}}
+                              className={`
+                                aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 relative transition-all duration-300
+                                ${slotStyle}
+                              `}
+                            >
+                              <span className="text-[8px] font-bold uppercase tracking-wide opacity-70">
+                                {slot.type === 'NORMAL' ? 'STD' : slot.type}
+                              </span>
+                              <span className="text-sm">{slot.number}</span>
+                              {slot.type === 'EV' && <Zap className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-emerald-400 drop-shadow-[0_0_5px_rgba(52,211,153,0.8)]'}`} />}
+                              {slot.type === 'CAR_WASH' && <Droplets className={`w-2.5 h-2.5 absolute top-1.5 right-1.5 ${isSel ? 'text-slate-900' : 'text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]'}`} />}
+                              {!isAvail && <div className="absolute top-1.5 left-1.5 w-1 h-1 rounded-full bg-current opacity-50" />}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
               

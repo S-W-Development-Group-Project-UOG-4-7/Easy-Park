@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import UsersTable from '../components/UsersTable';
 
@@ -9,7 +9,8 @@ type AdminUser = {
   fullName: string;
   email: string;
   role: string;
-  contactNo: string | null;
+  phone: string | null;
+  contactNo?: string | null;
   nic: string | null;
   createdAt: string;
 };
@@ -19,11 +20,12 @@ export default function ViewUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const endpoint = '/api/admin/staff-members';
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/users', { credentials: 'include' });
+      const res = await fetch(endpoint, { credentials: 'include' });
       const data = await res.json();
       if (res.ok && data.success) {
         setUsers(data.data || []);
@@ -37,11 +39,11 @@ export default function ViewUsersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [endpoint]);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
   const handleDelete = async (id: string) => {
     const confirmed = window.confirm('Delete this user? This action cannot be undone.');
@@ -67,9 +69,9 @@ export default function ViewUsersPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold dark:text-[#E5E7EB] text-[#111827]">View Users</h1>
+          <h1 className="text-3xl font-bold dark:text-[#E5E7EB] text-[#111827]">View Staff Members</h1>
           <p className="mt-2 text-sm dark:text-[#94A3B8] text-[#6B7280]">
-            Review and manage all COUNTER, WASHER, and LAND_OWNER accounts.
+            Review and manage ADMIN, COUNTER, WASHER, and LANDOWNER accounts.
           </p>
         </div>
         <button
@@ -86,6 +88,8 @@ export default function ViewUsersPage() {
         loading={loading}
         error={error}
         onRefresh={fetchUsers}
+        title="Staff Members"
+        emptyMessage="No staff members found."
         onView={(id) => router.push(`/admin/users/${id}`)}
         onEdit={(id) => router.push(`/admin/users/${id}/edit`)}
         onDelete={handleDelete}

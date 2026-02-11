@@ -1,20 +1,24 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../AuthProvider';
+import { useAuthModal } from '../AuthModalProvider';
 
 // Map roles to their redirect paths
 const ROLE_REDIRECT_MAP: Record<string, string> = {
   ADMIN: '/admin',
   CUSTOMER: '/customer',
   COUNTER: '/counter',
+  LANDOWNER: '/land_owner',
   LAND_OWNER: '/land_owner',
   WASHER: '/washer',
 };
 
 export function SignInCard() {
   const router = useRouter();
+  const { refreshUser, setUser } = useAuth();
+  const { openSignUp } = useAuthModal();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -61,6 +65,16 @@ export function SignInCard() {
       // Success! Redirect based on user role
       const userRole = data.data?.user?.role || 'CUSTOMER';
       const redirectPath = ROLE_REDIRECT_MAP[userRole] || '/customer';
+      if (data.data?.user) {
+        setUser(data.data.user);
+        try {
+          localStorage.setItem('user', JSON.stringify(data.data.user));
+        } catch (error) {
+          console.error('Failed to cache user:', error);
+        }
+      }
+      // Hydrate auth context with server data in background as well.
+      refreshUser();
       router.push(redirectPath);
     } catch (err) {
       setError('Something went wrong. Please try again.');
@@ -158,12 +172,13 @@ export function SignInCard() {
         <div className="mt-6 text-center">
           <p className="text-sm text-[#94A3B8]">
             Create new account?{' '}
-            <Link
-              href="/sign-up"
+            <button
+              type="button"
+              onClick={openSignUp}
               className="text-blue-500 hover:text-blue-400 underline transition-colors duration-200"
             >
               Sign up
-            </Link>
+            </button>
           </p>
         </div>
       </div>

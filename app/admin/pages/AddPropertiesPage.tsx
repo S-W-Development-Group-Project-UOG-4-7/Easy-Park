@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, MapPin, Plus, X, Car, Zap, Droplets, ArrowLeft, Trash2, RefreshCw, DollarSign, Power, AlertCircle } from 'lucide-react';
-import { propertiesApi } from '../../services/api';
+import { propertiesApi, type PropertySummary } from '../../services/api';
 import {
   adminCard,
   adminInput,
@@ -12,18 +12,7 @@ import {
   adminSecondaryButton,
 } from '../components/adminTheme';
 
-interface Property {
-  id: number;
-  name: string;
-  address: string;
-  totalSlots: number;
-  normalSlots: number;
-  evSlots: number;
-  carWashSlots: number;
-  pricePerHour: number;
-  pricePerDay: number;
-  status: 'ACTIVATED' | 'NOT_ACTIVATED';
-}
+type Property = PropertySummary;
 
 interface ParkingSlot {
   type: 'EV' | 'Normal' | 'Car Washing';
@@ -52,7 +41,7 @@ export default function AddPropertiesPage() {
   const [success, setSuccess] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loadingProperties, setLoadingProperties] = useState(true);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<string | number | null>(null);
   const [errors, setErrors] = useState<ValidationErrors>({});
 
   const parkingTypes: ParkingSlot['type'][] = ['Normal', 'EV', 'Car Washing'];
@@ -75,7 +64,7 @@ export default function AddPropertiesPage() {
   };
 
   // Delete property
-  const handleDeleteProperty = async (id: number, name: string) => {
+  const handleDeleteProperty = async (id: string | number, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
       return;
     }
@@ -197,7 +186,8 @@ export default function AddPropertiesPage() {
       }, 3000);
     } catch (error) {
       console.error('Error adding property:', error);
-      alert('Failed to add property. Please try again.');
+      const message = error instanceof Error ? error.message : 'Failed to add property. Please try again.';
+      alert(message);
     } finally {
       setLoading(false);
     }

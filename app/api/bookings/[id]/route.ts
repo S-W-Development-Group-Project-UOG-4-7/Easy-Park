@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getAuthUser } from '@/lib/auth';
+import { BookingStatus } from '@prisma/client';
 import {
   successResponse,
   errorResponse,
@@ -13,39 +14,40 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-// GET a single booking by ID
+async function resolveUserId(authUser: { email?: string; userId?: string }) {
+  if (authUser.userId) return authUser.userId;
+  if (!authUser.email) return null;
+  const user = await prisma.users.findUnique({
+    where: { email: authUser.email.toLowerCase() },
+    select: { id: true },
+  });
+  return user?.id || null;
+}
+
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
+    if (!authUser) return unauthorizedResponse();
+
+    const userId = await resolveUserId(authUser);
+    if (!userId) return unauthorizedResponse('User not found');
 
     const { id } = await params;
-
     const booking = await prisma.bookings.findFirst({
-      where: {
-        id,
-        userId: authUser.userId,
-      },
+      where: { id, customerId: userId },
       include: {
-        booking_slots: {
+        property: true,
+        bookingSlots: {
           include: {
-            parking_slots: {
-              include: {
-                parking_locations: true,
-              },
-            },
+            slot: true,
+            washJob: true,
           },
         },
+        paymentSummary: true,
         payments: true,
       },
     });
-
-    if (!booking) {
-      return notFoundResponse('Booking not found');
-    }
+    if (!booking) return notFoundResponse('Booking not found');
 
     return successResponse(booking);
   } catch (error) {
@@ -54,53 +56,50 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// PATCH update a booking (e.g., cancel)
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
+    if (!authUser) return unauthorizedResponse();
+
+    const userId = await resolveUserId(authUser);
+    if (!userId) return unauthorizedResponse('User not found');
 
     const { id } = await params;
     const body = await request.json();
-    const { status } = body;
+    const status = String(body?.status || '').toUpperCase();
 
-    // Find the booking
     const existingBooking = await prisma.bookings.findFirst({
-      where: {
-        id,
-        userId: authUser.userId,
-      },
+      where: { id, customerId: userId },
+      select: { id: true, status: true },
     });
+    if (!existingBooking) return notFoundResponse('Booking not found');
 
-    if (!existingBooking) {
-      return notFoundResponse('Booking not found');
-    }
-
-    // Validate status transition
-    const validStatuses = ['PENDING', 'CONFIRMED', 'PAID', 'COMPLETED', 'CANCELLED'];
-    if (status && !validStatuses.includes(status)) {
+    if (status && !['PENDING', 'PAID', 'CANCELLED'].includes(status)) {
       return errorResponse('Invalid status');
     }
-
-    // Cannot modify completed or cancelled bookings
-    if (existingBooking.status === 'COMPLETED' || existingBooking.status === 'CANCELLED') {
-      return errorResponse('Cannot modify a completed or cancelled booking');
+    if (existingBooking.status === 'CANCELLED') {
+      return errorResponse('Cannot modify a cancelled booking');
     }
 
-    const booking = await prisma.bookings.update({
-      where: { id },
-      data: { status },
-      include: {
-        booking_slots: {
-          include: {
-            parking_slots: true,
+    const booking = await prisma.$transaction(async (tx) => {
+      const updated = await tx.bookings.update({
+        where: { id },
+        data: { status: (status || existingBooking.status) as BookingStatus },
+      });
+
+      if (status && status !== existingBooking.status) {
+        await tx.booking_status_history.create({
+          data: {
+            bookingId: id,
+            oldStatus: existingBooking.status,
+            newStatus: status,
+            changedBy: userId,
+            note: 'Updated by customer',
           },
-        },
-        payments: true,
-      },
+        });
+      }
+
+      return updated;
     });
 
     return successResponse(booking, 'Booking updated successfully');
@@ -110,37 +109,25 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE a booking
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
+    if (!authUser) return unauthorizedResponse();
+
+    const userId = await resolveUserId(authUser);
+    if (!userId) return unauthorizedResponse('User not found');
 
     const { id } = await params;
-
     const existingBooking = await prisma.bookings.findFirst({
-      where: {
-        id,
-        userId: authUser.userId,
-      },
+      where: { id, customerId: userId },
+      select: { id: true, status: true },
     });
-
-    if (!existingBooking) {
-      return notFoundResponse('Booking not found');
-    }
-
-    // Only allow deletion of pending bookings
+    if (!existingBooking) return notFoundResponse('Booking not found');
     if (existingBooking.status !== 'PENDING') {
       return errorResponse('Only pending bookings can be deleted');
     }
 
-    await prisma.bookings.delete({
-      where: { id },
-    });
-
+    await prisma.bookings.delete({ where: { id } });
     return successResponse(null, 'Booking deleted successfully');
   } catch (error) {
     console.error('Delete booking error:', error);

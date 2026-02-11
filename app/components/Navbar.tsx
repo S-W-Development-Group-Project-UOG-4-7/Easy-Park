@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Clipboard, LogOut } from 'lucide-react';
@@ -52,6 +52,33 @@ export default function Navbar() {
   // User Profile State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+
+  const readStorageKey = useMemo(() => {
+    const base = userProfile?.email || userProfile?.name || 'guest';
+    return `customerNotificationReadIds:${base}`;
+  }, [userProfile?.email, userProfile?.name]);
+
+  const loadReadIds = useCallback((): Set<string> => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem(readStorageKey);
+      if (!raw) return new Set();
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    } catch (err) {
+      console.error('Failed to read notification cache:', err);
+    }
+    return new Set();
+  }, [readStorageKey]);
+
+  const saveReadIds = useCallback((ids: Set<string>) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(readStorageKey, JSON.stringify(Array.from(ids)));
+    } catch (err) {
+      console.error('Failed to save notification cache:', err);
+    }
+  }, [readStorageKey]);
   
   // Refs & Scroll
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -111,11 +138,16 @@ export default function Navbar() {
       const prevNotifications = notificationsRef.current;
       if (prevNotifications.length === 0) setLoadingNotifications(true);
       
-      const res = await fetch('/api/customer/notifications');
+      const res = await fetch('/api/customer/notifications', { credentials: 'include' });
       const data = await res.json();
       
       if (data.success) {
-        const newNotifications: Notification[] = data.data;
+        const serverNotifications: Notification[] = data.data || [];
+        const readIds = loadReadIds();
+        const newNotifications = serverNotifications.map((n) => ({
+          ...n,
+          read: n.read || readIds.has(n.id),
+        }));
         const newUnreadCount = newNotifications.filter((n) => !n.read).length;
         
         if (newNotifications.length > prevNotifications.length && prevNotifications.length > 0) {
@@ -135,7 +167,7 @@ export default function Navbar() {
     } finally {
       setLoadingNotifications(false);
     }
-  }, []);
+  }, [loadReadIds]);
 
   useEffect(() => {
     fetchNotifications();
@@ -144,6 +176,19 @@ export default function Navbar() {
       fetchNotifications();
     }, 30000);
     return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (!showNotifications) return;
+    fetchNotifications();
+  }, [showNotifications, fetchNotifications]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) fetchNotifications();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [fetchNotifications]);
 
   // --- Handlers ---
@@ -155,17 +200,19 @@ export default function Navbar() {
     }
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
-    try {
-      await fetch(`/api/washer/notifications/${id}/read`, { method: 'PUT' });
-    } catch (err) { console.error(err); }
+    const ids = loadReadIds();
+    ids.add(id);
+    saveReadIds(ids);
   };
 
   const markAllAsRead = async () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications(prev => {
+      const ids = loadReadIds();
+      prev.forEach((n) => ids.add(n.id));
+      saveReadIds(ids);
+      return prev.map(n => ({ ...n, read: true }));
+    });
     setUnreadCount(0);
-    try {
-      await fetch('/api/washer/notifications/read-all', { method: 'PUT' });
-    } catch (err) { console.error(err); }
   };
 
   const handleNotificationClick = (notification: Notification) => {

@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth';
 import {
   successResponse,
   errorResponse,
   unauthorizedResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
+import { canAccessWasherRoutes, resolveWasherUser } from '@/app/api/washer/utils';
 
 type BulkAction = 'accept' | 'confirm' | 'cancel';
 
@@ -15,38 +15,22 @@ interface BulkUpdateResult {
   failed: Array<{ id: string; reason: string }>;
 }
 
-/**
- * PATCH /api/washer/bookings/bulk
- * Accept, confirm, or cancel multiple bookings at once
- * 
- * Request body:
- * {
- *   "ids": ["booking-id-1", "booking-id-2"],
- *   "action": "accept" | "confirm" | "cancel"
- * }
- */
 export async function PATCH(request: NextRequest) {
   try {
-    const authUser = getAuthUser(request);
-    
-    if (!authUser) {
-      return unauthorizedResponse();
-    }
-
-    // Only WASHER, ADMIN, and COUNTER roles can bulk update bookings
-    if (!['WASHER', 'ADMIN', 'COUNTER'].includes(authUser.role)) {
+    const auth = await resolveWasherUser(request);
+    if (!auth) return unauthorizedResponse();
+    if (!canAccessWasherRoutes(auth.role)) {
       return errorResponse('Access denied. Insufficient permissions.', 403);
     }
 
     const body = await request.json();
-    const { ids, action } = body;
+    const ids = Array.isArray(body?.ids) ? body.ids.map(String) : [];
+    const action = String(body?.action || '') as BulkAction;
 
-    // Validate required fields
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    if (ids.length === 0) {
       return errorResponse('Missing or invalid required field: ids (must be a non-empty array)');
     }
-
-    if (!action || !['accept', 'confirm', 'cancel'].includes(action)) {
+    if (!['accept', 'confirm', 'cancel'].includes(action)) {
       return errorResponse('Missing or invalid required field: action (must be "accept", "confirm", or "cancel")');
     }
 
@@ -55,74 +39,68 @@ export async function PATCH(request: NextRequest) {
       failed: [],
     };
 
-    // Process each booking
     for (const id of ids) {
       try {
-        const booking = await prisma.washer_bookings.findUnique({
+        const job = await prisma.wash_jobs.findUnique({
           where: { id },
+          include: {
+            bookingSlot: {
+              include: { booking: { select: { id: true, status: true } } },
+            },
+          },
         });
-
-        if (!booking) {
+        if (!job) {
           result.failed.push({ id, reason: 'Booking not found' });
           continue;
         }
 
-        let newStatus: string;
-        let isValidTransition = false;
-
-        switch (action as BulkAction) {
-          case 'accept':
-            // PENDING → ACCEPTED
-            if (booking.status === 'PENDING') {
-              newStatus = 'ACCEPTED';
-              isValidTransition = true;
-            } else {
-              result.failed.push({
-                id,
-                reason: `Cannot accept booking with status "${booking.status}". Only PENDING bookings can be accepted.`,
-              });
-            }
-            break;
-
-          case 'confirm':
-            // ACCEPTED → COMPLETED
-            if (booking.status === 'ACCEPTED') {
-              newStatus = 'COMPLETED';
-              isValidTransition = true;
-            } else {
-              result.failed.push({
-                id,
-                reason: `Cannot complete booking with status "${booking.status}". Only ACCEPTED bookings can be completed.`,
-              });
-            }
-            break;
-
-          case 'cancel':
-            // Any (except COMPLETED/CANCELLED) → CANCELLED
-            if (booking.status === 'COMPLETED') {
-              result.failed.push({
-                id,
-                reason: 'Cannot cancel a booking that has already been completed.',
-              });
-            } else if (booking.status === 'CANCELLED') {
-              result.failed.push({
-                id,
-                reason: 'This booking is already cancelled.',
-              });
-            } else {
-              newStatus = 'CANCELLED';
-              isValidTransition = true;
-            }
-            break;
+        if (job.bookingSlot.booking.status === 'CANCELLED' && action !== 'cancel') {
+          result.failed.push({ id, reason: 'Cannot modify a cancelled booking' });
+          continue;
         }
 
-        if (isValidTransition && newStatus!) {
-          const updatedBooking = await prisma.washer_bookings.update({
+        if (action === 'accept') {
+          if (job.status !== 'PENDING') {
+            result.failed.push({ id, reason: `Cannot accept booking with status "${job.status}"` });
+            continue;
+          }
+          await prisma.wash_jobs.update({
             where: { id },
-            data: { status: newStatus as any },
+            data: { status: 'ACCEPTED', washerId: auth.userId, acceptedAt: new Date() },
           });
-          result.success.push({ id: updatedBooking.id, status: updatedBooking.status });
+          result.success.push({ id, status: 'ACCEPTED' });
+          continue;
         }
+
+        if (action === 'confirm') {
+          if (job.status !== 'ACCEPTED') {
+            result.failed.push({ id, reason: `Cannot complete booking with status "${job.status}"` });
+            continue;
+          }
+          await prisma.wash_jobs.update({
+            where: { id },
+            data: { status: 'COMPLETED', washerId: auth.userId, completedAt: new Date() },
+          });
+          result.success.push({ id, status: 'COMPLETED' });
+          continue;
+        }
+
+        await prisma.$transaction(async (tx) => {
+          await tx.bookings.update({
+            where: { id: job.bookingSlot.booking.id },
+            data: { status: 'CANCELLED' },
+          });
+          await tx.booking_status_history.create({
+            data: {
+              bookingId: job.bookingSlot.booking.id,
+              oldStatus: job.bookingSlot.booking.status,
+              newStatus: 'CANCELLED',
+              changedBy: auth.userId,
+              note: 'Cancelled via washer bulk action',
+            },
+          });
+        });
+        result.success.push({ id, status: 'CANCELLED' });
       } catch (err) {
         result.failed.push({ id, reason: 'Database error occurred' });
       }
