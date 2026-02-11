@@ -10,10 +10,11 @@ import {
   BarChart3,
   LogOut,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type ViewKey = "dashboard" | "parking" | "reports" | "analytics";
 
-const navItems: { key: ViewKey; label: string; icon: any }[] = [
+const navItems: { key: ViewKey; label: string; icon: LucideIcon }[] = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "parking", label: "Parking Management", icon: ParkingSquare },
   { key: "reports", label: "Reports", icon: FileText },

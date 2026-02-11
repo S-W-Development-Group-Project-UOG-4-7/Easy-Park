@@ -34,7 +34,7 @@ export async function PATCH(
       include: {
         bookingSlot: {
           include: {
-            booking: { select: { id: true, status: true, endTime: true, startTime: true } },
+            booking: { select: { id: true, status: true, endTime: true, startTime: true, customerId: true } },
           },
         },
       },
@@ -98,6 +98,15 @@ export async function PATCH(
     });
 
     if (!updated) return notFoundResponse('Booking not found');
+
+    await prisma.notifications.create({
+      data: {
+        userId: existing.bookingSlot.booking.customerId,
+        title: 'Car Wash Rescheduled',
+        message: `Your wash booking BK-${existing.bookingSlot.booking.id.slice(-6).toUpperCase()} was rescheduled to ${newStart.toLocaleString()}.`,
+      },
+    });
+
     return successResponse(mapWashJobToWasherBooking(updated), 'Booking rescheduled successfully');
   } catch (error) {
     console.error('Error rescheduling washer booking:', error);

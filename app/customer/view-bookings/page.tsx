@@ -531,9 +531,19 @@ export default function ViewBookingsPage() {
                 </div>
               </div>
 
-              {/* Time Grid */}
+              {/* Time Selection */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Start Time</label>
+                <input
+                  type="time"
+                  step={900}
+                  value={selectedTime}
+                  onChange={(e) => setSelectedTime(e.target.value)}
+                  className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-3 text-white text-xs font-medium outline-none focus:border-lime-500/50 transition-all hover:bg-slate-900"
+                />
+                <p className="text-[10px] text-slate-500">
+                  You can enter a specific time, or pick a suggested slot below.
+                </p>
                 <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                   {timeOptions.map(t => (
                     <button 

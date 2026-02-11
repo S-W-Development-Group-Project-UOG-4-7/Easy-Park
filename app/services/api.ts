@@ -268,11 +268,14 @@ export interface BookingPaymentDetails {
   };
   totalAmount: number;
   onlinePaid: number;
+  cashPaid: number;
+  paidAmount: number;
   balanceDue: number;
   currency: string;
   paymentMethod: string;
   paymentGatewayStatus: string;
   paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
+  bookingStatus?: 'PENDING' | 'PAID' | 'CANCELLED';
   transactionId: string | null;
   bookingDate: string;
   bookingTime: string;

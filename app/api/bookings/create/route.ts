@@ -206,7 +206,7 @@ export async function POST(request: NextRequest) {
       }
 
       const summary = await refreshPaymentSummary(tx, createdBooking.id);
-      if (summary && Number(summary.balanceDue) <= 0) {
+      if (summary && Number(summary.balanceDue) <= 0.0001) {
         await tx.bookings.update({
           where: { id: createdBooking.id },
           data: { status: 'PAID' },
@@ -221,6 +221,14 @@ export async function POST(request: NextRequest) {
           },
         });
       }
+
+      await tx.notifications.create({
+        data: {
+          userId: dbUser.id,
+          title: 'Booking Created',
+          message: `Your parking booking (BK-${createdBooking.id.slice(-6).toUpperCase()}) for ${startTime.toLocaleString()} has been created successfully.`,
+        },
+      });
 
       return createdBooking;
     });

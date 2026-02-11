@@ -6,8 +6,9 @@ import { refreshPaymentSummary } from '@/lib/payment-summary';
 type CollectionStatus = 'PAID' | 'PARTIAL' | 'UNPAID';
 
 function collectionStatus(total: number, paid: number): CollectionStatus {
-  if (paid <= 0) return 'UNPAID';
-  if (paid >= total) return 'PAID';
+  const epsilon = 0.0001;
+  if (paid <= epsilon) return 'UNPAID';
+  if (paid + epsilon >= total) return 'PAID';
   return 'PARTIAL';
 }
 
@@ -86,6 +87,8 @@ export async function GET(
     const cashPaid = Number(summary?.cashPaid ?? 0);
     const paid = onlinePaid + cashPaid;
     const balanceDue = Math.max(0, Number(summary?.balanceDue ?? totalAmount - paid));
+    const paymentStatus = collectionStatus(totalAmount, paid);
+    const bookingStatus = paymentStatus === 'PAID' && booking.status !== 'CANCELLED' ? 'PAID' : booking.status;
     const latest = booking.payments[0];
 
     return NextResponse.json({
@@ -105,11 +108,14 @@ export async function GET(
         },
         totalAmount,
         onlinePaid,
+        cashPaid,
+        paidAmount: paid,
         balanceDue,
         currency: summary?.currency || latest?.currency || 'LKR',
         paymentMethod: latest?.method || 'N/A',
         paymentGatewayStatus: latest?.gatewayStatus || 'PENDING',
-        paymentStatus: collectionStatus(totalAmount, paid),
+        paymentStatus,
+        bookingStatus,
         transactionId: latest?.transactionId || null,
         bookingDate: booking.startTime,
         bookingTime: booking.startTime,
@@ -211,7 +217,7 @@ export async function POST(
 
       await tx.bookings.update({
         where: { id: booking.id },
-        data: { status: summary.balanceDue <= 0 ? 'PAID' : booking.status === 'CANCELLED' ? 'CANCELLED' : 'PENDING' },
+        data: { status: summary.balanceDue <= 0.0001 ? 'PAID' : booking.status === 'CANCELLED' ? 'CANCELLED' : 'PENDING' },
       });
 
       const latestPayment = await tx.payments.findFirst({
@@ -231,6 +237,8 @@ export async function POST(
         bookingId: booking.id,
         totalAmount: paymentUpdate.summary.totalAmount,
         onlinePaid: paymentUpdate.summary.onlinePaid,
+        cashPaid: paymentUpdate.summary.cashPaid,
+        paidAmount: Number(paymentUpdate.summary.onlinePaid) + Number(paymentUpdate.summary.cashPaid),
         balanceDue: paymentUpdate.summary.balanceDue,
         paymentStatus: collectionStatus(
           Number(paymentUpdate.summary.totalAmount),

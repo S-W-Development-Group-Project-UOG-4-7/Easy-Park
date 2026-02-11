@@ -69,9 +69,12 @@ export default function PaymentDetailsModal({
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200/60 dark:border-slate-800/60 bg-slate-50/70 dark:bg-slate-950/50 p-4">
-                  <p className="text-[11px] uppercase tracking-wider text-slate-500">Online Paid</p>
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500">Paid Amount</p>
                   <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(details.onlinePaid, details.currency)}
+                    {formatCurrency(details.paidAmount, details.currency)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                    Online: {formatCurrency(details.onlinePaid, details.currency)} | Cash: {formatCurrency(details.cashPaid, details.currency)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200/60 dark:border-slate-800/60 bg-slate-50/70 dark:bg-slate-950/50 p-4">
@@ -90,6 +93,7 @@ export default function PaymentDetailsModal({
                   <div className="space-y-1 text-sm text-slate-600 dark:text-slate-300">
                     <p>Method: {details.paymentMethod || 'N/A'}</p>
                     <p>Status: {details.paymentStatus}</p>
+                    <p>Booking Status: {details.bookingStatus || 'N/A'}</p>
                     <p>Gateway: {details.paymentGatewayStatus}</p>
                     <p>Transaction: {details.transactionId || 'N/A'}</p>
                   </div>

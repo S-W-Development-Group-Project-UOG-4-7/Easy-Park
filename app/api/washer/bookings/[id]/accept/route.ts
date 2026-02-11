@@ -39,47 +39,59 @@ export async function PATCH(
       return errorResponse(`Cannot accept booking with status "${existing.status}".`, 400);
     }
 
-    const updated = await prisma.wash_jobs.update({
-      where: { id },
-      data: {
-        status: 'ACCEPTED',
-        washerId: auth.userId,
-        acceptedAt: new Date(),
-      },
-      include: {
-        bookingSlot: {
-          include: {
-            slot: { select: { slotType: true } },
-            booking: {
-              include: {
-                customer: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    email: true,
-                    phone: true,
-                    vehicles: {
-                      select: {
-                        vehicleNumber: true,
-                        type: true,
-                        createdAt: true,
+    const updated = await prisma.$transaction(async (tx) => {
+      const next = await tx.wash_jobs.update({
+        where: { id },
+        data: {
+          status: 'ACCEPTED',
+          washerId: auth.userId,
+          acceptedAt: new Date(),
+        },
+        include: {
+          bookingSlot: {
+            include: {
+              slot: { select: { slotType: true } },
+              booking: {
+                include: {
+                  customer: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      email: true,
+                      phone: true,
+                      vehicles: {
+                        select: {
+                          vehicleNumber: true,
+                          type: true,
+                          createdAt: true,
+                        },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1,
                       },
-                      orderBy: { createdAt: 'desc' },
-                      take: 1,
                     },
                   },
-                },
-                vehicle: {
-                  select: {
-                    vehicleNumber: true,
-                    type: true,
+                  vehicle: {
+                    select: {
+                      vehicleNumber: true,
+                      type: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
+      });
+
+      await tx.notifications.create({
+        data: {
+          userId: next.bookingSlot.booking.customer.id,
+          title: 'Car Wash Accepted',
+          message: `Washer accepted your wash job for booking BK-${next.bookingSlot.booking.id.slice(-6).toUpperCase()}.`,
+        },
+      });
+
+      return next;
     });
 
     return successResponse(mapWashJobToWasherBooking(updated), 'Booking accepted successfully');

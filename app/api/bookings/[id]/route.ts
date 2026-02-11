@@ -97,6 +97,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             note: 'Updated by customer',
           },
         });
+        await tx.notifications.create({
+          data: {
+            userId,
+            title: 'Booking Status Updated',
+            message: `Your booking (BK-${id.slice(-6).toUpperCase()}) status changed to ${status}.`,
+          },
+        });
       }
 
       return updated;
@@ -128,6 +135,13 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     await prisma.bookings.delete({ where: { id } });
+    await prisma.notifications.create({
+      data: {
+        userId,
+        title: 'Booking Deleted',
+        message: `Your booking (BK-${id.slice(-6).toUpperCase()}) was deleted.`,
+      },
+    });
     return successResponse(null, 'Booking deleted successfully');
   } catch (error) {
     console.error('Delete booking error:', error);

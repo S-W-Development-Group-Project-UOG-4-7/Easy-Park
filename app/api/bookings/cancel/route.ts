@@ -43,6 +43,13 @@ export async function POST(request: NextRequest) {
           note: 'Cancelled by customer',
         },
       });
+      await tx.notifications.create({
+        data: {
+          userId,
+          title: 'Booking Cancelled',
+          message: `Your booking (BK-${existing.id.slice(-6).toUpperCase()}) was cancelled successfully.`,
+        },
+      });
     });
 
     return NextResponse.json({ success: true, message: 'Booking cancelled' });

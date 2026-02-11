@@ -1,48 +1,74 @@
 "use client";
 
-const rows = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
-const cols = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-const occupiedSlots = new Set(["A4", "B7", "C3", "D5", "F2", "H8", "J1"]);
-const carWashSlots = ["CW1", "CW2", "CW3", "CW4"];
-const evSlotsTop = ["K1", "K2", "K3", "K4", "K5", "K6"];
-const evSlotsBottom = ["L1", "L2", "L3", "L4", "L5", "L6"];
+import type { CounterSlot } from "./types";
 
 function SlotTile({
-  code,
-  occupied,
+  slot,
 }: {
-  code: string;
-  occupied?: boolean;
+  slot: CounterSlot;
 }) {
+  const isOccupied = slot.status === "OCCUPIED";
+  const isMaintenance = slot.status === "MAINTENANCE";
   return (
-    <button
-      type="button"
+    <div
       className={`relative flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-semibold transition ${
-        occupied ? "bg-[#1E293B] text-slate-300" : "bg-[#0F172A] text-slate-400 hover:bg-white/5"
+        isOccupied
+          ? "bg-red-500/20 text-red-200 border-red-500/30"
+          : isMaintenance
+            ? "bg-amber-500/20 text-amber-200 border-amber-500/30"
+            : "bg-[#0F172A] text-lime-200 hover:bg-lime-400/20 border-lime-400/20"
       } border border-white/5`}
+      title={`${slot.slotNumber} - ${slot.status}`}
     >
-      {occupied ? (
+      {isOccupied ? (
         <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-400" />
       ) : null}
-      {code}
-    </button>
+      {isMaintenance ? (
+        <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400" />
+      ) : null}
+      {slot.slotNumber}
+    </div>
   );
 }
 
-export default function SlotGrid() {
+export default function SlotGrid({
+  slots,
+  loading,
+  onSlotClick,
+}: {
+  slots: CounterSlot[];
+  loading: boolean;
+  onSlotClick?: (slot: CounterSlot) => void;
+}) {
+  const normalSlots = slots.filter((slot) => slot.type === "NORMAL");
+  const evSlots = slots.filter((slot) => slot.type === "EV");
+  const carWashSlots = slots.filter((slot) => slot.type === "CAR_WASH");
+  const availableCount = slots.filter((slot) => slot.status === "AVAILABLE").length;
+  const occupiedCount = slots.filter((slot) => slot.status === "OCCUPIED").length;
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-white/5 bg-[#0F172A]/70 p-5 shadow-lg shadow-black/30 backdrop-blur">
+        <div className="flex items-center justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-lime-400 border-t-transparent" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-white/5 bg-[#0F172A]/70 p-5 shadow-lg shadow-black/30 backdrop-blur">
       <div className="flex items-center justify-between text-xs text-slate-400">
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-white/5 px-3 py-1 text-[11px] text-slate-200">
-            Entrance
+            Selected Parking Area
           </span>
-          <span>— Drive lane</span>
+          <span>Live slot status</span>
         </div>
         <div className="flex items-center gap-3 text-[11px]">
-          <span>Total: 106</span>
-          <span className="text-lime-400">Available: 74</span>
-          <span className="text-red-400">Occupied: 32</span>
+          <span>Total: {slots.length}</span>
+          <span className="text-lime-400">Available: {availableCount}</span>
+          <span className="text-red-400">Occupied: {occupiedCount}</span>
         </div>
       </div>
 
@@ -52,30 +78,21 @@ export default function SlotGrid() {
             <span className="font-semibold text-slate-200">Parking Area</span>
             <span>Normal slots</span>
           </div>
-          <div className="grid grid-cols-[auto_1fr] gap-3">
-            <div className="flex flex-col gap-3 text-[10px] text-slate-500">
-              {rows.map((row) => (
-                <span key={row} className="h-8 w-6 text-center">
-                  {row}
-                </span>
-              ))}
-            </div>
-            <div className="grid gap-3">
-              {rows.map((row) => (
-                <div key={row} className="grid grid-cols-9 gap-2">
-                  {cols.map((col) => {
-                    const code = `${row}${col}`;
-                    return (
-                      <SlotTile
-                        key={code}
-                        code={code}
-                        occupied={occupiedSlots.has(code)}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+          <div className="grid grid-cols-8 gap-2">
+            {normalSlots.length === 0 ? (
+              <p className="col-span-8 py-4 text-center text-xs text-slate-500">No normal slots configured</p>
+            ) : (
+              normalSlots.map((slot) => (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => onSlotClick?.(slot)}
+                  className="rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-400/40"
+                >
+                  <SlotTile slot={slot} />
+                </button>
+              ))
+            )}
           </div>
         </div>
 
@@ -86,9 +103,20 @@ export default function SlotGrid() {
               <span>CW slots</span>
             </div>
             <div className="grid grid-cols-4 gap-3">
-              {carWashSlots.map((code) => (
-                <SlotTile key={code} code={code} occupied={code === "CW2"} />
-              ))}
+              {carWashSlots.length === 0 ? (
+                <p className="col-span-4 py-4 text-center text-xs text-slate-500">No car wash slots</p>
+              ) : (
+                carWashSlots.map((slot) => (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() => onSlotClick?.(slot)}
+                    className="rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-400/40"
+                  >
+                    <SlotTile slot={slot} />
+                  </button>
+                ))
+              )}
             </div>
             <div className="mt-4 rounded-xl border border-white/5 bg-[#0F172A]/80 px-4 py-6 text-center text-xs font-semibold text-slate-400">
               WASHING AREA
@@ -100,17 +128,21 @@ export default function SlotGrid() {
               <span className="font-semibold text-slate-200">EV Charging</span>
               <span>EV slots</span>
             </div>
-            <div className="grid gap-3">
-              <div className="grid grid-cols-6 gap-2">
-                {evSlotsTop.map((code) => (
-                  <SlotTile key={code} code={code} occupied={code === "K4"} />
-                ))}
-              </div>
-              <div className="grid grid-cols-6 gap-2">
-                {evSlotsBottom.map((code) => (
-                  <SlotTile key={code} code={code} occupied={code === "L2"} />
-                ))}
-              </div>
+            <div className="grid grid-cols-6 gap-2">
+              {evSlots.length === 0 ? (
+                <p className="col-span-6 py-4 text-center text-xs text-slate-500">No EV slots</p>
+              ) : (
+                evSlots.map((slot) => (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() => onSlotClick?.(slot)}
+                    className="rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-400/40"
+                  >
+                    <SlotTile slot={slot} />
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>

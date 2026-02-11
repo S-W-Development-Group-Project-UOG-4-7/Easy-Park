@@ -45,7 +45,7 @@ export async function PATCH(request: NextRequest) {
           where: { id },
           include: {
             bookingSlot: {
-              include: { booking: { select: { id: true, status: true } } },
+              include: { booking: { select: { id: true, status: true, customerId: true } } },
             },
           },
         });
@@ -68,6 +68,13 @@ export async function PATCH(request: NextRequest) {
             where: { id },
             data: { status: 'ACCEPTED', washerId: auth.userId, acceptedAt: new Date() },
           });
+          await prisma.notifications.create({
+            data: {
+              userId: job.bookingSlot.booking.customerId,
+              title: 'Car Wash Accepted',
+              message: `Washer accepted your wash job for booking BK-${job.bookingSlot.booking.id.slice(-6).toUpperCase()}.`,
+            },
+          });
           result.success.push({ id, status: 'ACCEPTED' });
           continue;
         }
@@ -80,6 +87,13 @@ export async function PATCH(request: NextRequest) {
           await prisma.wash_jobs.update({
             where: { id },
             data: { status: 'COMPLETED', washerId: auth.userId, completedAt: new Date() },
+          });
+          await prisma.notifications.create({
+            data: {
+              userId: job.bookingSlot.booking.customerId,
+              title: 'Car Wash Completed',
+              message: `Your wash job is completed for booking BK-${job.bookingSlot.booking.id.slice(-6).toUpperCase()}.`,
+            },
           });
           result.success.push({ id, status: 'COMPLETED' });
           continue;
@@ -99,9 +113,16 @@ export async function PATCH(request: NextRequest) {
               note: 'Cancelled via washer bulk action',
             },
           });
+          await tx.notifications.create({
+            data: {
+              userId: job.bookingSlot.booking.customerId,
+              title: 'Car Wash Booking Cancelled',
+              message: `Your wash booking BK-${job.bookingSlot.booking.id.slice(-6).toUpperCase()} was cancelled by washer operations.`,
+            },
+          });
         });
         result.success.push({ id, status: 'CANCELLED' });
-      } catch (err) {
+      } catch {
         result.failed.push({ id, reason: 'Database error occurred' });
       }
     }

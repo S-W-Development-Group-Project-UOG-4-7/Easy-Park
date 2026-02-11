@@ -20,8 +20,9 @@ function slotZone(slotNumber: string) {
 
 function paymentCollectionStatus(total: number, onlinePaid: number, cashPaid: number) {
   const paid = onlinePaid + cashPaid;
-  if (paid <= 0) return 'UNPAID';
-  if (paid >= total) return 'PAID';
+  const epsilon = 0.0001;
+  if (paid <= epsilon) return 'UNPAID';
+  if (paid + epsilon >= total) return 'PAID';
   return 'PARTIAL';
 }
 

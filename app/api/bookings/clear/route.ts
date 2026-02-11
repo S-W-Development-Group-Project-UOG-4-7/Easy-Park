@@ -24,11 +24,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    const result = await prisma.bookings.deleteMany({
-      where: { customerId: userId },
+    return NextResponse.json({
+      success: true,
+      deleted: 0,
+      message: 'Clear all is non-destructive. Bookings are kept in the database.',
     });
-
-    return NextResponse.json({ success: true, deleted: result.count });
   } catch (error) {
     console.error('[BOOKINGS_CLEAR_ERROR]', error);
     return NextResponse.json({ success: false, error: 'Failed to clear bookings' }, { status: 500 });

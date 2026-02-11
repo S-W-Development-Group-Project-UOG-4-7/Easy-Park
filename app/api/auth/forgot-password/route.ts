@@ -1,6 +1,5 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { successResponse, serverErrorResponse } from '@/lib/api-response';
 import { sendPasswordResetEmail } from '@/lib/password-reset-email';
 import {
   generatePasswordResetToken,
@@ -12,18 +11,35 @@ import { consumeRateLimit, getClientIpAddress } from '@/lib/rate-limit';
 
 const GENERIC_FORGOT_PASSWORD_MESSAGE =
   'If an account exists for this email, a reset link has been sent.';
+const IS_DEV_RESET_LINK_MODE =
+  process.env.NODE_ENV === 'development' || String(process.env.RESET_LINK_MODE || '').toLowerCase() === 'dev';
 
 const FORGOT_WINDOW_MS = 15 * 60 * 1000;
 const FORGOT_LIMIT_PER_IP = 15;
 const FORGOT_LIMIT_PER_EMAIL = 5;
 
+function genericForgotPasswordResponse(devResetUrl?: string) {
+  return NextResponse.json(
+    devResetUrl
+      ? {
+          message: GENERIC_FORGOT_PASSWORD_MESSAGE,
+          devResetUrl,
+        }
+      : {
+          message: GENERIC_FORGOT_PASSWORD_MESSAGE,
+        }
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const email = String(body?.email || '').trim().toLowerCase();
+    const appUrl = (process.env.APP_URL || getAppBaseUrl(request)).replace(/\/+$/, '');
+    let devResetUrl = '';
 
     if (!email) {
-      return successResponse({ message: GENERIC_FORGOT_PASSWORD_MESSAGE }, GENERIC_FORGOT_PASSWORD_MESSAGE);
+      return genericForgotPasswordResponse();
     }
 
     const ipAddress = getClientIpAddress(request.headers);
@@ -35,7 +51,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (!allowedByIp || !allowedByEmail) {
-      return successResponse({ message: GENERIC_FORGOT_PASSWORD_MESSAGE }, GENERIC_FORGOT_PASSWORD_MESSAGE);
+      return genericForgotPasswordResponse();
     }
 
     const user = await prisma.users.findUnique({
@@ -66,7 +82,10 @@ export async function POST(request: NextRequest) {
         `;
       });
 
-      const resetLink = `${getAppBaseUrl(request)}/reset-password?token=${encodeURIComponent(rawToken)}`;
+      const resetLink = `${appUrl}/reset-password?token=${encodeURIComponent(rawToken)}`;
+      if (IS_DEV_RESET_LINK_MODE) {
+        devResetUrl = resetLink;
+      }
       try {
         await sendPasswordResetEmail({
           toEmail: user.email,
@@ -78,9 +97,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return successResponse({ message: GENERIC_FORGOT_PASSWORD_MESSAGE }, GENERIC_FORGOT_PASSWORD_MESSAGE);
+    return genericForgotPasswordResponse(devResetUrl || undefined);
   } catch (error) {
     console.error('Forgot password error:', error);
-    return serverErrorResponse('Failed to process forgot password request');
+    return genericForgotPasswordResponse();
   }
 }

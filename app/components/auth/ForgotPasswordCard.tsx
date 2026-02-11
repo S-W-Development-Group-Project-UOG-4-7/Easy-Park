@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthModal } from '../AuthModalProvider';
+import { DevResetLinkModal } from './DevResetLinkModal';
+
+const GENERIC_FORGOT_PASSWORD_MESSAGE =
+  'If an account exists for this email, a reset link has been sent.';
 
 export function ForgotPasswordCard({ initialEmail = '' }: { initialEmail?: string }) {
   const { openSignIn } = useAuthModal();
   const [email, setEmail] = useState(initialEmail);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [devResetUrl, setDevResetUrl] = useState('');
+  const [isDevResetModalOpen, setIsDevResetModalOpen] = useState(false);
 
   useEffect(() => {
     setEmail(initialEmail);
@@ -16,13 +22,10 @@ export function ForgotPasswordCard({ initialEmail = '' }: { initialEmail?: strin
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!email.trim()) {
-      setMessage('Please enter your email address.');
-      return;
-    }
-
     setLoading(true);
     setMessage('');
+    setDevResetUrl('');
+    setIsDevResetModalOpen(false);
 
     try {
       const response = await fetch('/api/auth/forgot-password', {
@@ -32,13 +35,15 @@ export function ForgotPasswordCard({ initialEmail = '' }: { initialEmail?: strin
       });
 
       const data = await response.json().catch(() => ({}));
-      const apiMessage =
-        String(data?.message || data?.data?.message || '').trim() ||
-        'If an account exists for this email, a reset link has been sent.';
-      setMessage(apiMessage);
+      const devUrl = String(data?.devResetUrl || data?.data?.devResetUrl || '').trim();
+      setMessage(GENERIC_FORGOT_PASSWORD_MESSAGE);
+      if (devUrl) {
+        setDevResetUrl(devUrl);
+        setIsDevResetModalOpen(true);
+      }
     } catch (error) {
       console.error('Forgot password error:', error);
-      setMessage('If an account exists for this email, a reset link has been sent.');
+      setMessage(GENERIC_FORGOT_PASSWORD_MESSAGE);
     } finally {
       setLoading(false);
     }
@@ -86,6 +91,11 @@ export function ForgotPasswordCard({ initialEmail = '' }: { initialEmail?: strin
           </button>
         </div>
       </div>
+      <DevResetLinkModal
+        isOpen={isDevResetModalOpen}
+        onClose={() => setIsDevResetModalOpen(false)}
+        resetUrl={devResetUrl}
+      />
     </div>
   );
 }

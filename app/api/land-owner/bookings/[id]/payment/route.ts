@@ -11,8 +11,9 @@ type AccessScope = {
 type CollectionStatus = 'PAID' | 'PARTIAL' | 'UNPAID';
 
 function collectionStatus(total: number, paid: number): CollectionStatus {
-  if (paid <= 0) return 'UNPAID';
-  if (paid >= total) return 'PAID';
+  const epsilon = 0.0001;
+  if (paid <= epsilon) return 'UNPAID';
+  if (paid + epsilon >= total) return 'PAID';
   return 'PARTIAL';
 }
 
@@ -162,6 +163,8 @@ export async function GET(
     const cashPaid = Number(summary?.cashPaid ?? 0);
     const paid = onlinePaid + cashPaid;
     const balanceDue = Math.max(0, Number(summary?.balanceDue ?? totalAmount - paid));
+    const paymentStatus = collectionStatus(totalAmount, paid);
+    const bookingStatus = paymentStatus === 'PAID' && booking.status !== 'CANCELLED' ? 'PAID' : booking.status;
     const latest = booking.payments[0];
 
     return NextResponse.json({
@@ -181,11 +184,14 @@ export async function GET(
         },
         totalAmount,
         onlinePaid,
+        cashPaid,
+        paidAmount: paid,
         balanceDue,
         currency: summary?.currency || latest?.currency || 'LKR',
         paymentMethod: latest?.method || 'N/A',
         paymentGatewayStatus: latest?.gatewayStatus || 'PENDING',
-        paymentStatus: collectionStatus(totalAmount, paid),
+        paymentStatus,
+        bookingStatus,
         transactionId: latest?.transactionId || null,
         bookingDate: booking.startTime,
         bookingTime: booking.startTime,

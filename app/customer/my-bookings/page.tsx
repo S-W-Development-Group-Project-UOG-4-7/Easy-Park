@@ -31,6 +31,10 @@ interface Booking {
 
 type Filter = 'all' | 'pending' | 'paid' | 'completed' | 'cancelled';
 
+function getHiddenBookingsStorageKey(userId?: string) {
+  return `customerHiddenBookings:${userId || 'guest'}`;
+}
+
 export default function MyBookingsPage() {
   const router = useRouter();
   const { user, loading: authLoading, refreshUser } = useAuth();
@@ -46,6 +50,7 @@ export default function MyBookingsPage() {
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [clearAllOpen, setClearAllOpen] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
+  const [hiddenBookingIds, setHiddenBookingIds] = useState<string[]>([]);
 
   // --- Pricing Logic ---
   const FULL_FEE_PER_HOUR = 300;      // Total cost rate: 300 per hour
@@ -70,6 +75,38 @@ export default function MyBookingsPage() {
     return remaining > 0 ? ('pending' as const) : ('paid' as const);
   };
 
+  const persistHiddenBookingIds = useCallback(
+    (ids: string[]) => {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.setItem(getHiddenBookingsStorageKey(user?.id), JSON.stringify(ids));
+      } catch (error) {
+        console.error('Failed to persist hidden bookings:', error);
+      }
+    },
+    [user?.id]
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(getHiddenBookingsStorageKey(user?.id));
+      if (!raw) {
+        setHiddenBookingIds([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setHiddenBookingIds(parsed.map(String));
+      } else {
+        setHiddenBookingIds([]);
+      }
+    } catch (error) {
+      console.error('Failed to read hidden bookings:', error);
+      setHiddenBookingIds([]);
+    }
+  }, [user?.id]);
+
   // --- Fetch Bookings ---
   const fetchBookings = useCallback(async (options?: { retry?: boolean; silent?: boolean }) => {
     const retry = options?.retry ?? false;
@@ -86,7 +123,9 @@ export default function MyBookingsPage() {
         ? await res.json()
         : { success: false, error: await res.text() };
       if (res.ok && data.success) {
-        setBookings(data.data || []);
+        const hiddenSet = new Set(hiddenBookingIds);
+        const visible = (data.data || []).filter((booking: Booking) => !hiddenSet.has(booking.bookingId));
+        setBookings(visible);
       } else if (res.status === 401) {
         router.replace('/sign-in');
       } else if (!retry && res.status === 404 && (data.error === 'User not found' || data.message === 'User not found')) {
@@ -100,7 +139,7 @@ export default function MyBookingsPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [user, refreshUser, router]);
+  }, [user, refreshUser, router, hiddenBookingIds]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -175,27 +214,16 @@ export default function MyBookingsPage() {
     if (clearingAll) return;
     setClearingAll(true);
     try {
-      const res = await fetch('/api/bookings/clear', {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      const contentType = res.headers.get('content-type') || '';
-      const data = contentType.includes('application/json')
-        ? await res.json()
-        : { success: false, error: await res.text() };
-
-      if (res.ok && data.success) {
-        setBookings([]);
-        setExpandedBookingId(null);
-        setCancelTarget(null);
-        alert('All bookings cleared.');
-      } else if (res.status === 401) {
-        router.replace('/sign-in');
-      } else {
-        alert(data.error || data.message || 'Failed to clear bookings.');
-      }
+      const allCurrentIds = bookings.map((booking) => booking.bookingId);
+      const merged = Array.from(new Set([...hiddenBookingIds, ...allCurrentIds]));
+      setHiddenBookingIds(merged);
+      persistHiddenBookingIds(merged);
+      setBookings([]);
+      setExpandedBookingId(null);
+      setCancelTarget(null);
+      alert('All bookings cleared from your view.');
     } catch {
-      alert('Network error.');
+      alert('Failed to clear bookings from your view.');
     } finally {
       setClearingAll(false);
       setClearAllOpen(false);
@@ -449,7 +477,7 @@ export default function MyBookingsPage() {
           <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-white">Clear All Bookings?</h3>
             <p className="text-sm text-slate-300 mt-2">
-              Are you sure you want to clear all your bookings?
+              Are you sure you want to clear all bookings from your view? This will not delete booking data from the database.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
